@@ -1,0 +1,28 @@
+[package]
+name = "dji_fpv_video_tool"
+description = "A software tool to manipulate video files and OSD files recoded with the DJI FPV system"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-2.0-only"
+authors = ["Michel Pastor <shellixyz@gmail.com>"]
+rust-version = "1.61"
+repository = "https://github.com/shellixyz/dji_fpv_video_tool"
+homepage = "https://github.com/shellixyz/dji_fpv_video_tool"
+keywords = ["dji", "fpv", "video", "osd"]
+categories = ["command-line-utilities", "encoding", "multimedia"]
+readme = "README.md"
+exclude = ["*.webm", "*.osd", "*.mp4", "*.bin"]
+publish = false
+
+[dependencies]
+clap = { version = "4.0.18", features = ["derive"] }
+image = { version = "0.24.4", features = ["rgb"] }
+log = "0.4.17"
+pretty_env_logger = "0.4.0"
+strum = { version = "0.24.1", features = ["derive"] }
+derive_more = "0.99.17"
+
+[profile.release]
+panic = 'abort'
+codegen-units = 1
+opt-level = 3
