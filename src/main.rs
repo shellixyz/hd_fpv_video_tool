@@ -3,6 +3,7 @@ use std::{process::exit, path::Path, fmt::Display, error::Error};
 use clap::{Parser, Subcommand};
 
 use dji_fpv_video_tool::log_level::LogLevel;
+use dji_fpv_video_tool::osd::file::{OpenError as OSDFileOpenError, Reader};
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -26,10 +27,16 @@ enum Commands {
 
 #[derive(Debug)]
 enum GenerateOverlayError {
-    Error
+    OSDFileOpenError(OSDFileOpenError)
 }
 
 impl Error for GenerateOverlayError {}
+
+impl From<OSDFileOpenError> for GenerateOverlayError {
+    fn from(error: OSDFileOpenError) -> Self {
+        Self::OSDFileOpenError(error)
+    }
+}
 
 impl Display for GenerateOverlayError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -38,6 +45,25 @@ impl Display for GenerateOverlayError {
 }
 
 fn generate_overlay<P: AsRef<Path>>(path: P) -> Result<(), GenerateOverlayError> {
+    let mut osd_file = Reader::open(&path)?;
+
+    dbg!(osd_file.header());
+    // let frame = osd_file.read_frame().unwrap();
+    // dbg!(frame);
+    let mut counter = 0;
+    // while let Ok(_frame) = osd_file.read_frame() {
+    //     counter += 1;
+    // }
+    let frame = osd_file.read_frame().unwrap().unwrap();
+    let frame_size = frame.data.len();
+    for frame in osd_file {
+        let frame = frame.unwrap();
+        counter += 1;
+        if frame.data.len() != frame_size {
+            panic!("found {} != {}", frame.data.len(), frame_size);
+        }
+    }
+    println!("read {} frames", counter);
 
     Ok(())
 }
