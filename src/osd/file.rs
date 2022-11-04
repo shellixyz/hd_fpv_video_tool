@@ -8,6 +8,9 @@ use std::path::Path;
 use byte_struct::ByteStruct;
 use byte_struct::*;
 
+use getset::Getters;
+use hd_fpv_osd_font_tool::osd::tile::Dimensions as TileDimensions;
+
 const SIGNATURE: &str = "MSPOSD\x00";
 
 #[derive(Debug)]
@@ -60,15 +63,52 @@ impl Display for ReadError {
 
 #[derive(ByteStruct, Debug)]
 #[byte_struct_le]
+struct FileHeaderRaw {
+    file_version: u16,
+    width_tiles: u8,
+    height_tiles: u8,
+    tile_width: u8,
+    tile_height: u8,
+    x_offset: u16,
+    y_offset: u16,
+    font_variant: u8
+}
+
+#[derive(Debug, Getters)]
+#[getset(get = "pub")]
+pub struct Offset {
+    x: u16,
+    y: u16
+}
+
+
+#[derive(Debug, Getters)]
+#[getset(get = "pub")]
+pub struct DimensionsTiles {
+    width: u8,
+    height: u8
+}
+
+#[derive(Debug, Getters)]
+#[getset(get = "pub")]
 pub struct FileHeader {
-    pub file_version: u16,
-    pub char_width: u8,
-    pub char_height: u8,
-    pub font_width: u8,
-    pub font_height: u8,
-    pub x_offset: u16,
-    pub y_offset: u16,
-    pub font_variant: u8
+    file_version: u16,
+    dimensions_tiles: DimensionsTiles,
+    tile_dimensions: TileDimensions,
+    offset: Offset,
+    font_variant: u8
+}
+
+impl From<FileHeaderRaw> for FileHeader {
+    fn from(fhr: FileHeaderRaw) -> Self {
+        Self {
+            file_version: fhr.file_version,
+            dimensions_tiles: DimensionsTiles { width: fhr.width_tiles, height: fhr.height_tiles },
+            tile_dimensions: TileDimensions { width: fhr.tile_width as u32, height: fhr.tile_height as u32 },
+            offset: Offset { x: fhr.x_offset, y: fhr.y_offset },
+            font_variant: fhr.font_variant
+        }
+    }
 }
 
 #[derive(ByteStruct, Debug)]
@@ -78,10 +118,11 @@ struct FrameHeader {
     data_len: u32
 }
 
-#[derive(Debug)]
+#[derive(Debug, Getters)]
+#[getset(get = "pub")]
 pub struct Frame {
-    pub index: u32,
-    pub data: Vec<u16>
+    index: u32,
+    data: Vec<u16>
 }
 
 pub struct Reader {
@@ -100,17 +141,17 @@ impl Reader {
         Ok(())
     }
 
-    fn read_header(file: &mut File) -> Result<FileHeader, IOError> {
-        let mut header_bytes = [0; FileHeader::BYTE_LEN];
+    fn read_header(file: &mut File) -> Result<FileHeaderRaw, IOError> {
+        let mut header_bytes = [0; FileHeaderRaw::BYTE_LEN];
         file.read_exact(&mut header_bytes)?;
-        let header = FileHeader::read_bytes(&header_bytes);
+        let header = FileHeaderRaw::read_bytes(&header_bytes);
         Ok(header)
     }
 
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, OpenError> {
         let mut file = File::open(&path)?;
         Self::check_signature(&mut file)?;
-        let header = Self::read_header(&mut file).unwrap();
+        let header = Self::read_header(&mut file).unwrap().into();
 
         Ok(Self { file, header })
     }
