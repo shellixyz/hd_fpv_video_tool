@@ -1,6 +1,7 @@
 use std::{process::exit, path::Path, fmt::Display, error::Error};
 
 use clap::{Parser, Subcommand};
+use rayon::prelude::*;
 
 use dji_fpv_video_tool::log_level::LogLevel;
 use dji_fpv_video_tool::osd::file::{OpenError as OSDFileOpenError, Reader};
@@ -46,7 +47,7 @@ impl Display for GenerateOverlayError {
 }
 
 fn generate_overlay<P: AsRef<Path>>(path: P) -> Result<(), GenerateOverlayError> {
-    let mut osd_file = Reader::open(&path)?;
+    let osd_file = Reader::open(&path)?;
 
     // dbg!(osd_file.header());
     // let frame = osd_file.read_frame().unwrap();
@@ -81,11 +82,12 @@ fn generate_overlay<P: AsRef<Path>>(path: P) -> Result<(), GenerateOverlayError>
     // frame_image.save("test_frame.png").unwrap();
 
     let fg = Generator::new();
-    for (index, frame) in osd_file.into_iter().enumerate() {
-        let frame_image = fg.draw_frame(&frame.unwrap());
+    let frames = osd_file.frames().unwrap();
+    frames.par_iter().enumerate().for_each(|(index, frame)| {
+        let frame_image = fg.draw_frame(frame);
         let path = format!("/home/shel/fast_temp/osd_tiles/{index:06}.png");
         frame_image.save(path).unwrap();
-    }
+    });
 
     Ok(())
 }

@@ -10,6 +10,7 @@ use byte_struct::*;
 
 use getset::Getters;
 use hd_fpv_osd_font_tool::osd::tile::Dimensions as TileDimensions;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 const SIGNATURE: &str = "MSPOSD\x00";
 
@@ -179,6 +180,17 @@ impl Reader {
         let data = data_bytes.chunks_exact(u16::BYTE_LEN)
             .map(|bytes| u16::from_le_bytes(bytes.try_into().unwrap())).collect();
         Ok(Some(Frame { index: header.frame_index, data }))
+    }
+
+    pub fn frames(self) -> Result<Vec<Frame>, ReadError> {
+        let mut frames = vec![];
+        for frame_read_result in self {
+            match frame_read_result {
+                Ok(frame) => frames.push(frame),
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(frames)
     }
 
 }
