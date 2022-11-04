@@ -47,7 +47,7 @@ impl Display for GenerateOverlayError {
 }
 
 fn generate_overlay<P: AsRef<Path>>(path: P) -> Result<(), GenerateOverlayError> {
-    let osd_file = Reader::open(&path)?;
+    let mut osd_file = Reader::open(&path)?;
 
     // dbg!(osd_file.header());
     // let frame = osd_file.read_frame().unwrap();
@@ -82,12 +82,14 @@ fn generate_overlay<P: AsRef<Path>>(path: P) -> Result<(), GenerateOverlayError>
     // frame_image.save("test_frame.png").unwrap();
 
     let fg = Generator::new();
-    let frames = osd_file.frames().unwrap();
-    frames.par_iter().enumerate().for_each(|(index, frame)| {
-        let frame_image = fg.draw_frame(frame);
-        let path = format!("/home/shel/fast_temp/osd_tiles/{index:06}.png");
-        frame_image.save(path).unwrap();
-    });
+    fg.draw_frame(&osd_file.read_frame().unwrap().unwrap()).save("test_frame.png").unwrap();
+
+    // let frames = osd_file.frames().unwrap();
+    // frames.par_iter().enumerate().for_each(|(index, frame)| {
+    //     let frame_image = fg.draw_frame(frame);
+    //     let path = format!("/home/shel/fast_temp/osd_tiles/{index:06}.png");
+    //     frame_image.save(path).unwrap();
+    // });
 
     Ok(())
 }

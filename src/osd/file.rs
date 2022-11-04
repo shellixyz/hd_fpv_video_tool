@@ -3,6 +3,8 @@ use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
 use std::io::{Error as IOError, Read};
+use std::iter::Enumerate;
+use std::ops::Index;
 use std::path::Path;
 
 use byte_struct::ByteStruct;
@@ -10,7 +12,7 @@ use byte_struct::*;
 
 use getset::Getters;
 use hd_fpv_osd_font_tool::osd::tile::Dimensions as TileDimensions;
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use derive_more::Deref;
 
 const SIGNATURE: &str = "MSPOSD\x00";
 
@@ -119,11 +121,75 @@ struct FrameHeader {
     data_len: u32
 }
 
+pub type TileIndex = u16;
+pub type ScreenCoordinate = u8;
+
 #[derive(Debug, Getters)]
+#[getset(get = "pub")]
+pub struct Dimensions<T> {
+    width: T,
+    height: T
+}
+
+pub const TILE_INDICES_DIMENSIONS_TILES: Dimensions<ScreenCoordinate> = Dimensions { width: 60, height: 22 };
+
+#[derive(Debug, Deref)]
+pub struct TileIndices(Vec<TileIndex>);
+
+impl TileIndices {
+
+    fn screen_coordinates_to_index(x: ScreenCoordinate, y: ScreenCoordinate) -> usize {
+        y as usize + x as usize * TILE_INDICES_DIMENSIONS_TILES.height as usize
+    }
+
+    fn index_to_screen_coordinates(index: usize) -> (ScreenCoordinate, ScreenCoordinate) {
+        (
+            (index / TILE_INDICES_DIMENSIONS_TILES.height as usize) as ScreenCoordinate,
+            (index % TILE_INDICES_DIMENSIONS_TILES.height as usize) as ScreenCoordinate
+        )
+    }
+
+    pub fn enumerate(&self) -> TileIndicesEnumeratorIter {
+        TileIndicesEnumeratorIter(self.iter().enumerate())
+    }
+
+}
+
+impl Index<(ScreenCoordinate, ScreenCoordinate)> for TileIndices {
+    type Output = TileIndex;
+
+    fn index(&self, index: (ScreenCoordinate, ScreenCoordinate)) -> &Self::Output {
+        &self.0[Self::screen_coordinates_to_index(index.0, index.1)]
+    }
+}
+
+pub struct TileIndicesEnumeratorIter<'a>(Enumerate<std::slice::Iter<'a, u16>>);
+
+impl<'a> Iterator for TileIndicesEnumeratorIter<'a> {
+    type Item = (ScreenCoordinate, ScreenCoordinate, TileIndex);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        for (tile_index_index, tile_index) in &mut self.0 {
+            if *tile_index > 0 {
+                let (screen_x, screen_y) = TileIndices::index_to_screen_coordinates(tile_index_index);
+                return Some((screen_x, screen_y, *tile_index))
+            }
+        }
+        None
+    }
+}
+
+#[derive(Debug, Getters, Deref)]
 #[getset(get = "pub")]
 pub struct Frame {
     index: u32,
-    data: Vec<u16>
+    #[deref] tile_indices: TileIndices
+}
+
+impl Frame {
+    pub fn enumerate_tile_indices(&self) -> TileIndicesEnumeratorIter {
+        self.tile_indices().enumerate()
+    }
 }
 
 pub struct Reader {
@@ -177,9 +243,9 @@ impl Reader {
         };
         let mut data_bytes= vec![0; header.data_len as usize * 2];
         self.file.read_exact(&mut data_bytes)?;
-        let data = data_bytes.chunks_exact(u16::BYTE_LEN)
-            .map(|bytes| u16::from_le_bytes(bytes.try_into().unwrap())).collect();
-        Ok(Some(Frame { index: header.frame_index, data }))
+        let tile_indices = TileIndices(data_bytes.chunks_exact(u16::BYTE_LEN)
+            .map(|bytes| u16::from_le_bytes(bytes.try_into().unwrap())).collect());
+        Ok(Some(Frame { index: header.frame_index, tile_indices }))
     }
 
     pub fn frames(self) -> Result<Vec<Frame>, ReadError> {
