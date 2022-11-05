@@ -132,18 +132,14 @@ pub fn make_overlay_frame_file_path<P: AsRef<Path>>(dir_path: P, frame_index: OS
     [dir_path.as_ref().to_str().unwrap(), &format_overlay_frame_file_index(frame_index)].iter().collect()
 }
 
-pub fn link_missing_frames<P: AsRef<Path> + Display>(dir_path: P, existing_frame_indices: Vec<OSDFileFrameIndex>) -> Result<(), IOError> {
+pub fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &Vec<OSDFileFrameIndex>) -> Result<(), IOError> {
     let mut checking_index = 0;
     for frame_index in existing_frame_indices {
-        // if frame_index > 50 {
-        //     break;
-        // }
-        if checking_index < frame_index {
-            let original_path = make_overlay_frame_file_path(&dir_path, frame_index);
-            for link_to_index in checking_index..frame_index {
+        if checking_index < *frame_index {
+            let original_path = make_overlay_frame_file_path(&dir_path, *frame_index);
+            for link_to_index in checking_index..*frame_index {
                 let copy_path = make_overlay_frame_file_path(&dir_path, link_to_index);
                 std::fs::hard_link(&original_path, copy_path)?;
-                // println!("linking {} -> {}", original_path.to_str().unwrap(), copy_path.to_str().unwrap());
             }
         }
         checking_index = frame_index + 1;

@@ -17,7 +17,7 @@ use derive_more::{Deref, Display, Error, From};
 use indicatif::{ParallelProgressIterator, ProgressStyle};
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::osd::frame_overlay::make_overlay_frame_file_path;
+use crate::osd::frame_overlay::{make_overlay_frame_file_path, link_missing_frames};
 use super::frame_overlay::{Image, draw_frame_overlay, DimensionsTiles, self, DrawFrameOverlayError};
 
 const SIGNATURE: &str = "MSPOSD\x00";
@@ -352,15 +352,18 @@ impl<'a> FrameOverlayGenerator<'a> {
 
     pub fn save_frames_to_dir<P: AsRef<Path> + Display + std::marker::Sync>(&mut self, path: P) -> Result<(), SaveFramesToDirError> {
         std::fs::create_dir_all(&path)?;
-        log::info!("saving overlay frames into directory: {path}");
+        log::info!("generating overlay frames and saving into directory: {path}");
         let frames = self.reader.frames()?;
+        let frame_count = *frames.last().unwrap().index();
         let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
         frames.par_iter().progress_with_style(progress_style).for_each(|frame| {
             let frame_image = draw_frame_overlay(self.reader.overlay_kind(), frame, self.font_tiles).unwrap();
-            // let path: PathBuf = [path.as_ref().to_str().unwrap(), &format_overlay_frame_file_index(frame.index)].iter().collect();
             frame_image.save(make_overlay_frame_file_path(&path, frame.index)).unwrap();
         });
-        log::info!("overlay frames generation completed");
+        log::info!("linking missing overlay frames");
+        let frame_indices = frames.into_iter().map(|x| *x.index()).collect();
+        link_missing_frames(&path, &frame_indices)?;
+        log::info!("overlay frames generation completed: {} frames", frame_count);
         Ok(())
     }
 

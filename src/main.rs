@@ -3,7 +3,7 @@ use std::{process::exit, path::Path};
 
 use clap::{Parser, Subcommand};
 use derive_more::{From, Display, Error};
-use dji_fpv_video_tool::osd::frame_overlay::{DrawFrameOverlayError, link_missing_frames};
+use dji_fpv_video_tool::osd::frame_overlay::DrawFrameOverlayError;
 use hd_fpv_osd_font_tool::osd::standard_size_tile_container::StandardSizeTileArray;
 use hd_fpv_osd_font_tool::osd::bin_file::LoadError as BinFileLoadError;
 
@@ -39,11 +39,10 @@ enum GenerateOverlayError {
 }
 
 fn generate_overlay<P: AsRef<Path> + Display>(path: P) -> Result<(), GenerateOverlayError> {
-    let mut osd_file = Reader::open(&path)?;
+    let osd_file = Reader::open(&path)?;
     let font_tiles = StandardSizeTileArray::load_from_bin_file("../hd_fpv_osd_font_tool/font_files/font_hd.bin")?;
     let mut overlay_generator = osd_file.into_frame_overlay_generator(&font_tiles)?;
     overlay_generator.save_frames_to_dir("/home/shel/fast_temp/osd_tiles")?;
-    // link_missing_frames("/home/shel/fast_temp/osd_tiles", osd_file.frames().unwrap().into_iter().map(|x| *x.index()).collect()).unwrap();
 
     Ok(())
 }
