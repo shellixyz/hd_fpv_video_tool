@@ -1,4 +1,5 @@
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::{fmt::Display, error::Error};
 use std::io::Error as IOError;
@@ -136,9 +137,10 @@ pub fn make_overlay_frame_file_path<P: AsRef<Path>>(dir_path: P, frame_index: OS
     [dir_path.as_ref().to_str().unwrap(), &format_overlay_frame_file_index(frame_index)].iter().collect()
 }
 
-pub fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &[OSDFileFrameIndex]) -> Result<(), IOError> {
-    for indices in existing_frame_indices.windows(2) {
-        if let [lower_index, greater_index] = indices {
+pub fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &BTreeSet<OSDFileFrameIndex>) -> Result<(), IOError> {
+    let existing_frame_indices_vec = existing_frame_indices.iter().collect::<Vec<&OSDFileFrameIndex>>();
+    for indices in existing_frame_indices_vec.windows(2) {
+        if let &[lower_index, greater_index] = indices {
             if *greater_index > lower_index + 1 {
                 let original_path = make_overlay_frame_file_path(&dir_path, *lower_index);
                 for link_to_index in lower_index+1..*greater_index {

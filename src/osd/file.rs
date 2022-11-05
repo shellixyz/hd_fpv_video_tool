@@ -385,7 +385,7 @@ impl<'a> FrameOverlayGenerator<'a> {
         })?;
 
         log::info!("linking missing overlay frames");
-        let frame_indices = frames.iter().map(|x| (*x.index() as i32 + frame_offset) as u32).collect::<Vec<FrameIndex>>();
+        let frame_indices = frames.iter().map(|x| (*x.index() as i32 + frame_offset) as u32).collect();
         link_missing_frames(&path, &frame_indices)?;
 
         log::info!("overlay frames generation completed: {} frames", frame_count);
