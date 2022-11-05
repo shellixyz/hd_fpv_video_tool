@@ -14,7 +14,8 @@ use getset::Getters;
 use hd_fpv_osd_font_tool::osd::standard_size_tile_container::StandardSizeTileArray;
 use hd_fpv_osd_font_tool::osd::tile::Dimensions as TileDimensions;
 use derive_more::{Deref, Display, Error, From};
-use rayon::prelude::{IntoParallelRefIterator, IndexedParallelIterator, ParallelIterator};
+use indicatif::{ParallelProgressIterator, ProgressStyle};
+use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
 use super::frame_overlay::{Image, draw_frame_overlay, DimensionsTiles, self, DrawFrameOverlayError};
 
@@ -348,12 +349,15 @@ impl<'a> FrameOverlayGenerator<'a> {
 
     pub fn save_frames_to_dir<P: AsRef<Path> + Display + std::marker::Sync>(&mut self, path: P) -> Result<(), SaveFramesToDirError> {
         std::fs::create_dir_all(&path)?;
+        log::info!("saving overlay frames into directory: {path}");
         let frames = self.reader.frames()?;
-        frames.par_iter().enumerate().for_each(|(index, frame)| {
+        let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
+        frames.par_iter().progress_with_style(progress_style).for_each(|frame| {
             let frame_image = draw_frame_overlay(self.reader.overlay_kind(), frame, self.font_tiles).unwrap();
-            let path: PathBuf = [path.as_ref().to_str().unwrap(), &format!("{index:06}.png")].iter().collect();
+            let path: PathBuf = [path.as_ref().to_str().unwrap(), &format!("{:06}.png", frame.index)].iter().collect();
             frame_image.save(path).unwrap();
         });
+        log::info!("overlay frames generation completed");
         Ok(())
     }
 
