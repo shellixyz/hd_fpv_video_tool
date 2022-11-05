@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{Error as IOError, Read};
 use std::iter::Enumerate;
 use std::ops::Index;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use byte_struct::ByteStruct;
 use byte_struct::*;
@@ -17,6 +17,7 @@ use derive_more::{Deref, Display, Error, From};
 use indicatif::{ParallelProgressIterator, ProgressStyle};
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
+use crate::osd::frame_overlay::make_overlay_frame_file_path;
 use super::frame_overlay::{Image, draw_frame_overlay, DimensionsTiles, self, DrawFrameOverlayError};
 
 const SIGNATURE: &str = "MSPOSD\x00";
@@ -119,10 +120,12 @@ impl From<FileHeaderRaw> for FileHeader {
     }
 }
 
+pub type FrameIndex = u32;
+
 #[derive(ByteStruct, Debug)]
 #[byte_struct_le]
 struct FrameHeader {
-    frame_index: u32,
+    frame_index: FrameIndex,
     data_len: u32
 }
 
@@ -354,8 +357,8 @@ impl<'a> FrameOverlayGenerator<'a> {
         let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
         frames.par_iter().progress_with_style(progress_style).for_each(|frame| {
             let frame_image = draw_frame_overlay(self.reader.overlay_kind(), frame, self.font_tiles).unwrap();
-            let path: PathBuf = [path.as_ref().to_str().unwrap(), &format!("{:06}.png", frame.index)].iter().collect();
-            frame_image.save(path).unwrap();
+            // let path: PathBuf = [path.as_ref().to_str().unwrap(), &format_overlay_frame_file_index(frame.index)].iter().collect();
+            frame_image.save(make_overlay_frame_file_path(&path, frame.index)).unwrap();
         });
         log::info!("overlay frames generation completed");
         Ok(())
