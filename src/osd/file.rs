@@ -13,8 +13,7 @@ use byte_struct::*;
 use getset::Getters;
 use hd_fpv_osd_font_tool::osd::standard_size_tile_container::StandardSizeTileArray;
 use hd_fpv_osd_font_tool::osd::tile::Dimensions as TileDimensions;
-// use hd_fpv_osd_font_tool::osd::tile;
-use derive_more::Deref;
+use derive_more::{Deref, Display, Error, From};
 use rayon::prelude::{IntoParallelRefIterator, IndexedParallelIterator, ParallelIterator};
 
 use super::frame_overlay::{Image, draw_frame_overlay, DimensionsTiles, self, DrawFrameOverlayError};
@@ -269,14 +268,6 @@ impl Reader {
         Ok(frames)
     }
 
-    // pub fn tile_kind(&self) -> Result<tile::Kind, tile::InvalidDimensionsError> {
-    //     tile::Kind::try_from(self.header().tile_dimensions().clone())
-    // }
-
-    // pub fn overlay_kind(&self) -> Result<frame_overlay::Kind, frame_overlay::InvalidDimensionsTilesError> {
-    //     frame_overlay::Kind::try_from(self.header().dimensions_tiles())
-    // }
-
     pub fn into_frame_overlay_generator(self, font_tiles: &StandardSizeTileArray) -> Result<FrameOverlayGenerator, DrawFrameOverlayError> {
         FrameOverlayGenerator::new(self, font_tiles)
     }
@@ -327,34 +318,10 @@ impl<'a> IntoIterator for &'a mut Reader {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Display, Error, From)]
 pub enum SaveFramesToDirError {
     IOError(IOError),
     ReadError(ReadError),
-}
-
-impl Error for SaveFramesToDirError {}
-
-impl Display for SaveFramesToDirError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use SaveFramesToDirError::*;
-        match self {
-            IOError(error) => error.fmt(f),
-            ReadError(error) => error.fmt(f),
-        }
-    }
-}
-
-impl From<IOError> for SaveFramesToDirError {
-    fn from(error: IOError) -> Self {
-        Self::IOError(error)
-    }
-}
-
-impl From<ReadError> for SaveFramesToDirError {
-    fn from(error: ReadError) -> Self {
-        Self::ReadError(error)
-    }
 }
 
 pub struct FrameOverlayGenerator<'a> {
