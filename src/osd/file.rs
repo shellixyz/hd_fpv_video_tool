@@ -377,12 +377,12 @@ impl<'a> FrameOverlayGenerator<'a> {
 
         let frame_count = *frames.last().unwrap().index();
         let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
-        frames.par_iter().progress_with_style(progress_style).for_each(|frame| {
+        frames.par_iter().progress_with_style(progress_style).try_for_each(|frame| {
             let actual_frame_index = (frame.index as i32 + frame_offset) as u32;
             log::debug!("{} -> {}", frame.index(), &actual_frame_index);
             let frame_image = draw_frame_overlay(overlay_kind, frame, self.font_tiles).unwrap();
-            frame_image.save(make_overlay_frame_file_path(&path, actual_frame_index)).unwrap();
-        });
+            frame_image.save(make_overlay_frame_file_path(&path, actual_frame_index))
+        })?;
 
         log::info!("linking missing overlay frames");
         let frame_indices = frames.iter().map(|x| (*x.index() as i32 + frame_offset) as u32).collect::<Vec<FrameIndex>>();
