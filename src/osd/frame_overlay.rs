@@ -112,12 +112,16 @@ impl TryFrom<&DimensionsTiles> for Kind {
 
 pub type Image = ImageBuffer<Rgba<u8>, Vec<u8>>;
 
+pub fn transparent_frame_overlay(kind: &Kind) -> Image {
+    let (image_width, image_height) = kind.dimensions_pixels();
+    Image::new(image_width, image_height)
+}
+
 pub fn draw_frame_overlay(kind: &Kind, osd_file_frame: &OSDFileFrame, font_tiles: &StandardSizeTileArray) -> Result<Image, DrawFrameOverlayError> {
     if kind.tile_kind() != font_tiles.tile_kind() {
         return Err(DrawFrameOverlayError::InvalidFontTileKindForOverlayKind { needed_font_tile_kind: kind.tile_kind(), got_font_tile_kind: font_tiles.tile_kind(), overlay_kind: *kind });
     }
-    let (image_width, image_height) = kind.dimensions_pixels();
-    let mut image = Image::new(image_width, image_height);
+    let mut image = transparent_frame_overlay(kind);
     for (screen_x, screen_y, tile_index) in osd_file_frame.enumerate_tile_indices() {
         image.copy_from(font_tiles[tile_index as usize].image(), screen_x as u32 * 24, screen_y as u32 * 36).unwrap();
     }
@@ -132,17 +136,17 @@ pub fn make_overlay_frame_file_path<P: AsRef<Path>>(dir_path: P, frame_index: OS
     [dir_path.as_ref().to_str().unwrap(), &format_overlay_frame_file_index(frame_index)].iter().collect()
 }
 
-pub fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &Vec<OSDFileFrameIndex>) -> Result<(), IOError> {
-    let mut checking_index = 0;
-    for frame_index in existing_frame_indices {
-        if checking_index < *frame_index {
-            let original_path = make_overlay_frame_file_path(&dir_path, *frame_index);
-            for link_to_index in checking_index..*frame_index {
-                let copy_path = make_overlay_frame_file_path(&dir_path, link_to_index);
-                std::fs::hard_link(&original_path, copy_path)?;
+pub fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &[OSDFileFrameIndex]) -> Result<(), IOError> {
+    for indices in existing_frame_indices.windows(2) {
+        if let [lower_index, greater_index] = indices {
+            if *greater_index > lower_index + 1 {
+                let original_path = make_overlay_frame_file_path(&dir_path, *lower_index);
+                for link_to_index in lower_index+1..*greater_index {
+                    let copy_path = make_overlay_frame_file_path(&dir_path, link_to_index);
+                    std::fs::hard_link(&original_path, copy_path)?;
+                }
             }
         }
-        checking_index = frame_index + 1;
     }
     Ok(())
 }

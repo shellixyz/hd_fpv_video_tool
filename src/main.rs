@@ -42,7 +42,7 @@ fn generate_overlay<P: AsRef<Path> + Display>(path: P) -> Result<(), GenerateOve
     let osd_file = Reader::open(&path)?;
     let font_tiles = StandardSizeTileArray::load_from_bin_file("../hd_fpv_osd_font_tool/font_files/font_hd.bin")?;
     let mut overlay_generator = osd_file.into_frame_overlay_generator(&font_tiles)?;
-    overlay_generator.save_frames_to_dir("/home/shel/fast_temp/osd_tiles")?;
+    overlay_generator.save_frames_to_dir("/home/shel/fast_temp/osd_tiles", 0)?;
 
     Ok(())
 }

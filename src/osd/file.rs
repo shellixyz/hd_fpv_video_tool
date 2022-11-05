@@ -14,10 +14,11 @@ use getset::Getters;
 use hd_fpv_osd_font_tool::osd::standard_size_tile_container::StandardSizeTileArray;
 use hd_fpv_osd_font_tool::osd::tile::Dimensions as TileDimensions;
 use derive_more::{Deref, Display, Error, From};
+use image::ImageError;
 use indicatif::{ParallelProgressIterator, ProgressStyle};
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::osd::frame_overlay::{make_overlay_frame_file_path, link_missing_frames};
+use crate::osd::frame_overlay::{make_overlay_frame_file_path, link_missing_frames, transparent_frame_overlay};
 use super::frame_overlay::{Image, draw_frame_overlay, DimensionsTiles, self, DrawFrameOverlayError};
 
 const SIGNATURE: &str = "MSPOSD\x00";
@@ -229,6 +230,7 @@ impl Reader {
         Self::check_signature(&mut file)?;
         let header: FileHeader = Self::read_header(&mut file).unwrap().into();
         let overlay_kind = frame_overlay::Kind::try_from(header.dimensions_tiles())?;
+        log::info!("detected OSD file with {overlay_kind} tile layout");
         Ok(Self { file, header, overlay_kind })
     }
 
@@ -326,6 +328,7 @@ impl<'a> IntoIterator for &'a mut Reader {
 pub enum SaveFramesToDirError {
     IOError(IOError),
     ReadError(ReadError),
+    ImageError(ImageError),
 }
 
 pub struct FrameOverlayGenerator<'a> {
@@ -350,19 +353,41 @@ impl<'a> FrameOverlayGenerator<'a> {
         }
     }
 
-    pub fn save_frames_to_dir<P: AsRef<Path> + Display + std::marker::Sync>(&mut self, path: P) -> Result<(), SaveFramesToDirError> {
+    pub fn save_frames_to_dir<P: AsRef<Path> + Display + std::marker::Sync>(&mut self, path: P, frame_offset: i32) -> Result<(), SaveFramesToDirError> {
         std::fs::create_dir_all(&path)?;
         log::info!("generating overlay frames and saving into directory: {path}");
         let frames = self.reader.frames()?;
+        let overlay_kind = self.reader.overlay_kind();
+
+        let first_frame_index = frames.iter().position(|frame| (*frame.index() as i32) > -frame_offset).unwrap();
+        let frames = &frames[first_frame_index..];
+        let first_frame_index = frames.first().unwrap().index();
+
+        let missing_frames = frame_offset + *first_frame_index as i32;
+
+        // we are missing frames at the beginning
+        if missing_frames > 0 {
+            log::debug!("Generating blank frames 0..{}", missing_frames - 1);
+            let frame_0_path = make_overlay_frame_file_path(&path, 0);
+            transparent_frame_overlay(overlay_kind).save(&frame_0_path)?;
+            for frame_index in 1..missing_frames {
+                std::fs::hard_link(&frame_0_path, make_overlay_frame_file_path(&path, frame_index as FrameIndex))?;
+            }
+        }
+
         let frame_count = *frames.last().unwrap().index();
         let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
         frames.par_iter().progress_with_style(progress_style).for_each(|frame| {
-            let frame_image = draw_frame_overlay(self.reader.overlay_kind(), frame, self.font_tiles).unwrap();
-            frame_image.save(make_overlay_frame_file_path(&path, frame.index)).unwrap();
+            let actual_frame_index = (frame.index as i32 + frame_offset) as u32;
+            log::debug!("{} -> {}", frame.index(), &actual_frame_index);
+            let frame_image = draw_frame_overlay(overlay_kind, frame, self.font_tiles).unwrap();
+            frame_image.save(make_overlay_frame_file_path(&path, actual_frame_index)).unwrap();
         });
+
         log::info!("linking missing overlay frames");
-        let frame_indices = frames.into_iter().map(|x| *x.index()).collect();
+        let frame_indices = frames.iter().map(|x| (*x.index() as i32 + frame_offset) as u32).collect::<Vec<FrameIndex>>();
         link_missing_frames(&path, &frame_indices)?;
+
         log::info!("overlay frames generation completed: {} frames", frame_count);
         Ok(())
     }
