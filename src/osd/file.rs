@@ -5,21 +5,27 @@ use std::fs::File;
 use std::io::{Error as IOError, Read};
 use std::iter::Enumerate;
 use std::ops::Index;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use byte_struct::ByteStruct;
 use byte_struct::*;
 
 use getset::Getters;
+use hd_fpv_osd_font_tool::osd::standard_size_tile_container::StandardSizeTileArray;
 use hd_fpv_osd_font_tool::osd::tile::Dimensions as TileDimensions;
+// use hd_fpv_osd_font_tool::osd::tile;
 use derive_more::Deref;
+use rayon::prelude::{IntoParallelRefIterator, IndexedParallelIterator, ParallelIterator};
+
+use super::frame_overlay::{Image, draw_frame_overlay, DimensionsTiles, self, DrawFrameOverlayError};
 
 const SIGNATURE: &str = "MSPOSD\x00";
 
 #[derive(Debug)]
 pub enum OpenError {
     IOError(IOError),
-    InvalidSignature
+    InvalidSignature,
+    InvalidOverlayDimensions(DimensionsTiles)
 }
 
 impl Error for OpenError {}
@@ -30,12 +36,19 @@ impl From<IOError> for OpenError {
     }
 }
 
+impl From<frame_overlay::InvalidDimensionsTilesError> for OpenError {
+    fn from(error: frame_overlay::InvalidDimensionsTilesError) -> Self {
+        Self::InvalidOverlayDimensions(error.0)
+    }
+}
+
 impl Display for OpenError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use OpenError::*;
         match self {
             IOError(error) => error.fmt(f),
             InvalidSignature => f.write_str("invalid header"),
+            InvalidOverlayDimensions(dimensions) => write!(f, "invalid overlay dimensions: {}x{}", dimensions.width(), dimensions.height())
         }
     }
 }
@@ -84,14 +97,6 @@ pub struct Offset {
     y: u16
 }
 
-
-#[derive(Debug, Getters)]
-#[getset(get = "pub")]
-pub struct DimensionsTiles {
-    width: u8,
-    height: u8
-}
-
 #[derive(Debug, Getters)]
 #[getset(get = "pub")]
 pub struct FileHeader {
@@ -106,7 +111,7 @@ impl From<FileHeaderRaw> for FileHeader {
     fn from(fhr: FileHeaderRaw) -> Self {
         Self {
             file_version: fhr.file_version,
-            dimensions_tiles: DimensionsTiles { width: fhr.width_tiles, height: fhr.height_tiles },
+            dimensions_tiles: DimensionsTiles::new(fhr.width_tiles, fhr.height_tiles),
             tile_dimensions: TileDimensions { width: fhr.tile_width as u32, height: fhr.tile_height as u32 },
             offset: Offset { x: fhr.x_offset, y: fhr.y_offset },
             font_variant: fhr.font_variant
@@ -169,7 +174,7 @@ impl<'a> Iterator for TileIndicesEnumeratorIter<'a> {
     type Item = (ScreenCoordinate, ScreenCoordinate, TileIndex);
 
     fn next(&mut self) -> Option<Self::Item> {
-        for (tile_index_index, tile_index) in &mut self.0 {
+        for (tile_index_index, tile_index) in self.0.by_ref() {
             if *tile_index > 0 {
                 let (screen_x, screen_y) = TileIndices::index_to_screen_coordinates(tile_index_index);
                 return Some((screen_x, screen_y, *tile_index))
@@ -194,7 +199,8 @@ impl Frame {
 
 pub struct Reader {
     file: File,
-    header: FileHeader
+    header: FileHeader,
+    overlay_kind: frame_overlay::Kind
 }
 
 impl Reader {
@@ -218,13 +224,17 @@ impl Reader {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, OpenError> {
         let mut file = File::open(&path)?;
         Self::check_signature(&mut file)?;
-        let header = Self::read_header(&mut file).unwrap().into();
-
-        Ok(Self { file, header })
+        let header: FileHeader = Self::read_header(&mut file).unwrap().into();
+        let overlay_kind = frame_overlay::Kind::try_from(header.dimensions_tiles())?;
+        Ok(Self { file, header, overlay_kind })
     }
 
     pub fn header(&self) -> &FileHeader {
         &self.header
+    }
+
+    pub fn overlay_kind(&self) -> &frame_overlay::Kind {
+        &self.overlay_kind
     }
 
     fn read_frame_header(&mut self) -> Result<Option<FrameHeader>, ReadError> {
@@ -248,7 +258,7 @@ impl Reader {
         Ok(Some(Frame { index: header.frame_index, tile_indices }))
     }
 
-    pub fn frames(self) -> Result<Vec<Frame>, ReadError> {
+    pub fn frames(&mut self) -> Result<Vec<Frame>, ReadError> {
         let mut frames = vec![];
         for frame_read_result in self {
             match frame_read_result {
@@ -257,6 +267,18 @@ impl Reader {
             }
         }
         Ok(frames)
+    }
+
+    // pub fn tile_kind(&self) -> Result<tile::Kind, tile::InvalidDimensionsError> {
+    //     tile::Kind::try_from(self.header().tile_dimensions().clone())
+    // }
+
+    // pub fn overlay_kind(&self) -> Result<frame_overlay::Kind, frame_overlay::InvalidDimensionsTilesError> {
+    //     frame_overlay::Kind::try_from(self.header().dimensions_tiles())
+    // }
+
+    pub fn into_frame_overlay_generator(self, font_tiles: &StandardSizeTileArray) -> Result<FrameOverlayGenerator, DrawFrameOverlayError> {
+        FrameOverlayGenerator::new(self, font_tiles)
     }
 
 }
@@ -281,4 +303,91 @@ impl IntoIterator for Reader {
     fn into_iter(self) -> Self::IntoIter {
         Self::IntoIter { reader: self }
     }
+}
+
+pub struct Iter<'a> {
+    reader: &'a mut Reader
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = Result<Frame, ReadError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.reader.read_frame().transpose()
+    }
+}
+
+impl<'a> IntoIterator for &'a mut Reader {
+    type Item = Result<Frame, ReadError>;
+
+    type IntoIter = Iter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Self::IntoIter { reader: self }
+    }
+}
+
+#[derive(Debug)]
+pub enum SaveFramesToDirError {
+    IOError(IOError),
+    ReadError(ReadError),
+}
+
+impl Error for SaveFramesToDirError {}
+
+impl Display for SaveFramesToDirError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use SaveFramesToDirError::*;
+        match self {
+            IOError(error) => error.fmt(f),
+            ReadError(error) => error.fmt(f),
+        }
+    }
+}
+
+impl From<IOError> for SaveFramesToDirError {
+    fn from(error: IOError) -> Self {
+        Self::IOError(error)
+    }
+}
+
+impl From<ReadError> for SaveFramesToDirError {
+    fn from(error: ReadError) -> Self {
+        Self::ReadError(error)
+    }
+}
+
+pub struct FrameOverlayGenerator<'a> {
+    reader: Reader,
+    font_tiles: &'a StandardSizeTileArray,
+}
+
+impl<'a> FrameOverlayGenerator<'a> {
+
+    pub fn new(reader: Reader, font_tiles: &'a StandardSizeTileArray) -> Result<Self, DrawFrameOverlayError> {
+        let overlay_kind = reader.overlay_kind();
+        if overlay_kind.tile_kind() != font_tiles.tile_kind() {
+            return Err(DrawFrameOverlayError::InvalidFontTileKindForOverlayKind { needed_font_tile_kind: overlay_kind.tile_kind(), got_font_tile_kind: font_tiles.tile_kind(), overlay_kind: *overlay_kind });
+        }
+        Ok(Self { reader, font_tiles })
+    }
+
+    pub fn draw_next_frame(&mut self) -> Result<Option<Image>, ReadError> {
+        match self.reader.read_frame()? {
+            Some(frame) => Ok(Some(draw_frame_overlay(self.reader.overlay_kind(), &frame, self.font_tiles).unwrap())),
+            None => Ok(None),
+        }
+    }
+
+    pub fn save_frames_to_dir<P: AsRef<Path> + Display + std::marker::Sync>(&mut self, path: P) -> Result<(), SaveFramesToDirError> {
+        std::fs::create_dir_all(&path)?;
+        let frames = self.reader.frames()?;
+        frames.par_iter().enumerate().for_each(|(index, frame)| {
+            let frame_image = draw_frame_overlay(self.reader.overlay_kind(), frame, self.font_tiles).unwrap();
+            let path: PathBuf = [path.as_ref().to_str().unwrap(), &format!("{index:06}.png")].iter().collect();
+            frame_image.save(path).unwrap();
+        });
+        Ok(())
+    }
+
 }
