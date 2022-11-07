@@ -11,7 +11,7 @@ use byte_struct::ByteStruct;
 use byte_struct::*;
 
 use getset::Getters;
-use hd_fpv_osd_font_tool::osd::standard_size_tile_container::StandardSizeTileArray;
+use hd_fpv_osd_font_tool::osd::tile::containers::{StandardSizeArray as StandardSizeTileArray, GetTileKind};
 use hd_fpv_osd_font_tool::osd::tile::Dimensions as TileDimensions;
 use derive_more::{Deref, Display, Error, From};
 use image::ImageError;

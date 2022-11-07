@@ -8,8 +8,9 @@ use super::file::Frame as OSDFileFrame;
 use super::file::FrameIndex as OSDFileFrameIndex;
 
 use getset::Getters;
+use hd_fpv_osd_font_tool::osd::tile::containers::GetTileKind;
 use image::{ImageBuffer, Rgba, GenericImage};
-use hd_fpv_osd_font_tool::osd::{standard_size_tile_container::StandardSizeTileArray, tile};
+use hd_fpv_osd_font_tool::osd::tile::{self, containers::StandardSizeArray as StandardSizeTileArray};
 use strum::Display;
 
 #[derive(Debug)]
