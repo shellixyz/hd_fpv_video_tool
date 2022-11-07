@@ -122,9 +122,10 @@ pub fn draw_frame_overlay(kind: &Kind, osd_file_frame: &OSDFileFrame, font_tiles
     if kind.tile_kind() != font_tiles.tile_kind() {
         return Err(DrawFrameOverlayError::InvalidFontTileKindForOverlayKind { needed_font_tile_kind: kind.tile_kind(), got_font_tile_kind: font_tiles.tile_kind(), overlay_kind: *kind });
     }
+    let tile_dimensions = kind.tile_kind().dimensions();
     let mut image = transparent_frame_overlay(kind);
     for (screen_x, screen_y, tile_index) in osd_file_frame.enumerate_tile_indices() {
-        image.copy_from(font_tiles[tile_index as usize].image(), screen_x as u32 * 24, screen_y as u32 * 36).unwrap();
+        image.copy_from(font_tiles[tile_index as usize].image(), screen_x as u32 * tile_dimensions.width, screen_y as u32 * tile_dimensions.height).unwrap();
     }
     Ok(image)
 }
