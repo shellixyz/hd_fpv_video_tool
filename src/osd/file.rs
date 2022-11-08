@@ -11,15 +11,10 @@ use byte_struct::ByteStruct;
 use byte_struct::*;
 
 use getset::Getters;
-use hd_fpv_osd_font_tool::osd::tile::containers::{StandardSizeArray as StandardSizeTileArray, GetTileKind};
-use hd_fpv_osd_font_tool::osd::tile::Dimensions as TileDimensions;
-use derive_more::{Deref, Display, Error, From};
-use image::ImageError;
-use indicatif::{ParallelProgressIterator, ProgressStyle};
-use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
+use hd_fpv_osd_font_tool::osd::tile::{Dimensions as TileDimensions, Tile};
+use derive_more::Deref;
 
-use crate::osd::frame_overlay::{make_overlay_frame_file_path, link_missing_frames, transparent_frame_overlay};
-use super::frame_overlay::{Image, draw_frame_overlay, DimensionsTiles, self, DrawFrameOverlayError};
+use super::frame_overlay::{DimensionsTiles, self, DrawFrameOverlayError, Generator as FrameOverlayGenerator};
 
 const SIGNATURE: &str = "MSPOSD\x00";
 
@@ -113,7 +108,7 @@ impl From<FileHeaderRaw> for FileHeader {
     fn from(fhr: FileHeaderRaw) -> Self {
         Self {
             file_version: fhr.file_version,
-            dimensions_tiles: DimensionsTiles::new(fhr.width_tiles, fhr.height_tiles),
+            dimensions_tiles: DimensionsTiles::new(fhr.width_tiles as u32, fhr.height_tiles as u32),
             tile_dimensions: TileDimensions { width: fhr.tile_width as u32, height: fhr.tile_height as u32 },
             offset: Offset { x: fhr.x_offset, y: fhr.y_offset },
             font_variant: fhr.font_variant
@@ -274,7 +269,7 @@ impl Reader {
         Ok(frames)
     }
 
-    pub fn into_frame_overlay_generator(self, font_tiles: &StandardSizeTileArray) -> Result<FrameOverlayGenerator, DrawFrameOverlayError> {
+    pub fn into_frame_overlay_generator(self, font_tiles: &Vec<Tile>) -> Result<FrameOverlayGenerator, DrawFrameOverlayError> {
         FrameOverlayGenerator::new(self, font_tiles)
     }
 
@@ -322,74 +317,4 @@ impl<'a> IntoIterator for &'a mut Reader {
     fn into_iter(self) -> Self::IntoIter {
         Self::IntoIter { reader: self }
     }
-}
-
-#[derive(Debug, Display, Error, From)]
-pub enum SaveFramesToDirError {
-    IOError(IOError),
-    ReadError(ReadError),
-    ImageError(ImageError),
-}
-
-pub struct FrameOverlayGenerator<'a> {
-    reader: Reader,
-    font_tiles: &'a StandardSizeTileArray,
-}
-
-impl<'a> FrameOverlayGenerator<'a> {
-
-    pub fn new(reader: Reader, font_tiles: &'a StandardSizeTileArray) -> Result<Self, DrawFrameOverlayError> {
-        let overlay_kind = reader.overlay_kind();
-        if overlay_kind.tile_kind() != font_tiles.tile_kind() {
-            return Err(DrawFrameOverlayError::InvalidFontTileKindForOverlayKind { needed_font_tile_kind: overlay_kind.tile_kind(), got_font_tile_kind: font_tiles.tile_kind(), overlay_kind: *overlay_kind });
-        }
-        Ok(Self { reader, font_tiles })
-    }
-
-    pub fn draw_next_frame(&mut self) -> Result<Option<Image>, ReadError> {
-        match self.reader.read_frame()? {
-            Some(frame) => Ok(Some(draw_frame_overlay(self.reader.overlay_kind(), &frame, self.font_tiles).unwrap())),
-            None => Ok(None),
-        }
-    }
-
-    pub fn save_frames_to_dir<P: AsRef<Path> + Display + std::marker::Sync>(&mut self, path: P, frame_offset: i32) -> Result<(), SaveFramesToDirError> {
-        std::fs::create_dir_all(&path)?;
-        log::info!("generating overlay frames and saving into directory: {path}");
-        let frames = self.reader.frames()?;
-        let overlay_kind = self.reader.overlay_kind();
-
-        let first_frame_index = frames.iter().position(|frame| (*frame.index() as i32) > -frame_offset).unwrap();
-        let frames = &frames[first_frame_index..];
-        let first_frame_index = frames.first().unwrap().index();
-
-        let missing_frames = frame_offset + *first_frame_index as i32;
-
-        // we are missing frames at the beginning
-        if missing_frames > 0 {
-            log::debug!("Generating blank frames 0..{}", missing_frames - 1);
-            let frame_0_path = make_overlay_frame_file_path(&path, 0);
-            transparent_frame_overlay(overlay_kind).save(&frame_0_path)?;
-            for frame_index in 1..missing_frames {
-                std::fs::hard_link(&frame_0_path, make_overlay_frame_file_path(&path, frame_index as FrameIndex))?;
-            }
-        }
-
-        let frame_count = *frames.last().unwrap().index();
-        let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
-        frames.par_iter().progress_with_style(progress_style).try_for_each(|frame| {
-            let actual_frame_index = (frame.index as i32 + frame_offset) as u32;
-            log::debug!("{} -> {}", frame.index(), &actual_frame_index);
-            let frame_image = draw_frame_overlay(overlay_kind, frame, self.font_tiles).unwrap();
-            frame_image.save(make_overlay_frame_file_path(&path, actual_frame_index))
-        })?;
-
-        log::info!("linking missing overlay frames");
-        let frame_indices = frames.iter().map(|x| (*x.index() as i32 + frame_offset) as u32).collect();
-        link_missing_frames(&path, &frame_indices)?;
-
-        log::info!("overlay frames generation completed: {} frames", frame_count);
-        Ok(())
-    }
-
 }

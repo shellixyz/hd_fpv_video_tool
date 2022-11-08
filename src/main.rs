@@ -3,11 +3,11 @@ use std::{process::exit, path::Path};
 
 use clap::{Parser, Subcommand};
 use derive_more::{From, Display, Error};
-use dji_fpv_video_tool::osd::frame_overlay::DrawFrameOverlayError;
+use dji_fpv_video_tool::osd::frame_overlay::{DrawFrameOverlayError, SaveFramesToDirError};
 use hd_fpv_osd_font_tool::osd::bin_file::{LoadError as BinFileLoadError, self};
 
 use dji_fpv_video_tool::log_level::LogLevel;
-use dji_fpv_video_tool::osd::file::{OpenError as OSDFileOpenError, Reader, SaveFramesToDirError};
+use dji_fpv_video_tool::osd::file::{OpenError as OSDFileOpenError, Reader};
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -42,7 +42,6 @@ fn generate_overlay<P: AsRef<Path> + Display>(path: P) -> Result<(), GenerateOve
     let font_tiles = bin_file::load("../hd_fpv_osd_font_tool/font_files/font.bin")?;
     let mut overlay_generator = osd_file.into_frame_overlay_generator(&font_tiles)?;
     overlay_generator.save_frames_to_dir("/home/shel/fast_temp/osd_tiles", 0)?;
-
     Ok(())
 }
 
