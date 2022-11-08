@@ -410,6 +410,7 @@ dependencies = [
  "close-err",
  "derive_more",
  "error-stack",
+ "getset",
  "image",
  "log",
  "paste",
