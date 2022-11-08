@@ -14,7 +14,8 @@ use getset::Getters;
 use hd_fpv_osd_font_tool::osd::tile::{Dimensions as TileDimensions, Tile};
 use derive_more::Deref;
 
-use super::frame_overlay::{DimensionsTiles, self, DrawFrameOverlayError, Generator as FrameOverlayGenerator};
+use crate::osd::frame_overlay::{DrawFrameOverlayError, Generator as FrameOverlayGenerator};
+use super::{Dimensions, Kind};
 
 const SIGNATURE: &str = "MSPOSD\x00";
 
@@ -22,7 +23,7 @@ const SIGNATURE: &str = "MSPOSD\x00";
 pub enum OpenError {
     IOError(IOError),
     InvalidSignature,
-    InvalidOverlayDimensions(DimensionsTiles)
+    InvalidOSDDimensions(Dimensions)
 }
 
 impl Error for OpenError {}
@@ -33,9 +34,9 @@ impl From<IOError> for OpenError {
     }
 }
 
-impl From<frame_overlay::InvalidDimensionsTilesError> for OpenError {
-    fn from(error: frame_overlay::InvalidDimensionsTilesError) -> Self {
-        Self::InvalidOverlayDimensions(error.0)
+impl From<super::InvalidDimensionsError> for OpenError {
+    fn from(error: super::InvalidDimensionsError) -> Self {
+        Self::InvalidOSDDimensions(error.0)
     }
 }
 
@@ -45,7 +46,7 @@ impl Display for OpenError {
         match self {
             IOError(error) => error.fmt(f),
             InvalidSignature => f.write_str("invalid header"),
-            InvalidOverlayDimensions(dimensions) => write!(f, "invalid overlay dimensions: {}x{}", dimensions.width(), dimensions.height())
+            InvalidOSDDimensions(dimensions) => write!(f, "invalid OSD dimensions: {}x{}", dimensions.width(), dimensions.height())
         }
     }
 }
@@ -98,7 +99,7 @@ pub struct Offset {
 #[getset(get = "pub")]
 pub struct FileHeader {
     file_version: u16,
-    dimensions_tiles: DimensionsTiles,
+    osd_dimensions: Dimensions,
     tile_dimensions: TileDimensions,
     offset: Offset,
     font_variant: u8
@@ -108,7 +109,7 @@ impl From<FileHeaderRaw> for FileHeader {
     fn from(fhr: FileHeaderRaw) -> Self {
         Self {
             file_version: fhr.file_version,
-            dimensions_tiles: DimensionsTiles::new(fhr.width_tiles as u32, fhr.height_tiles as u32),
+            osd_dimensions: Dimensions::new(fhr.width_tiles as u32, fhr.height_tiles as u32),
             tile_dimensions: TileDimensions { width: fhr.tile_width as u32, height: fhr.tile_height as u32 },
             offset: Offset { x: fhr.x_offset, y: fhr.y_offset },
             font_variant: fhr.font_variant
@@ -128,14 +129,7 @@ struct FrameHeader {
 pub type TileIndex = u16;
 pub type ScreenCoordinate = u8;
 
-#[derive(Debug, Getters)]
-#[getset(get = "pub")]
-pub struct Dimensions<T> {
-    width: T,
-    height: T
-}
-
-pub const TILE_INDICES_DIMENSIONS_TILES: Dimensions<ScreenCoordinate> = Dimensions { width: 60, height: 22 };
+pub const TILE_INDICES_DIMENSIONS_TILES: Dimensions = Kind::FakeHD.dimensions_tiles();
 
 #[derive(Debug, Deref)]
 pub struct TileIndices(Vec<TileIndex>);
@@ -196,10 +190,13 @@ impl Frame {
     }
 }
 
+#[derive(Getters)]
+#[getset(get = "pub")]
 pub struct Reader {
+    #[getset(skip)]
     file: File,
     header: FileHeader,
-    overlay_kind: frame_overlay::Kind
+    osd_kind: Kind
 }
 
 impl Reader {
@@ -224,17 +221,9 @@ impl Reader {
         let mut file = File::open(&path)?;
         Self::check_signature(&mut file)?;
         let header: FileHeader = Self::read_header(&mut file).unwrap().into();
-        let overlay_kind = frame_overlay::Kind::try_from(header.dimensions_tiles())?;
-        log::info!("detected OSD file with {overlay_kind} tile layout");
-        Ok(Self { file, header, overlay_kind })
-    }
-
-    pub fn header(&self) -> &FileHeader {
-        &self.header
-    }
-
-    pub fn overlay_kind(&self) -> &frame_overlay::Kind {
-        &self.overlay_kind
+        let osd_kind = Kind::try_from(header.osd_dimensions())?;
+        log::info!("detected OSD file with {osd_kind} tile layout");
+        Ok(Self { file, header, osd_kind })
     }
 
     fn read_frame_header(&mut self) -> Result<Option<FrameHeader>, ReadError> {
