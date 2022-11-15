@@ -1,4 +1,5 @@
 
+use std::fmt::Display;
 use std::fs::File;
 use std::io::{Error as IOError, Read};
 use std::iter::Enumerate;
@@ -11,6 +12,7 @@ use byte_struct::*;
 use getset::Getters;
 use derive_more::Deref;
 use hd_fpv_osd_font_tool::prelude::*;
+use strum::Display;
 use thiserror::Error;
 
 use crate::osd::dji::InvalidDimensionsError;
@@ -64,7 +66,7 @@ impl ReadError {
 #[derive(ByteStruct, Debug)]
 #[byte_struct_le]
 struct FileHeaderRaw {
-    file_version: u16,
+    format_version: u16,
     width_tiles: u8,
     height_tiles: u8,
     tile_width: u8,
@@ -81,24 +83,73 @@ pub struct Offset {
     y: u16
 }
 
+impl Display for Offset {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "x: {}, y: {}", self.x, self.y)
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("unknown font variant ID: {0}")]
+pub struct UnknownFontVariantID(pub u8);
+
+#[derive(Debug, Display)]
+pub enum FontVariant {
+    Ardupilot,
+    INAV
+}
+
+impl FontVariant {
+    pub fn string_from_id(id: u8) -> String {
+        match Self::try_from(id) {
+            Ok(variant) => variant.to_string(),
+            Err(_) => "unknown".to_owned(),
+        }
+    }
+}
+
+impl TryFrom<u8> for FontVariant {
+    type Error = UnknownFontVariantID;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Ok(
+            match value {
+                2 => Self::INAV,
+                3 => Self::Ardupilot,
+                _ => return Err(UnknownFontVariantID(value))
+            }
+        )
+    }
+}
+
 #[derive(Debug, Getters)]
 #[getset(get = "pub")]
 pub struct FileHeader {
-    file_version: u16,
+    format_version: u16,
     osd_dimensions: Dimensions,
     tile_dimensions: TileDimensions,
     offset: Offset,
-    font_variant: u8
+    font_variant_id: u8
+}
+
+impl FileHeader {
+    pub fn font_variant(&self) -> Result<FontVariant, UnknownFontVariantID> {
+        FontVariant::try_from(self.font_variant_id)
+    }
+
+    pub fn font_variant_string(&self) -> String {
+        FontVariant::string_from_id(self.font_variant_id)
+    }
 }
 
 impl From<FileHeaderRaw> for FileHeader {
     fn from(fhr: FileHeaderRaw) -> Self {
         Self {
-            file_version: fhr.file_version,
+            format_version: fhr.format_version,
             osd_dimensions: Dimensions::new(fhr.width_tiles as u32, fhr.height_tiles as u32),
             tile_dimensions: TileDimensions { width: fhr.tile_width as u32, height: fhr.tile_height as u32 },
             offset: Offset { x: fhr.x_offset, y: fhr.y_offset },
-            font_variant: fhr.font_variant
+            font_variant_id: fhr.font_variant
         }
     }
 }

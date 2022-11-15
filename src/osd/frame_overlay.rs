@@ -2,9 +2,9 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::io::Error as IOError;
-use std::process::exit;
 
 use crate::create_path::{CreatePathError, create_path};
+use crate::file::{self, HardLinkError};
 use crate::image::WriteImageFile;
 
 use super::dji::file::{Frame as OSDFileFrame, ReadError};
@@ -70,7 +70,8 @@ pub enum SaveFramesToDirError {
     CreatePathError(CreatePathError),
     IOError(IOError),
     ReadError(ReadError),
-    ImageWriteError(ImageWriteError)
+    ImageWriteError(ImageWriteError),
+    HardLinkError(HardLinkError)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -133,18 +134,29 @@ impl Generator {
                     target_resolution.dimensions().width - 2 * minimum_horizontal_margin,
                     target_resolution.dimensions().height - 2 * minimum_vertical_margin,
                 );
-                let (tile_kind, tile_dimensions) = osd_kind.best_kind_of_tiles_to_use_with_scaling(max_resolution);
-                (target_resolution.dimensions(), tile_kind, Some(tile_dimensions))
+                let (tile_kind, tile_dimensions, overlay_dimensions) = osd_kind.best_kind_of_tiles_to_use_with_scaling(max_resolution);
+                (overlay_dimensions, tile_kind, Some(tile_dimensions))
             },
         };
-        dbg!(&overlay_resolution);
-        dbg!(&tile_scaling);
+        // dbg!(&overlay_resolution);
+        // dbg!(&tile_scaling);
         let tile_images = match tile_scaling {
-            Some(tile_dimensions) => tile_set[tile_kind].resize_tiles(tile_dimensions),
+            Some(tile_dimensions) => tile_set[tile_kind].as_slice().resized_tiles_par_with_progress(tile_dimensions),
             None => tile_set[tile_kind].iter().map(|tile| tile.image().clone()).collect(),
         };
-        dbg!(tile_images.first().unwrap().dimensions());
+        // dbg!(tile_images.first().unwrap().dimensions());
         // exit(1);
+
+        let overlay_res_scale =
+            (
+                (overlay_resolution.width as f64 /target_resolution.dimensions().width as f64) +
+                (overlay_resolution.height as f64 / target_resolution.dimensions().height as f64)
+            ) / 2.0;
+
+        if overlay_res_scale < 0.8 {
+            log::warn!("without scaling the overlay resolution is much smaller than the target video resolution, consider using scaling for better results");
+        }
+
         Ok(Self { reader, tile_images, overlay_resolution })
     }
 
@@ -185,7 +197,7 @@ impl Generator {
             let frame_0_path = make_overlay_frame_file_path(&path, 0);
             self.transparent_frame_overlay().write_image_file(&frame_0_path)?;
             for frame_index in 1..missing_frames {
-                std::fs::hard_link(&frame_0_path, make_overlay_frame_file_path(&path, frame_index as FrameIndex))?;
+                file::hard_link(&frame_0_path, make_overlay_frame_file_path(&path, frame_index as FrameIndex))?;
             }
         }
 

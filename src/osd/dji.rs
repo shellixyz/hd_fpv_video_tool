@@ -91,18 +91,29 @@ impl Kind {
         }
     }
 
-    pub fn best_kind_of_tiles_to_use_with_scaling(&self, max_resolution: FrameOverlayResolution) -> (tile::Kind, tile::Dimensions) {
-        // NOTE: probably doesn't need to check for HD kind tile since bigger starting dimensions is probably always best
+    pub fn best_kind_of_tiles_to_use_with_scaling(&self, max_resolution: FrameOverlayResolution) -> (tile::Kind, tile::Dimensions, FrameOverlayResolution) {
         let max_tile_width = max_resolution.width / self.dimensions_tiles().width;
         let max_tile_height = max_resolution.height / self.dimensions_tiles().height;
-        let tile_kinds_min_diff = tile::Kind::iter().map(|tile_kind| {
+        let tile_kinds_data = tile::Kind::iter().map(|tile_kind| {
             let width_diff = max_tile_width as i32 - tile_kind.dimensions().width as i32;
             let height_diff = max_tile_height as i32 - tile_kind.dimensions().height as i32;
             println!("{tile_kind}: wdiff {width_diff} - hdiff {height_diff}");
             (tile_kind, width_diff, height_diff, std::cmp::min(width_diff.abs(), height_diff.abs()))
-        });
+        }).collect::<Vec<_>>();
 
-        let (tile_kind, width_diff, height_diff, _) = tile_kinds_min_diff.min_by_key(|(_, _, _, min_diff)| *min_diff).unwrap();
+        // look for kinds for which we would downscale tiles
+        let downscaling_tile_kinds_data = tile_kinds_data.iter().filter(|(_, width_diff, height_diff, _)|
+            std::cmp::min(*width_diff, *height_diff) <= 0
+        ).collect::<Vec<_>>();
+
+        let (tile_kind, width_diff, height_diff, _) = match downscaling_tile_kinds_data.len() {
+            // all kinds would need to be upscaled, chose the kind for which the tiles would need to be upscaled the less
+            0 => tile_kinds_data.iter().min_by_key(|(_, _, _, min_diff)| *min_diff).unwrap(),
+            // exactly one kind match for which the tiles would need to be downscaled
+            1 => downscaling_tile_kinds_data.first().unwrap(),
+            // more than one kind match for which the tiles would need to be downscaled, chose the kind with the least downscaling
+            _ => downscaling_tile_kinds_data.iter().min_by_key(|(_, _, _, min_diff)| *min_diff).unwrap(),
+        };
 
         let mut tile_dimensions = tile_kind.dimensions();
         if width_diff < height_diff {
@@ -115,7 +126,9 @@ impl Kind {
             tile_dimensions.width = tile_dimensions.width * tile_dimensions.height / tile_kind.dimensions().height;
         }
 
-        (tile_kind, tile_dimensions)
+        let overlay_dimensions = self.dimensions_pixels_for_tile_dimensions(tile_dimensions);
+
+        (*tile_kind, tile_dimensions, overlay_dimensions)
     }
 
 }
