@@ -1,9 +1,11 @@
-use std::fmt::Display;
+
+#![forbid(unsafe_code)]
+
 use std::{process::exit, path::Path};
 
 use clap::{Parser, Subcommand};
 use derive_more::{From, Display, Error};
-use dji_fpv_video_tool::osd::frame_overlay::{DrawFrameOverlayError, SaveFramesToDirError};
+use dji_fpv_video_tool::osd::frame_overlay::{DrawFrameOverlayError, SaveFramesToDirError, TargetResolution, Scale};
 use hd_fpv_osd_font_tool::osd::bin_file::{LoadError as BinFileLoadError, self};
 
 use dji_fpv_video_tool::log_level::LogLevel;
@@ -37,10 +39,10 @@ enum GenerateOverlayError {
     SaveFramesToDir(SaveFramesToDirError),
 }
 
-fn generate_overlay<P: AsRef<Path> + Display>(path: P) -> Result<(), GenerateOverlayError> {
+fn generate_overlay<P: AsRef<Path>>(path: P) -> Result<(), GenerateOverlayError> {
     let osd_file = OSDFileReader::open(&path)?;
-    let font_tiles = bin_file::load("../hd_fpv_osd_font_tool/font_files/font.bin")?;
-    let mut overlay_generator = osd_file.into_frame_overlay_generator(&font_tiles)?;
+    let tile_set = bin_file::load_set_norm("../hd_fpv_osd_font_tool/font_files", &None).unwrap();
+    let mut overlay_generator = osd_file.into_frame_overlay_generator(&tile_set, TargetResolution::TrGoggles4By3, Scale::Yes { minimum_horizontal_margin: 30, minimum_vertical_margin: 30 })?;
     overlay_generator.save_frames_to_dir("/home/shel/fast_temp/osd_tiles", 0)?;
     Ok(())
 }
@@ -58,4 +60,9 @@ fn main() {
         log::error!("{}", error);
         exit(1);
     }
+    // let vid_resolution = dji_fpv_video_tool::osd::frame_overlay::VideoResolution::new(960, 720);
+    // println!("{:?}", dji_fpv_video_tool::osd::dji::Kind::HD.best_kind_of_tiles_to_use_without_scaling(vid_resolution));
+
+    // let vid_resolution = dji_fpv_video_tool::osd::frame_overlay::VideoResolution::new(1280, 720);
+    // println!("{:?}", dji_fpv_video_tool::osd::dji::Kind::HD.best_kind_of_tiles_to_use_with_scaling(vid_resolution));
 }

@@ -1,9 +1,21 @@
 
-use std::{error::Error, fmt::Display};
-
 use hd_fpv_osd_font_tool::osd::tile;
+use thiserror::Error;
+
+use super::frame_overlay::{VideoResolution, Resolution as FrameOverlayResolution};
+use hd_fpv_osd_font_tool::dimensions::Dimensions as GenericDimensions;
+
+use strum::IntoEnumIterator;
 
 pub mod file;
+
+
+#[derive(Debug, Error)]
+#[error("video resolution {video_resolution} too small to fit {osd_kind} kind OSD")]
+pub struct VideoResolutionTooSmallError {
+    pub osd_kind: Kind,
+    pub video_resolution: VideoResolution
+}
 
 pub type Dimensions = hd_fpv_osd_font_tool::dimensions::Dimensions<u32>;
 
@@ -12,6 +24,19 @@ pub mod dimensions {
     pub const SD: Dimensions = Dimensions::new(30, 15);
     pub const FAKE_HD: Dimensions = Dimensions::new(60, 22);
     pub const HD: Dimensions = Dimensions::new(50, 18);
+}
+
+mod utils {
+    use super::GenericDimensions;
+
+    pub(crate) fn dimensions_diff(d1: GenericDimensions<u32>, d2: GenericDimensions<u32>) -> (i32, i32) {
+        (d1.width as i32 - d2.width as i32, d1.height as i32 - d2.height as i32)
+    }
+
+    pub(crate) fn margins(outside_dimensions: GenericDimensions<u32>, inside_dimensions: GenericDimensions<u32>) -> (i32, i32) {
+        let (margin_width_x2, margin_height_x2) = dimensions_diff(outside_dimensions, inside_dimensions);
+        (margin_width_x2 / 2, margin_height_x2 / 2)
+    }
 }
 
 #[derive(Debug, strum::Display, Clone, Copy)]
@@ -41,24 +66,64 @@ impl Kind {
         }
     }
 
-    pub const fn dimensions_pixels(&self) -> (u32, u32) {
-        let dimensions_tiles = self.dimensions_tiles();
-        let tile_dimensions = self.tile_kind().dimensions();
-        (dimensions_tiles.width * tile_dimensions.width, dimensions_tiles.height * tile_dimensions.height)
+    pub fn dimensions_pixels_for_tile_kind(&self, tile_kind: tile::Kind) -> FrameOverlayResolution {
+        self.dimensions_tiles() * tile_kind.dimensions()
+    }
+
+    pub fn dimensions_pixels_for_tile_dimensions(&self, tile_dimensions: tile::Dimensions) -> FrameOverlayResolution {
+        self.dimensions_tiles() * tile_dimensions
+    }
+
+    /// Returns the best kind of tile to use without rescaling tiles so that the OSD fills as much as the screen as possible
+    pub fn best_kind_of_tiles_to_use_without_scaling(&self, video_resolution: VideoResolution) -> Result<tile::Kind, VideoResolutionTooSmallError> {
+        let avg_margins = tile::Kind::iter().flat_map(|tile_kind| {
+            let osd_dimensions = self.dimensions_pixels_for_tile_kind(tile_kind);
+            let (margin_width, margin_height) = utils::margins(video_resolution, osd_dimensions);
+            if margin_width >= 0 && margin_height >= 0 {
+                Some((tile_kind, (margin_width as u32 + margin_height as u32) / 2))
+            } else {
+                None
+            }
+        });
+        match avg_margins.min_by_key(|(_, margin_avg)| *margin_avg) {
+            Some((tile_kind, _)) => Ok(tile_kind),
+            None => Err(VideoResolutionTooSmallError { osd_kind: *self, video_resolution })
+        }
+    }
+
+    pub fn best_kind_of_tiles_to_use_with_scaling(&self, max_resolution: FrameOverlayResolution) -> (tile::Kind, tile::Dimensions) {
+        // NOTE: probably doesn't need to check for HD kind tile since bigger starting dimensions is probably always best
+        let max_tile_width = max_resolution.width / self.dimensions_tiles().width;
+        let max_tile_height = max_resolution.height / self.dimensions_tiles().height;
+        let tile_kinds_min_diff = tile::Kind::iter().map(|tile_kind| {
+            let width_diff = max_tile_width as i32 - tile_kind.dimensions().width as i32;
+            let height_diff = max_tile_height as i32 - tile_kind.dimensions().height as i32;
+            println!("{tile_kind}: wdiff {width_diff} - hdiff {height_diff}");
+            (tile_kind, width_diff, height_diff, std::cmp::min(width_diff.abs(), height_diff.abs()))
+        });
+
+        let (tile_kind, width_diff, height_diff, _) = tile_kinds_min_diff.min_by_key(|(_, _, _, min_diff)| *min_diff).unwrap();
+
+        let mut tile_dimensions = tile_kind.dimensions();
+        if width_diff < height_diff {
+            // tile_dimensions.width = (tile_dimensions.width as i32 + width_diff) as u32;
+            tile_dimensions.width = (tile_dimensions.width as i32 + width_diff).try_into().unwrap();
+            tile_dimensions.height = tile_dimensions.height * tile_dimensions.width / tile_kind.dimensions().width;
+        } else {
+            // tile_dimensions.height = (tile_dimensions.height as i32 + height_diff) as u32;
+            tile_dimensions.height = (tile_dimensions.height as i32 + height_diff).try_into().unwrap();
+            tile_dimensions.width = tile_dimensions.width * tile_dimensions.height / tile_kind.dimensions().height;
+        }
+
+        (tile_kind, tile_dimensions)
     }
 
 }
 
-#[derive(Debug)]
+
+#[derive(Debug, Error)]
+#[error("invalid dimensions tiles: {0}")]
 pub struct InvalidDimensionsError(pub Dimensions);
-impl Error for InvalidDimensionsError {}
-
-impl Display for InvalidDimensionsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "invalid dimensions tiles: {}x{}", self.0.width(), self.0.height())
-    }
-}
-
 
 impl TryFrom<&Dimensions> for Kind {
     type Error = InvalidDimensionsError;

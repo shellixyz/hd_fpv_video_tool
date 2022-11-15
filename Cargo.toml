@@ -26,6 +26,8 @@ hd_fpv_osd_font_tool = { version = "0.1", path = "../hd_fpv_osd_font_tool" }
 getset = "0.1.2"
 rayon = "1.5.3"
 indicatif = { version = "0.17.1", features = ["rayon"] }
+thiserror = "1.0.37"
+anyhow = "1.0.66"
 
 [profile.release]
 panic = 'abort'

@@ -1,77 +1,63 @@
 
-use std::error::Error;
-use std::fmt::Display;
 use std::fs::File;
 use std::io::{Error as IOError, Read};
 use std::iter::Enumerate;
 use std::ops::Index;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use byte_struct::ByteStruct;
 use byte_struct::*;
 
 use getset::Getters;
-use hd_fpv_osd_font_tool::osd::tile::{Dimensions as TileDimensions, Tile};
 use derive_more::Deref;
+use hd_fpv_osd_font_tool::prelude::*;
+use thiserror::Error;
 
-use crate::osd::frame_overlay::{DrawFrameOverlayError, Generator as FrameOverlayGenerator};
+use crate::osd::dji::InvalidDimensionsError;
+use crate::osd::frame_overlay::{DrawFrameOverlayError, Generator as FrameOverlayGenerator, TargetResolution, Scale};
 use super::{Dimensions, Kind};
 
 const SIGNATURE: &str = "MSPOSD\x00";
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum OpenError {
-    IOError(IOError),
-    InvalidSignature,
-    InvalidOSDDimensions(Dimensions)
+    #[error("failed to open file {file_path}: {error}")]
+    IOError { file_path: PathBuf, error: IOError },
+    #[error("invalid DJI OSD file header in file {file_path}")]
+    InvalidSignature { file_path: PathBuf },
+    #[error("invalid OSD dimensions in file {file_path}: {dimensions}")]
+    InvalidOSDDimensions { file_path: PathBuf, dimensions: Dimensions }
 }
 
-impl Error for OpenError {}
+impl OpenError {
+    fn io_error<P: AsRef<Path>>(file_path: P, error: IOError) -> Self {
+        Self::IOError { file_path: file_path.as_ref().to_path_buf(), error }
+    }
 
-impl From<IOError> for OpenError {
-    fn from(error: IOError) -> Self {
-        Self::IOError(error)
+    fn invalid_signature<P: AsRef<Path>>(file_path: P) -> Self {
+        Self::InvalidSignature { file_path: file_path.as_ref().to_path_buf() }
+    }
+
+    fn invalid_osd_dimensions<P: AsRef<Path>>(file_path: P, dimensions: Dimensions) -> Self {
+        Self::InvalidOSDDimensions { file_path: file_path.as_ref().to_path_buf(), dimensions }
     }
 }
 
-impl From<super::InvalidDimensionsError> for OpenError {
-    fn from(error: super::InvalidDimensionsError) -> Self {
-        Self::InvalidOSDDimensions(error.0)
-    }
-}
-
-impl Display for OpenError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use OpenError::*;
-        match self {
-            IOError(error) => error.fmt(f),
-            InvalidSignature => f.write_str("invalid header"),
-            InvalidOSDDimensions(dimensions) => write!(f, "invalid OSD dimensions: {}x{}", dimensions.width(), dimensions.height())
-        }
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum ReadError {
-    IOError(IOError),
-    UnexpectedEOF
+    #[error("failed to open file {file_path}: {error}")]
+    IOError { file_path: PathBuf, error: IOError },
+    #[error("Unexpected end of file: {file_path}")]
+    UnexpectedEOF { file_path: PathBuf }
 }
 
-impl Error for ReadError {}
-
-impl From<IOError> for ReadError {
-    fn from(error: IOError) -> Self {
-        Self::IOError(error)
+impl ReadError {
+    fn io_error<P: AsRef<Path>>(file_path: P, error: IOError) -> Self {
+        Self::IOError { file_path: file_path.as_ref().to_path_buf(), error }
     }
-}
 
-impl Display for ReadError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use ReadError::*;
-        match self {
-            IOError(error) => error.fmt(f),
-            UnexpectedEOF => f.write_str("unexpected end of file"),
-        }
+    fn unexpected_eof<P: AsRef<Path>>(file_path: P) -> Self {
+        Self::UnexpectedEOF { file_path: file_path.as_ref().to_path_buf() }
     }
 }
 
@@ -193,6 +179,7 @@ impl Frame {
 #[derive(Getters)]
 #[getset(get = "pub")]
 pub struct Reader {
+    file_path: PathBuf,
     #[getset(skip)]
     file: File,
     header: FileHeader,
@@ -201,11 +188,11 @@ pub struct Reader {
 
 impl Reader {
 
-    fn check_signature(file: &mut File) -> Result<(), OpenError> {
+    fn check_signature<P: AsRef<Path>>(file_path: P, file: &mut File) -> Result<(), OpenError> {
         let mut signature = [0; SIGNATURE.len()];
-        file.read_exact(&mut signature)?;
+        file.read_exact(&mut signature).map_err(|error| OpenError::io_error(&file_path, error))?;
         if signature != SIGNATURE.as_bytes() {
-            return Err(OpenError::InvalidSignature)
+            return Err(OpenError::invalid_signature(&file_path))
         }
         Ok(())
     }
@@ -217,21 +204,24 @@ impl Reader {
         Ok(header)
     }
 
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, OpenError> {
-        let mut file = File::open(&path)?;
-        Self::check_signature(&mut file)?;
+    pub fn open<P: AsRef<Path>>(file_path: P) -> Result<Self, OpenError> {
+        let mut file = File::open(&file_path).map_err(|error| OpenError::io_error(&file_path, error))?;
+        Self::check_signature(&file_path,&mut file)?;
         let header: FileHeader = Self::read_header(&mut file).unwrap().into();
-        let osd_kind = Kind::try_from(header.osd_dimensions())?;
+        let osd_kind = Kind::try_from(header.osd_dimensions()).map_err(|error| {
+            let InvalidDimensionsError(dimensions) = error;
+            OpenError::invalid_osd_dimensions(&file_path, dimensions)
+        })?;
         log::info!("detected OSD file with {osd_kind} tile layout");
-        Ok(Self { file, header, osd_kind })
+        Ok(Self { file_path: file_path.as_ref().to_path_buf(), file, header, osd_kind })
     }
 
     fn read_frame_header(&mut self) -> Result<Option<FrameHeader>, ReadError> {
         let mut frame_header_bytes = [0; FrameHeader::BYTE_LEN];
-        match self.file.read(&mut frame_header_bytes)? {
+        match self.file.read(&mut frame_header_bytes).map_err(|error| ReadError::io_error(&self.file_path, error))? {
             0 => Ok(None),
             FrameHeader::BYTE_LEN => Ok(Some(FrameHeader::read_bytes(&frame_header_bytes))),
-            _ => Err(ReadError::UnexpectedEOF)
+            _ => Err(ReadError::unexpected_eof(&self.file_path))
         }
     }
 
@@ -241,7 +231,7 @@ impl Reader {
             None => return Ok(None),
         };
         let mut data_bytes= vec![0; header.data_len as usize * 2];
-        self.file.read_exact(&mut data_bytes)?;
+        self.file.read_exact(&mut data_bytes).map_err(|error| ReadError::io_error(&self.file_path, error))?;
         let tile_indices = TileIndices(data_bytes.chunks_exact(u16::BYTE_LEN)
             .map(|bytes| u16::from_le_bytes(bytes.try_into().unwrap())).collect());
         Ok(Some(Frame { index: header.frame_index, tile_indices }))
@@ -258,8 +248,8 @@ impl Reader {
         Ok(frames)
     }
 
-    pub fn into_frame_overlay_generator(self, font_tiles: &Vec<Tile>) -> Result<FrameOverlayGenerator, DrawFrameOverlayError> {
-        FrameOverlayGenerator::new(self, font_tiles)
+    pub fn into_frame_overlay_generator(self, tile_set: &TileSet, target_resolution: TargetResolution, scale: Scale) -> Result<FrameOverlayGenerator, DrawFrameOverlayError> {
+        FrameOverlayGenerator::new(self, tile_set, target_resolution, scale)
     }
 
 }
