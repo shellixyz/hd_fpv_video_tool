@@ -9,14 +9,14 @@ use std::path::{Path, PathBuf};
 use byte_struct::ByteStruct;
 use byte_struct::*;
 
-use getset::Getters;
+use getset::{Getters, CopyGetters};
 use derive_more::Deref;
 use hd_fpv_osd_font_tool::prelude::*;
 use strum::Display;
 use thiserror::Error;
 
 use crate::osd::dji::InvalidDimensionsError;
-use crate::osd::frame_overlay::{DrawFrameOverlayError, Generator as FrameOverlayGenerator, TargetResolution, Scale};
+use crate::osd::frame_overlay::{DrawFrameOverlayError, Generator as FrameOverlayGenerator, TargetResolution, Scaling};
 use super::{Dimensions, Kind};
 
 const SIGNATURE: &str = "MSPOSD\x00";
@@ -227,13 +227,14 @@ impl Frame {
     }
 }
 
-#[derive(Getters)]
-#[getset(get = "pub")]
+#[derive(Getters, CopyGetters)]
 pub struct Reader {
+    #[getset(get = "pub")]
     file_path: PathBuf,
-    #[getset(skip)]
     file: File,
+    #[getset(get = "pub")]
     header: FileHeader,
+    #[getset(get_copy = "pub")]
     osd_kind: Kind
 }
 
@@ -299,7 +300,7 @@ impl Reader {
         Ok(frames)
     }
 
-    pub fn into_frame_overlay_generator(self, tile_set: &TileSet, target_resolution: TargetResolution, scale: Scale) -> Result<FrameOverlayGenerator, DrawFrameOverlayError> {
+    pub fn into_frame_overlay_generator(self, tile_set: &TileSet, target_resolution: TargetResolution, scale: Scaling) -> Result<FrameOverlayGenerator, DrawFrameOverlayError> {
         FrameOverlayGenerator::new(self, tile_set, target_resolution, scale)
     }
 

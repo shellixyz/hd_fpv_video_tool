@@ -12,8 +12,11 @@ use super::dji::file::FrameIndex;
 use super::dji::file::Reader as OSDFileReader;
 use super::tile_resize::ResizeTiles;
 use crate::image::WriteError as ImageWriteError;
+use super::dji::Kind as OSDKind;
+use super::dji::utils;
 
 use derive_more::From;
+use getset::Getters;
 use regex::Regex;
 use thiserror::Error;
 use hd_fpv_osd_font_tool::prelude::*;
@@ -83,11 +86,46 @@ pub enum SaveFramesToDirError {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum Scale {
+pub enum Scaling {
     No,
     Yes {
-        minimum_horizontal_margin: u32,
-        minimum_vertical_margin: u32,
+        min_margins: Margins,
+    },
+    Auto {
+        min_margins: Margins,
+        min_resolution: Resolution,
+    }
+}
+
+#[derive(Debug, Error, From)]
+pub enum ScalingArgsError {
+    #[error(transparent)]
+    InvalidMarginsFormatError(InvalidMarginsFormatError),
+    #[error("invalid minimum coverage percentage value: {0}")]
+    InvalidMinCoveragePercent(u8),
+    #[error("scaling and no-scaling arguments are mutually exclusive")]
+    IncompatibleArguments
+}
+
+impl Scaling {
+    pub fn try_from(scaling: bool, no_scaling: bool, min_margins: &str, min_coverage_percent: u8, target_video_resolution: TargetResolution) -> Result<Self, ScalingArgsError> {
+        if min_coverage_percent > 100 {
+            return Err(ScalingArgsError::InvalidMinCoveragePercent(min_coverage_percent))
+        }
+        let min_margins = Margins::try_from(min_margins)?;
+        Ok(match (scaling, no_scaling) {
+            (true, true) => return Err(ScalingArgsError::IncompatibleArguments),
+            (true, false) => Scaling::Yes { min_margins },
+            (false, true) => Scaling::No,
+            (false, false) => {
+                let min_coverage = min_coverage_percent as f64 / 100.0;
+                let min_resolution = Resolution::new(
+                    (target_video_resolution.dimensions().width as f64 * min_coverage) as u32,
+                    (target_video_resolution.dimensions().height as f64 * min_coverage) as u32
+                );
+                Scaling::Auto { min_margins, min_resolution }
+            },
+        })
     }
 }
 
@@ -95,31 +133,28 @@ pub enum Scale {
 #[error("invalid margins format: {0}")]
 pub struct InvalidMarginsFormatError(String);
 
-impl TryFrom<&Option<Option<String>>> for Scale {
+#[derive(Debug, Clone, Copy, Getters)]
+#[getset(get_copy = "pub")]
+pub struct Margins {
+    horizontal: u32,
+    vertical: u32,
+}
+
+impl TryFrom<&str> for Margins {
     type Error = InvalidMarginsFormatError;
 
-    fn try_from(value: &Option<Option<String>>) -> Result<Self, Self::Error> {
-        Ok(
-            match value {
-                Some(margins) => match margins {
-                    Some(margins_str) => {
-                        lazy_static! {
-                            static ref MARGINS_RE: Regex = Regex::new(r"\A(?P<horiz>\d{1,3}):(?P<vert>\d{1,3})\z").unwrap();
-                        }
-                        match MARGINS_RE.captures(margins_str) {
-                            Some(captures) => {
-                                let minimum_horizontal_margin = captures.name("horiz").unwrap().as_str().parse().unwrap();
-                                let minimum_vertical_margin = captures.name("vert").unwrap().as_str().parse().unwrap();
-                                Scale::Yes { minimum_horizontal_margin, minimum_vertical_margin }
-                            },
-                            None => return Err(InvalidMarginsFormatError(margins_str.to_owned())),
-                        }
-                    },
-                    None => Scale::Yes { minimum_horizontal_margin: 0, minimum_vertical_margin: 0 },
-                },
-                None => Scale::No,
-            }
-        )
+    fn try_from(margins_str: &str) -> Result<Self, Self::Error> {
+        lazy_static! {
+            static ref MARGINS_RE: Regex = Regex::new(r"\A(?P<horiz>\d{1,3}):(?P<vert>\d{1,3})\z").unwrap();
+        }
+        match MARGINS_RE.captures(margins_str) {
+            Some(captures) => {
+                let horizontal = captures.name("horiz").unwrap().as_str().parse().unwrap();
+                let vertical = captures.name("vert").unwrap().as_str().parse().unwrap();
+                Ok(Self { horizontal, vertical })
+            },
+            None => Err(InvalidMarginsFormatError(margins_str.to_owned())),
+        }
     }
 }
 
@@ -185,26 +220,47 @@ pub struct Generator {
 
 impl Generator {
 
-    pub fn new(reader: OSDFileReader, tile_set: &TileSet, target_resolution: TargetResolution, scale: Scale) -> Result<Self, DrawFrameOverlayError> {
-        let osd_kind = reader.osd_kind();
-        let (overlay_resolution, tile_kind, tile_scaling) = match scale {
-            Scale::No => {
-                let tile_kind = osd_kind.best_kind_of_tiles_to_use_without_scaling(target_resolution.dimensions()).map_err(|error| {
-                    let VideoResolutionTooSmallError { osd_kind, video_resolution } = error;
-                    DrawFrameOverlayError::VideoResolutionTooSmallError { osd_kind, video_resolution }
-                })?;
-                (osd_kind.dimensions_pixels_for_tile_kind(tile_kind), tile_kind, None)
-            },
-            Scale::Yes { minimum_horizontal_margin, minimum_vertical_margin } => {
-                let max_resolution = VideoResolution::new(
-                    target_resolution.dimensions().width - 2 * minimum_horizontal_margin,
-                    target_resolution.dimensions().height - 2 * minimum_vertical_margin,
-                );
-                let (tile_kind, tile_dimensions, overlay_dimensions) = osd_kind.best_kind_of_tiles_to_use_with_scaling(max_resolution);
-                (overlay_dimensions, tile_kind, Some(tile_dimensions))
-            },
-        };
+    fn best_settings_for_requested_scaling(osd_kind: OSDKind, target_resolution: TargetResolution, scaling: &Scaling) -> Result<(Resolution, tile::Kind, Option<TileDimensions>), DrawFrameOverlayError> {
+        Ok(
+            match *scaling {
+                Scaling::No => {
+                    let tile_kind = osd_kind.best_kind_of_tiles_to_use_without_scaling(target_resolution.dimensions()).map_err(|error| {
+                        let VideoResolutionTooSmallError { osd_kind, video_resolution } = error;
+                        DrawFrameOverlayError::VideoResolutionTooSmallError { osd_kind, video_resolution }
+                    })?;
+                    (osd_kind.dimensions_pixels_for_tile_kind(tile_kind), tile_kind, None)
+                },
+                Scaling::Yes { min_margins } => {
+                    let max_resolution = VideoResolution::new(
+                        target_resolution.dimensions().width - 2 * min_margins.horizontal,
+                        target_resolution.dimensions().height - 2 * min_margins.vertical,
+                    );
+                    let (tile_kind, tile_dimensions, overlay_dimensions) = osd_kind.best_kind_of_tiles_to_use_with_scaling(max_resolution);
+                    (overlay_dimensions, tile_kind, Some(tile_dimensions))
+                },
+                Scaling::Auto { min_margins, min_resolution } => {
+                    match Self::best_settings_for_requested_scaling(osd_kind, target_resolution, &Scaling::No) {
+                        Ok(values) => {
+                            let (overlay_dimensions, _, _) = values;
+                            let (margin_width, margin_height) = utils::margins(target_resolution.dimensions(), overlay_dimensions);
+                            let min_margins_condition_met = margin_width >= min_margins.horizontal as i32 && margin_height >= min_margins.vertical as i32;
+                            let min_dimensions_condition_met = overlay_dimensions.width >= min_resolution.width && overlay_dimensions.height >= min_resolution.height;
+                            if min_margins_condition_met && min_dimensions_condition_met {
+                                values
+                            } else {
+                                Self::best_settings_for_requested_scaling(osd_kind, target_resolution, &Scaling::Yes { min_margins })?
+                            }
+                        },
+                        Err(_) => Self::best_settings_for_requested_scaling(osd_kind, target_resolution, &Scaling::Yes { min_margins })?,
+                    }
+                },
+            }
+        )
+    }
 
+    pub fn new(reader: OSDFileReader, tile_set: &TileSet, target_resolution: TargetResolution, scaling: Scaling) -> Result<Self, DrawFrameOverlayError> {
+        let osd_kind = reader.osd_kind();
+        let (overlay_resolution, tile_kind, tile_scaling) = Self::best_settings_for_requested_scaling(osd_kind, target_resolution, &scaling)?;
         let tile_images = match tile_scaling {
             Some(tile_dimensions) => tile_set[tile_kind].as_slice().resized_tiles_par_with_progress(tile_dimensions),
             None => tile_set[tile_kind].iter().map(|tile| tile.image().clone()).collect(),
@@ -216,7 +272,7 @@ impl Generator {
                 (overlay_resolution.height as f64 / target_resolution.dimensions().height as f64)
             ) / 2.0;
 
-        if overlay_res_scale < 0.8 {
+        if tile_scaling.is_none() && overlay_res_scale < 0.8 {
             log::warn!("without scaling the overlay resolution is much smaller than the target video resolution, consider using scaling for better results");
         }
 
@@ -243,7 +299,7 @@ impl Generator {
         Ok(image)
     }
 
-    pub fn save_frames_to_dir<P: AsRef<Path> + std::marker::Sync>(&mut self, path: P, frame_offset: i32) -> Result<(), SaveFramesToDirError> {
+    pub fn save_frames_to_dir<P: AsRef<Path> + std::marker::Sync>(&mut self, path: P, frame_shift: i32) -> Result<(), SaveFramesToDirError> {
         if path.as_ref().exists() {
             return Err(SaveFramesToDirError::TargetDirectoryExists);
         }
@@ -251,11 +307,11 @@ impl Generator {
         log::info!("generating overlay frames and saving into directory: {}", path.as_ref().to_string_lossy());
         let frames = self.reader.frames()?;
 
-        let first_frame_index = frames.iter().position(|frame| (*frame.index() as i32) > -frame_offset).unwrap();
+        let first_frame_index = frames.iter().position(|frame| (*frame.index() as i32) > -frame_shift).unwrap();
         let frames = &frames[first_frame_index..];
         let first_frame_index = frames.first().unwrap().index();
 
-        let missing_frames = frame_offset + *first_frame_index as i32;
+        let missing_frames = frame_shift + *first_frame_index as i32;
 
         // we are missing frames at the beginning
         if missing_frames > 0 {
@@ -271,14 +327,14 @@ impl Generator {
         let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
         // frames[0..20].par_iter().progress_with_style(progress_style).try_for_each(|frame| {
         frames.par_iter().progress_with_style(progress_style).try_for_each(|frame| {
-            let actual_frame_index = (*frame.index() as i32 + frame_offset) as u32;
+            let actual_frame_index = (*frame.index() as i32 + frame_shift) as u32;
             log::debug!("{} -> {}", frame.index(), &actual_frame_index);
             let frame_image = self.draw_frame_overlay(frame).unwrap();
             frame_image.write_image_file(make_overlay_frame_file_path(&path, actual_frame_index))
         })?;
 
         log::info!("linking missing overlay frames");
-        let frame_indices = frames.iter().map(|x| (*x.index() as i32 + frame_offset) as u32).collect();
+        let frame_indices = frames.iter().map(|x| (*x.index() as i32 + frame_shift) as u32).collect();
         link_missing_frames(&path, &frame_indices)?;
 
         log::info!("overlay frames generation completed: {} frames", frame_count);

@@ -6,7 +6,7 @@ use std::{process::exit, path::Path};
 
 use clap::{Parser, Subcommand};
 use derive_more::{From, Display, Error};
-use dji_fpv_video_tool::osd::frame_overlay::{DrawFrameOverlayError, SaveFramesToDirError, TargetResolution, Scale};
+use dji_fpv_video_tool::osd::frame_overlay::{DrawFrameOverlayError, SaveFramesToDirError, TargetResolution, Scaling};
 use hd_fpv_osd_font_tool::osd::bin_file::{LoadError as BinFileLoadError, self};
 
 use dji_fpv_video_tool::log_level::LogLevel;
@@ -31,12 +31,41 @@ enum Commands {
         osd_file: PathBuf,
     },
     GenerateOverlay {
-        #[clap(short, long, value_parser, value_name = "min_margin_horiz:min_margin_vert")]
-        scale: Option<Option<String>>,
+        /// force using scaling, default is automatic
+        #[clap(short, long, value_parser)]
+        scaling: bool,
 
+        /// force disable scaling, default is automatic
+        #[clap(short, long, value_parser)]
+        no_scaling: bool,
+
+        /// minimum margins to decide whether scaling should be used and how much to scale
+        #[clap(long, value_parser, value_name = "horizontal:vertical", default_value = "20:20")]
+        min_margins: String,
+
+        /// minimum percentage of OSD coverage under which scaling will be used if --scaling/--no-scaling options are not provided
+        #[clap(long, value_parser = clap::value_parser!(u8).range(0..=100), value_name = "percent", default_value = "90")]
+        min_coverage: u8,
+
+        /// path to the directory containing font sets
+        #[clap(short, long, value_parser, value_name = "dirpath", default_value = "fonts")]
+        font_dir: String,
+
+        /// force using this font identifier when loading fonts, default is automatic
+        #[clap(short = 'i', long, value_parser, value_name = "ident")]
+        font_ident: Option<String>,
+
+        /// shift frames to sync OSD with video
+        #[clap(short = 'o', long, value_parser, value_name = "frames", default_value_t = 0)]
+        frame_shift: i32,
+
+        /// path to FPV.WTF .osd file
         osd_file: PathBuf,
+
+        /// valid values are 720p, 720p4:3, 1080p, 1080p4:3 or a custom resolution in the format <width>x<height>
         target_video_resolution: String,
-        tile_set_path: PathBuf,
+
+        /// directory in which the OSD frames will be written
         target_dir: PathBuf,
     }
 }
@@ -74,14 +103,18 @@ fn display_osd_file_info<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn generate_overlay<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(path: P, target_video_resolution: &str, scale: &Option<Option<String>>, tile_set_dir: Q, target_dir: R) -> anyhow::Result<()> {
-    let osd_file = OSDFileReader::open(&path)?;
-    let target_video_resolution = TargetResolution::try_from(target_video_resolution)?;
-    let scaling = Scale::try_from(scale)?;
-    let tile_set = bin_file::load_set_norm(&tile_set_dir, &None).unwrap();
-    let mut overlay_generator = osd_file.into_frame_overlay_generator(&tile_set, target_video_resolution, scaling)?;
-    // let mut overlay_generator = osd_file.into_frame_overlay_generator(&tile_set, TargetResolution::Tr720p, Scale::No)?;
-    overlay_generator.save_frames_to_dir(target_dir.as_ref().to_path_buf(), 0)?;
+fn generate_overlay(command: &Commands) -> anyhow::Result<()> {
+    if let Commands::GenerateOverlay {
+            scaling, no_scaling, min_margins, font_dir, osd_file, target_video_resolution,
+            target_dir, min_coverage, font_ident, frame_shift: frame_offset
+        } = command {
+            let osd_file = OSDFileReader::open(osd_file)?;
+            let target_video_resolution = TargetResolution::try_from(target_video_resolution.as_str())?;
+            let scaling = Scaling::try_from(*scaling, *no_scaling, min_margins, *min_coverage, target_video_resolution)?;
+            let tile_set = bin_file::load_set_norm(font_dir, &font_ident.as_deref()).unwrap();
+            let mut overlay_generator = osd_file.into_frame_overlay_generator(&tile_set, target_video_resolution, scaling)?;
+            overlay_generator.save_frames_to_dir(target_dir, *frame_offset)?;
+    }
     Ok(())
 }
 
@@ -91,7 +124,7 @@ fn main() {
     pretty_env_logger::formatted_builder().parse_filters(cli.log_level.to_string().as_str()).init();
 
     let command_result = match &cli.command {
-        Commands::GenerateOverlay { osd_file, scale, target_video_resolution, target_dir, tile_set_path } => generate_overlay(osd_file, target_video_resolution, scale, tile_set_path, target_dir),
+        command @ Commands::GenerateOverlay {..} => generate_overlay(command),
         Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info(osd_file),
     };
 

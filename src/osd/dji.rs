@@ -26,7 +26,7 @@ pub mod dimensions {
     pub const HD: Dimensions = Dimensions::new(50, 18);
 }
 
-mod utils {
+pub mod utils {
     use super::GenericDimensions;
 
     pub(crate) fn dimensions_diff(d1: GenericDimensions<u32>, d2: GenericDimensions<u32>) -> (i32, i32) {
