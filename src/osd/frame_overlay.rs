@@ -14,15 +14,16 @@ use super::tile_resize::ResizeTiles;
 use crate::image::WriteError as ImageWriteError;
 
 use derive_more::From;
+use regex::Regex;
 use thiserror::Error;
 use hd_fpv_osd_font_tool::prelude::*;
 use image::{ImageBuffer, Rgba, GenericImage};
 use hd_fpv_osd_font_tool::osd::tile;
 use indicatif::{ProgressStyle, ParallelProgressIterator};
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
-use strum::Display;
 use super::dji::{Kind as DJIOSDKind, VideoResolutionTooSmallError};
 use hd_fpv_osd_font_tool::dimensions::Dimensions as GenericDimensions;
+use lazy_static::lazy_static;
 
 pub type VideoResolution = GenericDimensions<u32>;
 pub type Resolution = GenericDimensions<u32>;
@@ -65,13 +66,20 @@ pub fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: 
     Ok(())
 }
 
-#[derive(Debug, Display, derive_more::Error, From)]
+#[derive(Debug, Error, From)]
 pub enum SaveFramesToDirError {
+    #[error(transparent)]
     CreatePathError(CreatePathError),
+    #[error(transparent)]
     IOError(IOError),
+    #[error(transparent)]
     ReadError(ReadError),
+    #[error(transparent)]
     ImageWriteError(ImageWriteError),
-    HardLinkError(HardLinkError)
+    #[error(transparent)]
+    HardLinkError(HardLinkError),
+    #[error("target directory exists")]
+    TargetDirectoryExists,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -83,12 +91,44 @@ pub enum Scale {
     }
 }
 
+#[derive(Debug, Error)]
+#[error("invalid margins format: {0}")]
+pub struct InvalidMarginsFormatError(String);
+
+impl TryFrom<&Option<Option<String>>> for Scale {
+    type Error = InvalidMarginsFormatError;
+
+    fn try_from(value: &Option<Option<String>>) -> Result<Self, Self::Error> {
+        Ok(
+            match value {
+                Some(margins) => match margins {
+                    Some(margins_str) => {
+                        lazy_static! {
+                            static ref MARGINS_RE: Regex = Regex::new(r"\A(?P<horiz>\d{1,3}):(?P<vert>\d{1,3})\z").unwrap();
+                        }
+                        match MARGINS_RE.captures(margins_str) {
+                            Some(captures) => {
+                                let minimum_horizontal_margin = captures.name("horiz").unwrap().as_str().parse().unwrap();
+                                let minimum_vertical_margin = captures.name("vert").unwrap().as_str().parse().unwrap();
+                                Scale::Yes { minimum_horizontal_margin, minimum_vertical_margin }
+                            },
+                            None => return Err(InvalidMarginsFormatError(margins_str.to_owned())),
+                        }
+                    },
+                    None => Scale::Yes { minimum_horizontal_margin: 0, minimum_vertical_margin: 0 },
+                },
+                None => Scale::No,
+            }
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum TargetResolution {
     Tr720p,
-    TrGoggles4By3,
+    Tr720p4By3,
     Tr1080p,
-    TrAU4by3,
+    Tr1080p4by3,
     Custom(VideoResolution),
 }
 
@@ -97,19 +137,45 @@ impl TargetResolution {
         use TargetResolution::*;
         match self {
             Tr720p => VideoResolution::new(1280, 720),
-            TrGoggles4By3 => VideoResolution::new(960, 720),
+            Tr720p4By3 => VideoResolution::new(960, 720),
             Tr1080p => VideoResolution::new(1920, 1080),
-            TrAU4by3 => VideoResolution::new(1440, 1080),
+            Tr1080p4by3 => VideoResolution::new(1440, 1080),
             Custom(resolution) => *resolution,
         }
     }
 }
 
-// #[derive(Debug, Clone, Copy)]
-// pub enum BestParams {
-//     WithoutScaling { tile_kind: tile::Kind },
-//     WithScaling { tile_kind: tile::Kind, tile_dimensions: tile::Dimensions },
-// }
+#[derive(Debug, Error)]
+#[error("invalid resolution format: {0}")]
+pub struct InvalidResolutionFormatError(String);
+
+impl TryFrom<&str> for TargetResolution {
+    type Error = InvalidResolutionFormatError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        use TargetResolution::*;
+        let resolution = match value {
+            "720p" => Tr720p,
+            "720p4:3" => Tr1080p4by3,
+            "1080p" => Tr1080p,
+            "1080p4:3" => Tr1080p4by3,
+            custom_res_str => {
+                lazy_static! {
+                    static ref RES_RE: Regex = Regex::new(r"\A(?P<width>\d{1,5})x(?P<height>\d{1,5})\z").unwrap();
+                }
+                match RES_RE.captures(custom_res_str) {
+                    Some(captures) => {
+                        let width = captures.name("width").unwrap().as_str().parse().unwrap();
+                        let height = captures.name("height").unwrap().as_str().parse().unwrap();
+                        Custom(VideoResolution::new(width, height))
+                    },
+                    None => return Err(InvalidResolutionFormatError(custom_res_str.to_owned())),
+                }
+            }
+        };
+        Ok(resolution)
+    }
+}
 
 pub struct Generator {
     reader: OSDFileReader,
@@ -138,14 +204,11 @@ impl Generator {
                 (overlay_dimensions, tile_kind, Some(tile_dimensions))
             },
         };
-        // dbg!(&overlay_resolution);
-        // dbg!(&tile_scaling);
+
         let tile_images = match tile_scaling {
             Some(tile_dimensions) => tile_set[tile_kind].as_slice().resized_tiles_par_with_progress(tile_dimensions),
             None => tile_set[tile_kind].iter().map(|tile| tile.image().clone()).collect(),
         };
-        // dbg!(tile_images.first().unwrap().dimensions());
-        // exit(1);
 
         let overlay_res_scale =
             (
@@ -160,12 +223,12 @@ impl Generator {
         Ok(Self { reader, tile_images, overlay_resolution })
     }
 
-    // pub fn draw_next_frame(&mut self) -> Result<Option<Image>, ReadError> {
-    //     match self.reader.read_frame()? {
-    //         Some(frame) => Ok(Some(draw_frame_overlay(self.reader.osd_kind(), &frame, self.font_tiles).unwrap())),
-    //         None => Ok(None),
-    //     }
-    // }
+    pub fn draw_next_frame(&mut self) -> Result<Option<Image>, ReadError> {
+        match self.reader.read_frame()? {
+            Some(frame) => Ok(Some(self.draw_frame_overlay(&frame).unwrap())),
+            None => Ok(None),
+        }
+    }
 
     fn transparent_frame_overlay(&self) -> Image {
         Image::new(self.overlay_resolution.width, self.overlay_resolution.height)
@@ -181,6 +244,9 @@ impl Generator {
     }
 
     pub fn save_frames_to_dir<P: AsRef<Path> + std::marker::Sync>(&mut self, path: P, frame_offset: i32) -> Result<(), SaveFramesToDirError> {
+        if path.as_ref().exists() {
+            return Err(SaveFramesToDirError::TargetDirectoryExists);
+        }
         create_path(&path)?;
         log::info!("generating overlay frames and saving into directory: {}", path.as_ref().to_string_lossy());
         let frames = self.reader.frames()?;
@@ -203,7 +269,8 @@ impl Generator {
 
         let frame_count = *frames.last().unwrap().index();
         let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
-        frames[0..20].par_iter().progress_with_style(progress_style).try_for_each(|frame| {
+        // frames[0..20].par_iter().progress_with_style(progress_style).try_for_each(|frame| {
+        frames.par_iter().progress_with_style(progress_style).try_for_each(|frame| {
             let actual_frame_index = (*frame.index() as i32 + frame_offset) as u32;
             log::debug!("{} -> {}", frame.index(), &actual_frame_index);
             let frame_image = self.draw_frame_overlay(frame).unwrap();

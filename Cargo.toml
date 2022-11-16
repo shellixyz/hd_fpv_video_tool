@@ -28,6 +28,8 @@ rayon = "1.5.3"
 indicatif = { version = "0.17.1", features = ["rayon"] }
 thiserror = "1.0.37"
 anyhow = "1.0.66"
+regex = "1.7.0"
+lazy_static = "1.4.0"
 
 [profile.release]
 panic = 'abort'

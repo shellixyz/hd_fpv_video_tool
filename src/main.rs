@@ -1,6 +1,7 @@
 
 #![forbid(unsafe_code)]
 
+use std::path::PathBuf;
 use std::{process::exit, path::Path};
 
 use clap::{Parser, Subcommand};
@@ -27,10 +28,16 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     DisplayOSDFileInfo {
-        osd_file: String,
+        osd_file: PathBuf,
     },
     GenerateOverlay {
-        osd_file: String,
+        #[clap(short, long, value_parser, value_name = "min_margin_horiz:min_margin_vert")]
+        scale: Option<Option<String>>,
+
+        osd_file: PathBuf,
+        target_video_resolution: String,
+        tile_set_path: PathBuf,
+        target_dir: PathBuf,
     }
 }
 
@@ -67,12 +74,14 @@ fn display_osd_file_info<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn generate_overlay<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
+fn generate_overlay<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(path: P, target_video_resolution: &str, scale: &Option<Option<String>>, tile_set_dir: Q, target_dir: R) -> anyhow::Result<()> {
     let osd_file = OSDFileReader::open(&path)?;
-    let tile_set = bin_file::load_set_norm("../hd_fpv_osd_font_tool/font_files", &None).unwrap();
-    let mut overlay_generator = osd_file.into_frame_overlay_generator(&tile_set, TargetResolution::TrAU4by3, Scale::Yes { minimum_horizontal_margin: 30, minimum_vertical_margin: 30 })?;
+    let target_video_resolution = TargetResolution::try_from(target_video_resolution)?;
+    let scaling = Scale::try_from(scale)?;
+    let tile_set = bin_file::load_set_norm(&tile_set_dir, &None).unwrap();
+    let mut overlay_generator = osd_file.into_frame_overlay_generator(&tile_set, target_video_resolution, scaling)?;
     // let mut overlay_generator = osd_file.into_frame_overlay_generator(&tile_set, TargetResolution::Tr720p, Scale::No)?;
-    overlay_generator.save_frames_to_dir("/home/shel/fast_temp/osd_tiles", 0)?;
+    overlay_generator.save_frames_to_dir(target_dir.as_ref().to_path_buf(), 0)?;
     Ok(())
 }
 
@@ -82,7 +91,7 @@ fn main() {
     pretty_env_logger::formatted_builder().parse_filters(cli.log_level.to_string().as_str()).init();
 
     let command_result = match &cli.command {
-        Commands::GenerateOverlay { osd_file } => generate_overlay(osd_file),
+        Commands::GenerateOverlay { osd_file, scale, target_video_resolution, target_dir, tile_set_path } => generate_overlay(osd_file, target_video_resolution, scale, tile_set_path, target_dir),
         Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info(osd_file),
     };
 

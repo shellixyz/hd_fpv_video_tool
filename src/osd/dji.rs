@@ -97,7 +97,6 @@ impl Kind {
         let tile_kinds_data = tile::Kind::iter().map(|tile_kind| {
             let width_diff = max_tile_width as i32 - tile_kind.dimensions().width as i32;
             let height_diff = max_tile_height as i32 - tile_kind.dimensions().height as i32;
-            println!("{tile_kind}: wdiff {width_diff} - hdiff {height_diff}");
             (tile_kind, width_diff, height_diff, std::cmp::min(width_diff.abs(), height_diff.abs()))
         }).collect::<Vec<_>>();
 
