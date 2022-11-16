@@ -122,11 +122,9 @@ impl Kind {
 
         let mut tile_dimensions = tile_kind.dimensions();
         if width_diff < height_diff {
-            // tile_dimensions.width = (tile_dimensions.width as i32 + width_diff) as u32;
             tile_dimensions.width = (tile_dimensions.width as i32 + width_diff).try_into().unwrap();
             tile_dimensions.height = tile_dimensions.height * tile_dimensions.width / tile_kind.dimensions().width;
         } else {
-            // tile_dimensions.height = (tile_dimensions.height as i32 + height_diff) as u32;
             tile_dimensions.height = (tile_dimensions.height as i32 + height_diff).try_into().unwrap();
             tile_dimensions.width = tile_dimensions.width * tile_dimensions.height / tile_kind.dimensions().height;
         }

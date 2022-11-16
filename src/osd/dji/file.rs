@@ -55,9 +55,6 @@ pub enum OpenError {
 }
 
 impl OpenError {
-    // fn io_error<P: AsRef<Path>>(file_path: P, error: IOError) -> Self {
-    //     Self::IOError { file_path: file_path.as_ref().to_path_buf(), error }
-    // }
 
     fn invalid_signature<P: AsRef<Path>>(file_path: P) -> Self {
         Self::InvalidSignature { file_path: file_path.as_ref().to_path_buf() }
@@ -66,6 +63,7 @@ impl OpenError {
     fn invalid_osd_dimensions<P: AsRef<Path>>(file_path: P, dimensions: Dimensions) -> Self {
         Self::InvalidOSDDimensions { file_path: file_path.as_ref().to_path_buf(), dimensions }
     }
+
 }
 
 #[derive(Debug, Error, From)]
@@ -123,13 +121,6 @@ pub enum FontVariant {
 }
 
 impl FontVariant {
-    // pub fn string_from_id(id: u8) -> String {
-    //     match Self::try_from(id) {
-    //         Ok(variant) => variant.to_string(),
-    //         Err(_) => "unknown".to_owned(),
-    //     }
-    // }
-
     pub fn font_set_ident(&self) -> Option<&str> {
         use FontVariant::*;
         match self {
@@ -196,6 +187,7 @@ struct FrameHeader {
 pub type TileIndex = u16;
 pub type ScreenCoordinate = u8;
 
+// frame payloads are always 1320*2=2640 bytes representing a 60x22 grid which corresponds to the FakeHD OSD format
 pub const TILE_INDICES_DIMENSIONS_TILES: Dimensions = Kind::FakeHD.dimensions_tiles();
 
 #[derive(Debug, Deref)]

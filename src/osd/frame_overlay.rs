@@ -52,13 +52,6 @@ use super::{
     },
     tile_resize::ResizeTiles,
 };
-// use super::dji::file::{Frame as OSDFileFrame, ReadError};
-// use super::dji::file::FrameIndex;
-// use super::dji::file::Reader as OSDFileReader;
-// use super::dji::font_dir::FontDir;
-// use super::tile_resize::ResizeTiles;
-// use super::dji::Kind as OSDKind;
-// use super::dji::utils;
 
 
 pub type VideoResolution = GenericDimensions<u32>;
@@ -308,7 +301,7 @@ impl Generator {
 
         let overlay_res_scale =
             (
-                (overlay_resolution.width as f64 /target_resolution.dimensions().width as f64) +
+                (overlay_resolution.width as f64 / target_resolution.dimensions().width as f64) +
                 (overlay_resolution.height as f64 / target_resolution.dimensions().height as f64)
             ) / 2.0;
 
@@ -365,7 +358,6 @@ impl Generator {
 
         let frame_count = *frames.last().unwrap().index();
         let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
-        // frames[0..20].par_iter().progress_with_style(progress_style).try_for_each(|frame| {
         frames.par_iter().progress_with_style(progress_style).try_for_each(|frame| {
             let actual_frame_index = (*frame.index() as i32 + frame_shift) as u32;
             log::debug!("{} -> {}", frame.index(), &actual_frame_index);
