@@ -1,5 +1,18 @@
 
-use std::{io::{Error as IOError, SeekFrom, Seek, Read}, path::{PathBuf, Path}, fmt::Display, fs::File};
+use std::{
+    io::{
+        Error as IOError,
+        SeekFrom,
+        Seek,
+        Read
+    },
+    path::{
+        PathBuf,
+        Path
+    },
+    fmt::Display,
+    fs::File
+};
 
 use derive_more::Deref;
 use thiserror::Error;

@@ -1,11 +1,16 @@
 
-use hd_fpv_osd_font_tool::osd::tile;
+use strum::IntoEnumIterator;
 use thiserror::Error;
 
-use super::frame_overlay::{VideoResolution, Resolution as FrameOverlayResolution};
-use hd_fpv_osd_font_tool::dimensions::Dimensions as GenericDimensions;
+use hd_fpv_osd_font_tool::{
+    prelude::*,
+    dimensions::Dimensions as GenericDimensions,
+};
 
-use strum::IntoEnumIterator;
+use super::frame_overlay::{
+    VideoResolution,
+    Resolution as FrameOverlayResolution
+};
 
 pub mod file;
 pub mod font_dir;

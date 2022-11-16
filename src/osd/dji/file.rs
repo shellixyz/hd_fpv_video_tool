@@ -1,24 +1,46 @@
 
-use std::fmt::Display;
-use std::io::SeekFrom;
-use std::iter::Enumerate;
-use std::ops::Index;
-use std::path::{Path, PathBuf};
+use std::{
+    fmt::Display,
+    io::SeekFrom,
+    iter::Enumerate,
+    ops::Index,
+    path::{
+        Path,
+        PathBuf,
+    },
+};
 
-use byte_struct::ByteStruct;
 use byte_struct::*;
 
 use getset::{Getters, CopyGetters};
 use derive_more::{Deref, From};
-use hd_fpv_osd_font_tool::prelude::*;
 use strum::Display;
 use thiserror::Error;
 
-use crate::osd::dji::InvalidDimensionsError;
-use crate::osd::frame_overlay::{DrawFrameOverlayError, Generator as FrameOverlayGenerator, TargetResolution, Scaling};
-use super::font_dir::FontDir;
-use super::{Dimensions, Kind};
-use crate::file::{Error as FileError, FileWithPath};
+use hd_fpv_osd_font_tool::prelude::*;
+
+use crate::{
+    osd::{
+        dji::InvalidDimensionsError,
+        frame_overlay::{
+            DrawFrameOverlayError,
+            Generator as FrameOverlayGenerator,
+            TargetResolution,
+            Scaling
+        },
+    },
+    file::{
+        Error as FileError,
+        FileWithPath,
+    },
+};
+
+use super::{
+    Dimensions,
+    Kind,
+    font_dir::FontDir,
+};
+
 
 const SIGNATURE: &str = "MSPOSD\x00";
 

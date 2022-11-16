@@ -1,33 +1,65 @@
 
-use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
-use std::io::Error as IOError;
-
-use crate::create_path::{CreatePathError, create_path};
-use crate::file::{self, HardLinkError};
-use crate::image::WriteImageFile;
-
-use super::dji::file::{Frame as OSDFileFrame, ReadError};
-use super::dji::file::FrameIndex;
-use super::dji::file::Reader as OSDFileReader;
-use super::dji::font_dir::FontDir;
-use super::tile_resize::ResizeTiles;
-use crate::image::WriteError as ImageWriteError;
-use super::dji::Kind as OSDKind;
-use super::dji::utils;
+use std::{
+    collections::BTreeSet,
+    path::{
+        Path,
+        PathBuf
+    },
+    io::Error as IOError,
+};
 
 use derive_more::From;
 use getset::Getters;
 use regex::Regex;
 use thiserror::Error;
-use hd_fpv_osd_font_tool::prelude::*;
 use image::{ImageBuffer, Rgba, GenericImage};
-use hd_fpv_osd_font_tool::osd::tile;
 use indicatif::{ProgressStyle, ParallelProgressIterator};
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
-use super::dji::{Kind as DJIOSDKind, VideoResolutionTooSmallError};
-use hd_fpv_osd_font_tool::dimensions::Dimensions as GenericDimensions;
 use lazy_static::lazy_static;
+
+use hd_fpv_osd_font_tool::{
+    prelude::*,
+    dimensions::Dimensions as GenericDimensions,
+};
+
+use crate::{
+    create_path::{
+        CreatePathError,
+        create_path
+    },
+    file::{
+        self,
+        HardLinkError
+    },
+    image::{
+        WriteImageFile,
+        WriteError as ImageWriteError,
+    },
+};
+
+use super::{
+    dji::{
+        Kind as DJIOSDKind,
+        VideoResolutionTooSmallError,
+        font_dir::FontDir,
+        file::{
+            Frame as OSDFileFrame,
+            FrameIndex,
+            ReadError,
+            Reader as OSDFileReader,
+        },
+        utils,
+    },
+    tile_resize::ResizeTiles,
+};
+// use super::dji::file::{Frame as OSDFileFrame, ReadError};
+// use super::dji::file::FrameIndex;
+// use super::dji::file::Reader as OSDFileReader;
+// use super::dji::font_dir::FontDir;
+// use super::tile_resize::ResizeTiles;
+// use super::dji::Kind as OSDKind;
+// use super::dji::utils;
+
 
 pub type VideoResolution = GenericDimensions<u32>;
 pub type Resolution = GenericDimensions<u32>;
@@ -41,11 +73,6 @@ pub enum DrawFrameOverlayError {
 }
 
 pub type Image = ImageBuffer<Rgba<u8>, Vec<u8>>;
-
-// pub fn transparent_frame_overlay(kind: &DJIOSDKind) -> Image {
-//     let Resolution { width, height } = kind.dimensions_pixels_for_tile_kind(kind.tile_kind());
-//     Image::new(width, height)
-// }
 
 pub fn format_overlay_frame_file_index(frame_index: FrameIndex) -> String {
     format!("{:010}.png", frame_index)
@@ -223,7 +250,7 @@ pub struct Generator {
 
 impl Generator {
 
-    fn best_settings_for_requested_scaling(osd_kind: OSDKind, target_resolution: TargetResolution, scaling: &Scaling) -> Result<(Resolution, tile::Kind, Option<TileDimensions>), DrawFrameOverlayError> {
+    fn best_settings_for_requested_scaling(osd_kind: DJIOSDKind, target_resolution: TargetResolution, scaling: &Scaling) -> Result<(Resolution, tile::Kind, Option<TileDimensions>), DrawFrameOverlayError> {
         Ok(
             match *scaling {
                 Scaling::No => {

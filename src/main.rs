@@ -1,17 +1,36 @@
 
 #![forbid(unsafe_code)]
 
-use std::path::PathBuf;
-use std::{process::exit, path::Path};
+use std::{
+    path::PathBuf,
+    process::exit,
+    path::Path
+};
 
 use clap::{Parser, Subcommand};
 use derive_more::{From, Display, Error};
-use dji_fpv_video_tool::osd::dji::font_dir::FontDir;
-use dji_fpv_video_tool::osd::frame_overlay::{DrawFrameOverlayError, SaveFramesToDirError, TargetResolution, Scaling};
-use hd_fpv_osd_font_tool::osd::bin_file::{LoadError as BinFileLoadError};
 
-use dji_fpv_video_tool::log_level::LogLevel;
-use dji_fpv_video_tool::osd::dji::file::{OpenError as OSDFileOpenError, Reader as OSDFileReader};
+use hd_fpv_osd_font_tool::prelude::*;
+
+use dji_fpv_video_tool::{
+    osd::{
+        dji::{
+            font_dir::FontDir,
+            file::{
+                OpenError as OSDFileOpenError,
+                Reader as OSDFileReader,
+            },
+        },
+        frame_overlay::{
+            DrawFrameOverlayError,
+            SaveFramesToDirError,
+            TargetResolution,
+            Scaling,
+        },
+    },
+    log_level::LogLevel
+};
+
 
 const DEFAULT_FONT_DIR: &str = "fonts";
 const FONT_DIR_ENV_VAR_NAME: &str = "FONTS_DIR";

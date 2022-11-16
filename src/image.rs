@@ -1,14 +1,28 @@
 
-use std::fmt::Display;
-use std::path::{Path, PathBuf};
-use std::io::Error as IOError;
-use std::ops::Deref;
+use std::{
+    fmt::Display,
+    path::{
+        Path,
+        PathBuf
+    },
+    io::Error as IOError,
+    ops::Deref
+};
 
 use derive_more::{Error, From};
-use image::{DynamicImage, ImageError, EncodableLayout, ImageBuffer, PixelWithColorType};
-use image::io::Reader as ImageReader;
+use image::{
+    DynamicImage,
+    ImageError,
+    EncodableLayout,
+    ImageBuffer,
+    PixelWithColorType,
+    io::Reader as ImageReader
+};
 
-use crate::file::{Error as FileError, Action as FileAction};
+use crate::file::{
+    Error as FileError,
+    Action as FileAction
+};
 
 
 #[derive(Debug, Error, From)]

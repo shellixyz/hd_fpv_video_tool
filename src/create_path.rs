@@ -1,7 +1,12 @@
 
-use std::fmt::Display;
-use std::path::{PathBuf, Path};
-use std::io::Error as IOError;
+use std::{
+    fmt::Display,
+    path::{
+        PathBuf,
+        Path,
+    },
+    io::Error as IOError,
+};
 
 use derive_more::Error;
 
