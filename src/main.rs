@@ -6,8 +6,9 @@ use std::{process::exit, path::Path};
 
 use clap::{Parser, Subcommand};
 use derive_more::{From, Display, Error};
+use dji_fpv_video_tool::osd::dji::font_dir::FontDir;
 use dji_fpv_video_tool::osd::frame_overlay::{DrawFrameOverlayError, SaveFramesToDirError, TargetResolution, Scaling};
-use hd_fpv_osd_font_tool::osd::bin_file::{LoadError as BinFileLoadError, self};
+use hd_fpv_osd_font_tool::osd::bin_file::{LoadError as BinFileLoadError};
 
 use dji_fpv_video_tool::log_level::LogLevel;
 use dji_fpv_video_tool::osd::dji::file::{OpenError as OSDFileOpenError, Reader as OSDFileReader};
@@ -44,7 +45,7 @@ enum Commands {
         min_margins: String,
 
         /// minimum percentage of OSD coverage under which scaling will be used if --scaling/--no-scaling options are not provided
-        #[clap(long, value_parser = clap::value_parser!(u8).range(0..=100), value_name = "percent", default_value = "90")]
+        #[clap(long, value_parser = clap::value_parser!(u8).range(1..=100), value_name = "percent", default_value = "90")]
         min_coverage: u8,
 
         /// path to the directory containing font sets
@@ -87,7 +88,7 @@ fn display_osd_file_info<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
     println!("OSD size: {} tiles", header.osd_dimensions());
     println!("OSD tiles dimension: {} px", header.tile_dimensions());
     println!("OSD video offset: {} px", header.offset());
-    println!("OSD Font variant: {} ({})", header.font_variant_id(), header.font_variant_string());
+    println!("OSD Font variant: {} ({})", header.font_variant_id(), header.font_variant());
     println!("Number of OSD frames: {}", frames.len());
     if let Some(last_frame) = frames.last() {
         println!("Highest video frame index: {}", last_frame.index());
@@ -103,6 +104,15 @@ fn display_osd_file_info<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
     Ok(())
 }
 
+// if --font-ident was passed with a non-empty string return Some(Some(ident)) but if it was passed with an empty string return Some(None)
+fn transform_font_ident<'a>(font_ident: &'a Option<&str>) -> Option<Option<&'a str>> {
+    match font_ident {
+        Some("") => Some(None),
+        Some(font_ident_str) => Some(Some(font_ident_str)),
+        None => None,
+    }
+}
+
 fn generate_overlay(command: &Commands) -> anyhow::Result<()> {
     if let Commands::GenerateOverlay {
             scaling, no_scaling, min_margins, font_dir, osd_file, target_video_resolution,
@@ -111,8 +121,13 @@ fn generate_overlay(command: &Commands) -> anyhow::Result<()> {
             let osd_file = OSDFileReader::open(osd_file)?;
             let target_video_resolution = TargetResolution::try_from(target_video_resolution.as_str())?;
             let scaling = Scaling::try_from(*scaling, *no_scaling, min_margins, *min_coverage, target_video_resolution)?;
-            let tile_set = bin_file::load_set_norm(font_dir, &font_ident.as_deref()).unwrap();
-            let mut overlay_generator = osd_file.into_frame_overlay_generator(&tile_set, target_video_resolution, scaling)?;
+            let font_dir = FontDir::new(font_dir);
+            let mut overlay_generator = osd_file.into_frame_overlay_generator(
+                &font_dir,
+                &transform_font_ident(&font_ident.as_deref()),
+                target_video_resolution,
+                scaling
+            )?;
             overlay_generator.save_frames_to_dir(target_dir, *frame_offset)?;
     }
     Ok(())

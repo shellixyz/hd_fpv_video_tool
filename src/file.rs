@@ -1,6 +1,7 @@
 
-use std::{io::Error as IOError, path::{PathBuf, Path}, fmt::Display, fs::File};
+use std::{io::{Error as IOError, SeekFrom, Seek, Read}, path::{PathBuf, Path}, fmt::Display, fs::File};
 
+use derive_more::Deref;
 use thiserror::Error;
 use getset::Getters;
 
@@ -45,18 +46,46 @@ impl Error {
     }
 }
 
-// impl Display for Error {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         write!(f, "{} {}: {}", self.action, self.path.to_string_lossy(), self.error)
-//     }
-// }
-
-pub fn open<P: AsRef<Path>>(path: P) -> Result<File, Error> {
-    std::fs::File::open(&path).map_err(|error| Error::new(Action::Open, path, error))
+#[derive(Deref, Getters)]
+pub struct FileWithPath {
+    #[getset(get = "pub")]
+    path: PathBuf,
+    #[deref]
+    file: File,
 }
 
-pub fn create<P: AsRef<Path>>(path: P) -> Result<File, Error> {
-    std::fs::File::create(&path).map_err(|error| Error::new(Action::Create, path, error))
+impl FileWithPath {
+
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+        Ok(Self {
+            path: path.as_ref().to_path_buf(),
+            file: File::open(&path).map_err(|error| Error::new(Action::Open, path, error))?
+        })
+    }
+
+    pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+        Ok(Self {
+            path: path.as_ref().to_path_buf(),
+            file: File::create(&path).map_err(|error| Error::new(Action::Create, path, error))?
+        })
+    }
+
+    pub fn seek(&mut self, pos: SeekFrom) -> Result<u64, Error> {
+        self.file.seek(pos).map_err(|error| Error::new(Action::Seek, &self.path, error))
+    }
+
+    pub fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), Error> {
+        self.file.read_exact(buf).map_err(|error| Error::new(Action::Read, &self.path, error))
+    }
+
+    pub fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
+        self.file.read(buf).map_err(|error| Error::new(Action::Read, &self.path, error))
+    }
+
+    pub fn pos(&mut self) -> u64 {
+        self.file.seek(SeekFrom::Current(0)).unwrap()
+    }
+
 }
 
 #[derive(Debug, Error, Getters)]

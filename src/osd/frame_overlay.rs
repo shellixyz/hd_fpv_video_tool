@@ -10,6 +10,7 @@ use crate::image::WriteImageFile;
 use super::dji::file::{Frame as OSDFileFrame, ReadError};
 use super::dji::file::FrameIndex;
 use super::dji::file::Reader as OSDFileReader;
+use super::dji::font_dir::FontDir;
 use super::tile_resize::ResizeTiles;
 use crate::image::WriteError as ImageWriteError;
 use super::dji::Kind as OSDKind;
@@ -31,8 +32,10 @@ use lazy_static::lazy_static;
 pub type VideoResolution = GenericDimensions<u32>;
 pub type Resolution = GenericDimensions<u32>;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, From)]
 pub enum DrawFrameOverlayError {
+    #[error("failed to load font file: {0}")]
+    FontLoadError(bin_file::LoadError),
     #[error("video resolution {video_resolution} too small to render {osd_kind} OSD kind without scaling")]
     VideoResolutionTooSmallError{ osd_kind: DJIOSDKind, video_resolution: VideoResolution },
 }
@@ -239,31 +242,41 @@ impl Generator {
                     (overlay_dimensions, tile_kind, Some(tile_dimensions))
                 },
                 Scaling::Auto { min_margins, min_resolution } => {
-                    match Self::best_settings_for_requested_scaling(osd_kind, target_resolution, &Scaling::No) {
-                        Ok(values) => {
-                            let (overlay_dimensions, _, _) = values;
-                            let (margin_width, margin_height) = utils::margins(target_resolution.dimensions(), overlay_dimensions);
-                            let min_margins_condition_met = margin_width >= min_margins.horizontal as i32 && margin_height >= min_margins.vertical as i32;
-                            let min_dimensions_condition_met = overlay_dimensions.width >= min_resolution.width && overlay_dimensions.height >= min_resolution.height;
-                            if min_margins_condition_met && min_dimensions_condition_met {
-                                values
-                            } else {
-                                Self::best_settings_for_requested_scaling(osd_kind, target_resolution, &Scaling::Yes { min_margins })?
-                            }
-                        },
-                        Err(_) => Self::best_settings_for_requested_scaling(osd_kind, target_resolution, &Scaling::Yes { min_margins })?,
-                    }
+                    let (overlay_resolution, tile_kind, tile_scaling) =
+                        match Self::best_settings_for_requested_scaling(osd_kind, target_resolution, &Scaling::No) {
+                            Ok(values) => {
+                                let (overlay_dimensions, _, _) = values;
+                                let (margin_width, margin_height) = utils::margins(target_resolution.dimensions(), overlay_dimensions);
+                                let min_margins_condition_met = margin_width >= min_margins.horizontal as i32 && margin_height >= min_margins.vertical as i32;
+                                let min_dimensions_condition_met = overlay_dimensions.width >= min_resolution.width && overlay_dimensions.height >= min_resolution.height;
+                                if min_margins_condition_met && min_dimensions_condition_met {
+                                    values
+                                } else {
+                                    Self::best_settings_for_requested_scaling(osd_kind, target_resolution, &Scaling::Yes { min_margins })?
+                                }
+                            },
+                            Err(_) => Self::best_settings_for_requested_scaling(osd_kind, target_resolution, &Scaling::Yes { min_margins })?,
+                        };
+                    let tile_scaling_yes_no = match tile_scaling { Some(_) => "yes", None => "no" };
+                    log::info!("calculated best approach: tile kind: {tile_kind} - scaling {tile_scaling_yes_no} - overlay resolution {overlay_resolution}");
+                    (overlay_resolution, tile_kind, tile_scaling)
                 },
             }
         )
     }
 
-    pub fn new(reader: OSDFileReader, tile_set: &TileSet, target_resolution: TargetResolution, scaling: Scaling) -> Result<Self, DrawFrameOverlayError> {
+    pub fn new(mut reader: OSDFileReader, font_dir: &FontDir, font_ident: &Option<Option<&str>>, target_resolution: TargetResolution, scaling: Scaling) -> Result<Self, DrawFrameOverlayError> {
         let osd_kind = reader.osd_kind();
         let (overlay_resolution, tile_kind, tile_scaling) = Self::best_settings_for_requested_scaling(osd_kind, target_resolution, &scaling)?;
+
+        let tiles = match font_ident {
+            Some(font_ident) => font_dir.load_with_fallback(tile_kind, font_ident, reader.max_used_tile_index().unwrap())?,
+            None => font_dir.load_variant_with_fallback(tile_kind, &reader.header().font_variant(), reader.max_used_tile_index().unwrap())?,
+        };
+
         let tile_images = match tile_scaling {
-            Some(tile_dimensions) => tile_set[tile_kind].as_slice().resized_tiles_par_with_progress(tile_dimensions),
-            None => tile_set[tile_kind].iter().map(|tile| tile.image().clone()).collect(),
+            Some(tile_dimensions) => tiles.as_slice().resized_tiles_par_with_progress(tile_dimensions),
+            None => tiles.into_iter().map(|tile| tile.image().clone()).collect(),
         };
 
         let overlay_res_scale =

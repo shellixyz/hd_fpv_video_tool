@@ -8,6 +8,7 @@ use hd_fpv_osd_font_tool::dimensions::Dimensions as GenericDimensions;
 use strum::IntoEnumIterator;
 
 pub mod file;
+pub mod font_dir;
 
 
 #[derive(Debug, Error)]

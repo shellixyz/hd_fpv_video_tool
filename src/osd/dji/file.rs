@@ -1,7 +1,6 @@
 
 use std::fmt::Display;
-use std::fs::File;
-use std::io::{Error as IOError, Read};
+use std::io::SeekFrom;
 use std::iter::Enumerate;
 use std::ops::Index;
 use std::path::{Path, PathBuf};
@@ -10,21 +9,23 @@ use byte_struct::ByteStruct;
 use byte_struct::*;
 
 use getset::{Getters, CopyGetters};
-use derive_more::Deref;
+use derive_more::{Deref, From};
 use hd_fpv_osd_font_tool::prelude::*;
 use strum::Display;
 use thiserror::Error;
 
 use crate::osd::dji::InvalidDimensionsError;
 use crate::osd::frame_overlay::{DrawFrameOverlayError, Generator as FrameOverlayGenerator, TargetResolution, Scaling};
+use super::font_dir::FontDir;
 use super::{Dimensions, Kind};
+use crate::file::{Error as FileError, FileWithPath};
 
 const SIGNATURE: &str = "MSPOSD\x00";
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, From)]
 pub enum OpenError {
-    #[error("failed to open file {file_path}: {error}")]
-    IOError { file_path: PathBuf, error: IOError },
+    #[error(transparent)]
+    FileError(FileError),
     #[error("invalid DJI OSD file header in file {file_path}")]
     InvalidSignature { file_path: PathBuf },
     #[error("invalid OSD dimensions in file {file_path}: {dimensions}")]
@@ -32,9 +33,9 @@ pub enum OpenError {
 }
 
 impl OpenError {
-    fn io_error<P: AsRef<Path>>(file_path: P, error: IOError) -> Self {
-        Self::IOError { file_path: file_path.as_ref().to_path_buf(), error }
-    }
+    // fn io_error<P: AsRef<Path>>(file_path: P, error: IOError) -> Self {
+    //     Self::IOError { file_path: file_path.as_ref().to_path_buf(), error }
+    // }
 
     fn invalid_signature<P: AsRef<Path>>(file_path: P) -> Self {
         Self::InvalidSignature { file_path: file_path.as_ref().to_path_buf() }
@@ -45,19 +46,15 @@ impl OpenError {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, From)]
 pub enum ReadError {
-    #[error("failed to open file {file_path}: {error}")]
-    IOError { file_path: PathBuf, error: IOError },
+    #[error(transparent)]
+    FileError(FileError),
     #[error("Unexpected end of file: {file_path}")]
     UnexpectedEOF { file_path: PathBuf }
 }
 
 impl ReadError {
-    fn io_error<P: AsRef<Path>>(file_path: P, error: IOError) -> Self {
-        Self::IOError { file_path: file_path.as_ref().to_path_buf(), error }
-    }
-
     fn unexpected_eof<P: AsRef<Path>>(file_path: P) -> Self {
         Self::UnexpectedEOF { file_path: file_path.as_ref().to_path_buf() }
     }
@@ -95,30 +92,45 @@ pub struct UnknownFontVariantID(pub u8);
 
 #[derive(Debug, Display)]
 pub enum FontVariant {
+    Generic,
     Ardupilot,
-    INAV
+    Betaflight,
+    INAV,
+    KISSUltra,
+    Unknown
 }
 
 impl FontVariant {
-    pub fn string_from_id(id: u8) -> String {
-        match Self::try_from(id) {
-            Ok(variant) => variant.to_string(),
-            Err(_) => "unknown".to_owned(),
+    // pub fn string_from_id(id: u8) -> String {
+    //     match Self::try_from(id) {
+    //         Ok(variant) => variant.to_string(),
+    //         Err(_) => "unknown".to_owned(),
+    //     }
+    // }
+
+    pub fn font_set_ident(&self) -> Option<&str> {
+        use FontVariant::*;
+        match self {
+            Ardupilot => Some("ardu"),
+            INAV => Some("inav"),
+            Betaflight => Some("bf"),
+            KISSUltra => Some("ultra"),
+            Generic | Unknown => None,
         }
     }
 }
 
-impl TryFrom<u8> for FontVariant {
-    type Error = UnknownFontVariantID;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        Ok(
-            match value {
-                2 => Self::INAV,
-                3 => Self::Ardupilot,
-                _ => return Err(UnknownFontVariantID(value))
-            }
-        )
+impl From<u8> for FontVariant {
+    fn from(value: u8) -> Self {
+        use FontVariant::*;
+        match value {
+            0 => Generic,
+            1 => Betaflight,
+            2 => INAV,
+            3 => Ardupilot,
+            4 => KISSUltra,
+            _ => Unknown,
+        }
     }
 }
 
@@ -133,12 +145,8 @@ pub struct FileHeader {
 }
 
 impl FileHeader {
-    pub fn font_variant(&self) -> Result<FontVariant, UnknownFontVariantID> {
-        FontVariant::try_from(self.font_variant_id)
-    }
-
-    pub fn font_variant_string(&self) -> String {
-        FontVariant::string_from_id(self.font_variant_id)
+    pub fn font_variant(&self) -> FontVariant {
+        FontVariant::from(self.font_variant_id)
     }
 }
 
@@ -229,9 +237,7 @@ impl Frame {
 
 #[derive(Getters, CopyGetters)]
 pub struct Reader {
-    #[getset(get = "pub")]
-    file_path: PathBuf,
-    file: File,
+    file: FileWithPath,
     #[getset(get = "pub")]
     header: FileHeader,
     #[getset(get_copy = "pub")]
@@ -240,16 +246,16 @@ pub struct Reader {
 
 impl Reader {
 
-    fn check_signature<P: AsRef<Path>>(file_path: P, file: &mut File) -> Result<(), OpenError> {
+    fn check_signature<P: AsRef<Path>>(file_path: P, file: &mut FileWithPath) -> Result<(), OpenError> {
         let mut signature = [0; SIGNATURE.len()];
-        file.read_exact(&mut signature).map_err(|error| OpenError::io_error(&file_path, error))?;
+        file.read_exact(&mut signature)?;
         if signature != SIGNATURE.as_bytes() {
             return Err(OpenError::invalid_signature(&file_path))
         }
         Ok(())
     }
 
-    fn read_header(file: &mut File) -> Result<FileHeaderRaw, IOError> {
+    fn read_header(file: &mut FileWithPath) -> Result<FileHeaderRaw, OpenError> {
         let mut header_bytes = [0; FileHeaderRaw::BYTE_LEN];
         file.read_exact(&mut header_bytes)?;
         let header = FileHeaderRaw::read_bytes(&header_bytes);
@@ -257,7 +263,7 @@ impl Reader {
     }
 
     pub fn open<P: AsRef<Path>>(file_path: P) -> Result<Self, OpenError> {
-        let mut file = File::open(&file_path).map_err(|error| OpenError::io_error(&file_path, error))?;
+        let mut file = FileWithPath::open(&file_path)?;
         Self::check_signature(&file_path,&mut file)?;
         let header: FileHeader = Self::read_header(&mut file).unwrap().into();
         let osd_kind = Kind::try_from(header.osd_dimensions()).map_err(|error| {
@@ -265,15 +271,15 @@ impl Reader {
             OpenError::invalid_osd_dimensions(&file_path, dimensions)
         })?;
         log::info!("detected OSD file with {osd_kind} tile layout");
-        Ok(Self { file_path: file_path.as_ref().to_path_buf(), file, header, osd_kind })
+        Ok(Self { file, header, osd_kind })
     }
 
     fn read_frame_header(&mut self) -> Result<Option<FrameHeader>, ReadError> {
         let mut frame_header_bytes = [0; FrameHeader::BYTE_LEN];
-        match self.file.read(&mut frame_header_bytes).map_err(|error| ReadError::io_error(&self.file_path, error))? {
+        match self.file.read(&mut frame_header_bytes)? {
             0 => Ok(None),
             FrameHeader::BYTE_LEN => Ok(Some(FrameHeader::read_bytes(&frame_header_bytes))),
-            _ => Err(ReadError::unexpected_eof(&self.file_path))
+            _ => Err(ReadError::unexpected_eof(self.file.path()))
         }
     }
 
@@ -283,7 +289,7 @@ impl Reader {
             None => return Ok(None),
         };
         let mut data_bytes= vec![0; header.data_len as usize * 2];
-        self.file.read_exact(&mut data_bytes).map_err(|error| ReadError::io_error(&self.file_path, error))?;
+        self.file.read_exact(&mut data_bytes)?;
         let tile_indices = TileIndices(data_bytes.chunks_exact(u16::BYTE_LEN)
             .map(|bytes| u16::from_le_bytes(bytes.try_into().unwrap())).collect());
         Ok(Some(Frame { index: header.frame_index, tile_indices }))
@@ -300,8 +306,25 @@ impl Reader {
         Ok(frames)
     }
 
-    pub fn into_frame_overlay_generator(self, tile_set: &TileSet, target_resolution: TargetResolution, scale: Scaling) -> Result<FrameOverlayGenerator, DrawFrameOverlayError> {
-        FrameOverlayGenerator::new(self, tile_set, target_resolution, scale)
+    pub fn rewind(&mut self) -> Result<(), FileError> {
+        self.file.seek(SeekFrom::Start((SIGNATURE.len() + FileHeaderRaw::BYTE_LEN) as u64))?;
+        Ok(())
+    }
+
+    pub fn max_used_tile_index(&mut self) -> Result<TileIndex, ReadError> {
+        let starting_position = self.file.pos();
+        self.rewind()?;
+        let max = self.frames()?.into_iter().flat_map(|frame| frame.tile_indices.0).max().unwrap();
+        self.file.seek(SeekFrom::Start(starting_position))?;
+        Ok(max)
+    }
+
+    pub fn iter(&mut self) -> Iter {
+        self.into_iter()
+    }
+
+    pub fn into_frame_overlay_generator(self, font_dir: &FontDir, font_ident: &Option<Option<&str>>, target_resolution: TargetResolution, scale: Scaling) -> Result<FrameOverlayGenerator, DrawFrameOverlayError> {
+        FrameOverlayGenerator::new(self, font_dir, font_ident, target_resolution, scale)
     }
 
 }
