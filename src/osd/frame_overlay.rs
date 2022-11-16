@@ -59,6 +59,8 @@ pub type Resolution = GenericDimensions<u32>;
 
 #[derive(Debug, Error, From)]
 pub enum DrawFrameOverlayError {
+    #[error(transparent)]
+    ReadError(ReadError),
     #[error("failed to load font file: {0}")]
     FontLoadError(bin_file::LoadError),
     #[error("video resolution {video_resolution} too small to render {osd_kind} OSD kind without scaling")]
@@ -312,7 +314,7 @@ impl Generator {
         Ok(Self { reader, tile_images, overlay_resolution })
     }
 
-    pub fn draw_next_frame(&mut self) -> Result<Option<Image>, ReadError> {
+    pub fn draw_next_frame(&mut self) -> Result<Option<Image>, DrawFrameOverlayError> {
         match self.reader.read_frame()? {
             Some(frame) => Ok(Some(self.draw_frame_overlay(&frame).unwrap())),
             None => Ok(None),
