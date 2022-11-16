@@ -13,6 +13,9 @@ use hd_fpv_osd_font_tool::osd::bin_file::{LoadError as BinFileLoadError};
 use dji_fpv_video_tool::log_level::LogLevel;
 use dji_fpv_video_tool::osd::dji::file::{OpenError as OSDFileOpenError, Reader as OSDFileReader};
 
+const DEFAULT_FONT_DIR: &str = "fonts";
+const FONT_DIR_ENV_VAR_NAME: &str = "FONTS_DIR";
+
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
 struct Cli {
@@ -28,9 +31,16 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Displays information about the specified OSD file
     DisplayOSDFileInfo {
         osd_file: PathBuf,
     },
+
+    /// Generates OSD overlay frames
+    ///
+    /// Fonts are loaded either from the directory specified with the --font-dir option or
+    /// from the directory found in the environment variable FONTS_DIR or
+    /// if neither of these are available it falls back to the `fonts` directory inside the current directory
     GenerateOverlay {
         /// force using scaling, default is automatic
         #[clap(short, long, value_parser)]
@@ -49,8 +59,8 @@ enum Commands {
         min_coverage: u8,
 
         /// path to the directory containing font sets
-        #[clap(short, long, value_parser, value_name = "dirpath", default_value = "fonts")]
-        font_dir: String,
+        #[clap(short, long, value_parser, value_name = "dirpath")]
+        font_dir: Option<String>,
 
         /// force using this font identifier when loading fonts, default is automatic
         #[clap(short = 'i', long, value_parser, value_name = "ident")]
@@ -121,7 +131,8 @@ fn generate_overlay(command: &Commands) -> anyhow::Result<()> {
             let osd_file = OSDFileReader::open(osd_file)?;
             let target_video_resolution = TargetResolution::try_from(target_video_resolution.as_str())?;
             let scaling = Scaling::try_from(*scaling, *no_scaling, min_margins, *min_coverage, target_video_resolution)?;
-            let font_dir = FontDir::new(font_dir);
+            let font_dir_path = font_dir.clone().unwrap_or_else(|| std::env::var(FONT_DIR_ENV_VAR_NAME).unwrap_or_else(|_| DEFAULT_FONT_DIR.to_owned()));
+            let font_dir = FontDir::new(font_dir_path);
             let mut overlay_generator = osd_file.into_frame_overlay_generator(
                 &font_dir,
                 &transform_font_ident(&font_ident.as_deref()),
