@@ -31,7 +31,12 @@ use dji_fpv_video_tool::{
             },
         },
     },
-    log_level::LogLevel
+    log_level::LogLevel,
+    video::{
+        transcode_video,
+        transcode_video_burn_osd,
+        TranscodeArgs
+    },
 };
 
 
@@ -128,6 +133,37 @@ enum Commands {
         video_file: PathBuf,
     },
 
+    /// Generates OSD overlay video
+    ///
+    /// Fonts are loaded either from the directory specified with the --font-dir option or
+    /// from the directory found in the environment variable FONTS_DIR or
+    /// if neither of these are available it falls back to the `fonts` directory inside the current directory
+    TranscodeVideo {
+
+        #[clap(flatten)]
+        scaling_args: ScalingArgs,
+
+        #[clap(flatten)]
+        font_options: FontOptions,
+
+        /// shift frames to sync OSD with video
+        #[clap(short = 'o', long, value_parser, value_name = "frames", default_value_t = 0)]
+        frame_shift: i32,
+
+        /// path to FPV.WTF .osd file to use to generate OSD frames to burn onto video
+        #[clap(long, value_parser, value_name = "OSD file path")]
+        osd_file: Option<PathBuf>,
+
+        #[clap(flatten)]
+        transcode_args: TranscodeArgs,
+
+        /// input video file path
+        input_video_file: PathBuf,
+
+        /// output video file path
+        output_video_file: PathBuf,
+    },
+
 }
 
 #[derive(Debug, Error, From, Display)]
@@ -201,6 +237,20 @@ fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
+    if let Commands::TranscodeVideo { scaling_args, font_options, frame_shift, osd_file, input_video_file, output_video_file, transcode_args } = command {
+        match osd_file {
+            Some(osd_file) => {
+                let osd_args = OSDArgs { frame_shift: *frame_shift, osd_file: osd_file.clone() };
+                let generator = prepare_overlay_generator(scaling_args, font_options, &osd_args)?;
+                transcode_video_burn_osd(input_video_file, output_video_file, transcode_args, generator)?;
+            },
+            None => transcode_video(input_video_file, output_video_file, transcode_args)?,
+        }
+    }
+    Ok(())
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -209,6 +259,7 @@ fn main() {
     let command_result = match &cli.command {
         command @ Commands::GenerateOverlayFrames {..} => generate_overlay_frames_command(command),
         command @ Commands::GenerateOverlayVideo {..} => generate_overlay_video_command(command),
+        command @ Commands::TranscodeVideo {..} => transcode_video_command(command),
         Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info_command(osd_file),
     };
 

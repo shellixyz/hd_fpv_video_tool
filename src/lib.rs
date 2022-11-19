@@ -6,3 +6,4 @@ pub mod osd;
 mod create_path;
 pub mod file;
 pub mod image;
+pub mod video;

@@ -3,5 +3,6 @@
 *.srt
 *.png
 *.bak*
+/*.mp4
 /.vscode
 /fonts
