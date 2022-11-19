@@ -105,6 +105,29 @@ enum Commands {
         target_dir: PathBuf,
     },
 
+    /// Generates OSD overlay video
+    ///
+    /// This command generates a transparent video with the OSD frames rendered from the specified WTF.FPV OSD file.
+    /// The generated video can then be used to play an FPV video with OSD without having to burn the OSD into the video.
+    ///
+    /// Fonts are loaded either from the directory specified with the --font-dir option or
+    /// from the directory found in the environment variable FONTS_DIR or
+    /// if neither of these are available it falls back to the `fonts` directory inside the current directory
+    GenerateOverlayVideo {
+
+        #[clap(flatten)]
+        scaling_args: ScalingArgs,
+
+        #[clap(flatten)]
+        font_options: FontOptions,
+
+        #[clap(flatten)]
+        osd_args: OSDArgs,
+
+        /// path of the video file to generate
+        video_file: PathBuf,
+    },
+
 }
 
 #[derive(Debug, Error, From, Display)]
@@ -170,6 +193,14 @@ fn generate_overlay_frames_command(command: &Commands) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()> {
+    if let Commands::GenerateOverlayVideo { scaling_args, font_options, osd_args, video_file: video_file_path } = command {
+        let mut overlay_generator = prepare_overlay_generator(scaling_args, font_options, osd_args)?;
+        overlay_generator.generate_overlay_video(video_file_path, osd_args.frame_shift)?;
+    }
+    Ok(())
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -177,6 +208,7 @@ fn main() {
 
     let command_result = match &cli.command {
         command @ Commands::GenerateOverlayFrames {..} => generate_overlay_frames_command(command),
+        command @ Commands::GenerateOverlayVideo {..} => generate_overlay_video_command(command),
         Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info_command(osd_file),
     };
 

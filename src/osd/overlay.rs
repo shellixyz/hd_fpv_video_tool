@@ -5,13 +5,20 @@ use std::{
         Path,
         PathBuf
     },
-    io::Error as IOError,
+    io::{
+        Error as IOError,
+        Write
+    },
+    process::{
+        Command,
+        Stdio
+    },
 };
 
 use derive_more::From;
 use thiserror::Error;
 use image::{ImageBuffer, Rgba, GenericImage};
-use indicatif::{ProgressStyle, ParallelProgressIterator};
+use indicatif::{ProgressStyle, ParallelProgressIterator, ProgressIterator};
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
 pub mod resolution;
@@ -94,6 +101,21 @@ pub enum SaveFramesToDirError {
     HardLinkError(HardLinkError),
     #[error("target directory exists")]
     TargetDirectoryExists,
+}
+
+#[derive(Debug, Error, From)]
+pub enum GenerateOverlayVideoError {
+    #[error(transparent)]
+    FrameReadError(ReadError),
+    #[error("target video file exists")]
+    TargetVideoFileExists,
+    #[error("failed spawning ffmpeg process: {0}")]
+    #[from(ignore)]
+    FailedSpawningFFMpegProcess(IOError),
+    #[error("failed talking to ffmpeg process: {0}")]
+    FailedTalkingToFFMpegProcess(IOError),
+    #[error("ffmpeg process exited with error: {0}")]
+    FFMpegExitedWithError(i32),
 }
 
 pub struct Generator {
@@ -273,6 +295,70 @@ impl Generator {
         Self::link_missing_frames(&path, &frame_indices)?;
 
         log::info!("overlay frames generation completed: {} frames", frame_count);
+        Ok(())
+    }
+
+    pub fn generate_overlay_video<P: AsRef<Path>>(&mut self, output_video_path: P, frame_shift: i32) -> Result<(), GenerateOverlayVideoError> {
+        if output_video_path.as_ref().exists() {
+            return Err(GenerateOverlayVideoError::TargetVideoFileExists);
+        }
+        log::info!("generating overlay video: {}", output_video_path.as_ref().to_string_lossy());
+
+        let mut ffmpeg_command = Command::new("ffmpeg");
+        let ffmpeg_command_with_args =
+            ffmpeg_command
+            .args([
+                "-f", "rawvideo",
+                "-pix_fmt", "rgba",
+                "-video_size", self.overlay_resolution.to_string().as_str(),
+                "-r", "60",
+                "-i", "pipe:0",
+                "-c:v", "libvpx-vp9",
+                "-crf", "40",
+                "-b:v", "0",
+                "-y",
+                "-pix_fmt", "yuva420p",
+            ])
+            .arg(output_video_path.as_ref().as_os_str());
+
+        let mut ffmpeg_child = ffmpeg_command_with_args
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(GenerateOverlayVideoError::FailedSpawningFFMpegProcess)?;
+        let mut ffmpeg_stdin = ffmpeg_child.stdin.take().expect("failed to open ffmpeg stdin");
+
+        let transparent_frame_image = self.transparent_frame_overlay();
+
+        let frame_count = self.reader.last_frame_frame_index()?;
+        let progress_style = ProgressStyle::with_template("{wide_bar} {percent:>3}% [ETA {eta:>3}]").unwrap();
+        let mut prev_frame_image = transparent_frame_image;
+        let mut current_frame = self.reader.read_frame()?.unwrap();
+        for frame_index in (0..frame_count).progress_with_style(progress_style) {
+            let actual_frame_index = (frame_index as i32 + frame_shift) as u32;
+            log::debug!("{} -> {}", &frame_index, &actual_frame_index);
+            debug_assert!(frame_index <= *current_frame.index());
+            if frame_index == *current_frame.index() {
+                let frame_image = self.draw_frame_overlay(&current_frame).unwrap();
+                ffmpeg_stdin.write_all(frame_image.as_raw())?;
+                prev_frame_image = frame_image;
+                if frame_index < frame_count - 1 {
+                    current_frame = self.reader.read_frame()?.unwrap();
+                }
+            } else {
+                ffmpeg_stdin.write_all(prev_frame_image.as_raw())?;
+            }
+        };
+
+        drop(ffmpeg_stdin);
+
+        let ffmpeg_result = ffmpeg_child.wait()?;
+        if !ffmpeg_result.success() {
+            return Err(GenerateOverlayVideoError::FFMpegExitedWithError(ffmpeg_result.code().unwrap()))
+        }
+
+        log::info!("overlay video generation completed: {} frames", frame_count);
         Ok(())
     }
 
