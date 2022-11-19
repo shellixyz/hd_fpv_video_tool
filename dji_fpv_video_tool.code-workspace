@@ -4,5 +4,22 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"cSpell.words": [
+			"ardu",
+			"Ardupilot",
+			"Betaflight",
+			"dirpath",
+			"DJIOSD",
+			"getset",
+			"horiz",
+			"INAV",
+			"indicatif",
+			"libvpx",
+			"MSPOSD",
+			"rawvideo",
+			"thiserror",
+			"yuva"
+		]
+	}
 }
