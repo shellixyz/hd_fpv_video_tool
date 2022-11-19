@@ -7,7 +7,7 @@ use hd_fpv_osd_font_tool::{
     dimensions::Dimensions as GenericDimensions,
 };
 
-use super::frame_overlay::{
+use super::overlay::resolution::{
     VideoResolution,
     Resolution as FrameOverlayResolution
 };

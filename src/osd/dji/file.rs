@@ -22,10 +22,10 @@ use hd_fpv_osd_font_tool::prelude::*;
 use crate::{
     osd::{
         dji::InvalidDimensionsError,
-        frame_overlay::{
+        overlay::{
             DrawFrameOverlayError,
             Generator as FrameOverlayGenerator,
-            Scaling
+            scaling::Scaling,
         },
     },
     file::{

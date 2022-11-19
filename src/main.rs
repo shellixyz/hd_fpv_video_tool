@@ -21,12 +21,14 @@ use dji_fpv_video_tool::{
                 Reader as OSDFileReader,
             },
         },
-        frame_overlay::{
+        overlay::{
             DrawFrameOverlayError,
             Generator as OverlayGenerator,
             SaveFramesToDirError,
-            Scaling,
-            ScalingArgs,
+            scaling::{
+                Scaling,
+                ScalingArgs,
+            },
         },
     },
     log_level::LogLevel
