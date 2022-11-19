@@ -25,7 +25,6 @@ use crate::{
         frame_overlay::{
             DrawFrameOverlayError,
             Generator as FrameOverlayGenerator,
-            TargetResolution,
             Scaling
         },
     },
@@ -325,20 +324,35 @@ impl Reader {
         Ok(())
     }
 
-    pub fn max_used_tile_index(&mut self) -> Result<TileIndex, ReadError> {
+    fn keep_position_do<F, X, E>(&mut self, f: F) -> Result<X, E>
+    where F: FnOnce(&mut Self) -> Result<X, E>
+    {
         let starting_position = self.file.pos();
-        self.rewind()?;
-        let max = self.frames()?.into_iter().flat_map(|frame| frame.tile_indices.0).max().unwrap();
-        self.file.seek(SeekFrom::Start(starting_position))?;
-        Ok(max)
+        let return_value = f(self);
+        self.file.seek(SeekFrom::Start(starting_position)).unwrap();
+        return_value
+    }
+
+    pub fn last_frame_frame_index(&mut self) -> Result<u32, ReadError> {
+        self.keep_position_do(|reader| {
+            reader.rewind()?;
+            Ok(*reader.frames()?.last().unwrap().index())
+        })
+    }
+
+    pub fn max_used_tile_index(&mut self) -> Result<TileIndex, ReadError> {
+        self.keep_position_do(|reader| {
+            reader.rewind()?;
+            Ok(reader.frames()?.into_iter().flat_map(|frame| frame.tile_indices.0).max().unwrap())
+        })
     }
 
     pub fn iter(&mut self) -> Iter {
         self.into_iter()
     }
 
-    pub fn into_frame_overlay_generator(self, font_dir: &FontDir, font_ident: &Option<Option<&str>>, target_resolution: TargetResolution, scale: Scaling) -> Result<FrameOverlayGenerator, DrawFrameOverlayError> {
-        FrameOverlayGenerator::new(self, font_dir, font_ident, target_resolution, scale)
+    pub fn into_frame_overlay_generator(self, font_dir: &FontDir, font_ident: &Option<Option<&str>>, scale: Scaling) -> Result<FrameOverlayGenerator, DrawFrameOverlayError> {
+        FrameOverlayGenerator::new(self, font_dir, font_ident, scale)
     }
 
 }

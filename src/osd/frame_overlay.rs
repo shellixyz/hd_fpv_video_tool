@@ -6,11 +6,15 @@ use std::{
         PathBuf
     },
     io::Error as IOError,
+    fmt::Display,
 };
 
+use clap::Args;
 use derive_more::From;
 use getset::Getters;
 use regex::Regex;
+use strum::EnumIter;
+use strum::IntoEnumIterator;
 use thiserror::Error;
 use image::{ImageBuffer, Rgba, GenericImage};
 use indicatif::{ProgressStyle, ParallelProgressIterator};
@@ -112,11 +116,15 @@ pub enum SaveFramesToDirError {
 
 #[derive(Debug, Clone, Copy)]
 pub enum Scaling {
-    No,
+    No {
+        target_resolution: Option<TargetResolution>,
+    },
     Yes {
+        target_resolution: TargetResolution,
         min_margins: Margins,
     },
     Auto {
+        target_resolution: TargetResolution,
         min_margins: Margins,
         min_resolution: Resolution,
     }
@@ -129,26 +137,65 @@ pub enum ScalingArgsError {
     #[error("invalid minimum coverage percentage value: {0}")]
     InvalidMinCoveragePercent(u8),
     #[error("scaling and no-scaling arguments are mutually exclusive")]
-    IncompatibleArguments
+    IncompatibleArguments,
+    #[error("need target video resolution when scaling requested")]
+    NeedTargetVideoResolution,
+    #[error(transparent)]
+    InvalidResolutionFormat(InvalidTargetResolutionError)
+}
+
+#[derive(Args)]
+pub struct ScalingArgs {
+
+    // TODO: try to generate list of valid values at run time so that it is always in sync with the TargetResolution enum
+    /// valid values are 720p, 720p4:3, 1080p, 1080p4:3 or a custom resolution in the format <width>x<height>
+    #[clap(short = 'r', long, value_parser = target_resolution_parser)]
+    target_resolution: Option<TargetResolution>,
+
+    /// force using scaling, default is automatic
+    #[clap(short, long, value_parser)]
+    scaling: bool,
+
+    /// force disable scaling, default is automatic
+    #[clap(short, long, value_parser)]
+    no_scaling: bool,
+
+    /// minimum margins to decide whether scaling should be used and how much to scale
+    #[clap(long, value_parser, value_name = "horizontal:vertical", default_value = "20:20")]
+    min_margins: String,
+
+    /// minimum percentage of OSD coverage under which scaling will be used if --scaling/--no-scaling options are not provided
+    #[clap(long, value_parser = clap::value_parser!(u8).range(1..=100), value_name = "percent", default_value = "90")]
+    min_coverage: u8,
+}
+
+fn target_resolution_parser(target_resolution_str: &str) -> Result<TargetResolution, InvalidTargetResolutionError> {
+    TargetResolution::try_from(target_resolution_str)
 }
 
 impl Scaling {
-    pub fn try_from(scaling: bool, no_scaling: bool, min_margins: &str, min_coverage_percent: u8, target_video_resolution: TargetResolution) -> Result<Self, ScalingArgsError> {
-        if min_coverage_percent > 100 {
-            return Err(ScalingArgsError::InvalidMinCoveragePercent(min_coverage_percent))
-        }
-        let min_margins = Margins::try_from(min_margins)?;
-        Ok(match (scaling, no_scaling) {
+    pub fn try_from(args: &ScalingArgs) -> Result<Self, ScalingArgsError> {
+        let min_margins = Margins::try_from(args.min_margins.as_str())?;
+        Ok(match (args.scaling, args.no_scaling) {
             (true, true) => return Err(ScalingArgsError::IncompatibleArguments),
-            (true, false) => Scaling::Yes { min_margins },
-            (false, true) => Scaling::No,
+            (true, false) => {
+                // let target_resolution_str = args.target_resolution.ok_or(ScalingArgsError::NeedTargetVideoResolution)?;
+                // let target_resolution = TargetResolution::try_from(target_resolution_str.as_str())?;
+                let target_resolution = args.target_resolution.ok_or(ScalingArgsError::NeedTargetVideoResolution)?;
+                Scaling::Yes { target_resolution, min_margins }
+            },
+            (false, true) => Scaling::No { target_resolution: args.target_resolution },
             (false, false) => {
-                let min_coverage = min_coverage_percent as f64 / 100.0;
-                let min_resolution = Resolution::new(
-                    (target_video_resolution.dimensions().width as f64 * min_coverage) as u32,
-                    (target_video_resolution.dimensions().height as f64 * min_coverage) as u32
-                );
-                Scaling::Auto { min_margins, min_resolution }
+                if let Some(target_resolution) = args.target_resolution {
+                    let min_coverage = args.min_coverage as f64 / 100.0;
+                    let min_resolution = Resolution::new(
+                        (target_resolution.dimensions().width as f64 * min_coverage) as u32,
+                        (target_resolution.dimensions().height as f64 * min_coverage) as u32
+                    );
+                    Scaling::Auto { target_resolution, min_margins, min_resolution }
+                } else {
+                    Scaling::No { target_resolution: args.target_resolution }
+                }
             },
         })
     }
@@ -183,12 +230,48 @@ impl TryFrom<&str> for Margins {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum TargetResolution {
+#[derive(Debug, Clone, Copy, EnumIter)]
+pub enum StandardResolution {
     Tr720p,
     Tr720p4By3,
     Tr1080p,
     Tr1080p4by3,
+}
+
+impl Display for StandardResolution {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use StandardResolution::*;
+        let value_str = match self {
+             Tr720p => "720p",
+             Tr720p4By3 => "720p4:3",
+             Tr1080p => "1080p",
+             Tr1080p4by3 => "1080p4:3",
+        };
+        f.write_str(value_str)
+    }
+}
+
+impl StandardResolution {
+    pub fn list() -> String {
+        Self::iter().map(|std_res|
+            std_res.to_string()
+        ).collect::<Vec<_>>().join(", ")
+    }
+
+    pub fn dimensions(&self) -> VideoResolution {
+        use StandardResolution::*;
+        match self {
+            Tr720p => VideoResolution::new(1280, 720),
+            Tr720p4By3 => VideoResolution::new(960, 720),
+            Tr1080p => VideoResolution::new(1920, 1080),
+            Tr1080p4by3 => VideoResolution::new(1440, 1080),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum TargetResolution {
+    Standard(StandardResolution),
     Custom(VideoResolution),
 }
 
@@ -196,29 +279,33 @@ impl TargetResolution {
     pub fn dimensions(&self) -> VideoResolution {
         use TargetResolution::*;
         match self {
-            Tr720p => VideoResolution::new(1280, 720),
-            Tr720p4By3 => VideoResolution::new(960, 720),
-            Tr1080p => VideoResolution::new(1920, 1080),
-            Tr1080p4by3 => VideoResolution::new(1440, 1080),
+            Standard(std_res) => std_res.dimensions(),
             Custom(resolution) => *resolution,
         }
+    }
+
+    pub fn valid_list() -> String {
+        [StandardResolution::list(), "<width>x<height>".to_owned()].join(", ")
     }
 }
 
 #[derive(Debug, Error)]
-#[error("invalid resolution format: {0}")]
-pub struct InvalidResolutionFormatError(String);
+#[error("invalid target resolution `{given}`, valid resolutions are: {valid}")]
+pub struct InvalidTargetResolutionError {
+    given: String,
+    valid: String
+}
 
 impl TryFrom<&str> for TargetResolution {
-    type Error = InvalidResolutionFormatError;
+    type Error = InvalidTargetResolutionError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         use TargetResolution::*;
         let resolution = match value {
-            "720p" => Tr720p,
-            "720p4:3" => Tr1080p4by3,
-            "1080p" => Tr1080p,
-            "1080p4:3" => Tr1080p4by3,
+            "720p" => Standard(StandardResolution::Tr720p),
+            "720p4:3" => Standard(StandardResolution::Tr1080p4by3),
+            "1080p" => Standard(StandardResolution::Tr1080p),
+            "1080p4:3" => Standard(StandardResolution::Tr1080p4by3),
             custom_res_str => {
                 lazy_static! {
                     static ref RES_RE: Regex = Regex::new(r"\A(?P<width>\d{1,5})x(?P<height>\d{1,5})\z").unwrap();
@@ -229,7 +316,11 @@ impl TryFrom<&str> for TargetResolution {
                         let height = captures.name("height").unwrap().as_str().parse().unwrap();
                         Custom(VideoResolution::new(width, height))
                     },
-                    None => return Err(InvalidResolutionFormatError(custom_res_str.to_owned())),
+                    None =>
+                        return Err(InvalidTargetResolutionError {
+                            given: custom_res_str.to_owned(),
+                            valid: Self::valid_list()
+                        }),
                 }
             }
         };
@@ -245,51 +336,74 @@ pub struct Generator {
 
 impl Generator {
 
-    fn best_settings_for_requested_scaling(osd_kind: DJIOSDKind, target_resolution: TargetResolution, scaling: &Scaling) -> Result<(Resolution, tile::Kind, Option<TileDimensions>), DrawFrameOverlayError> {
-        Ok(
-            match *scaling {
-                Scaling::No => {
-                    let tile_kind = osd_kind.best_kind_of_tiles_to_use_without_scaling(target_resolution.dimensions()).map_err(|error| {
-                        let VideoResolutionTooSmallError { osd_kind, video_resolution } = error;
-                        DrawFrameOverlayError::VideoResolutionTooSmallError { osd_kind, video_resolution }
-                    })?;
-                    (osd_kind.dimensions_pixels_for_tile_kind(tile_kind), tile_kind, None)
-                },
-                Scaling::Yes { min_margins } => {
-                    let max_resolution = VideoResolution::new(
-                        target_resolution.dimensions().width - 2 * min_margins.horizontal,
-                        target_resolution.dimensions().height - 2 * min_margins.vertical,
-                    );
-                    let (tile_kind, tile_dimensions, overlay_dimensions) = osd_kind.best_kind_of_tiles_to_use_with_scaling(max_resolution);
-                    (overlay_dimensions, tile_kind, Some(tile_dimensions))
-                },
-                Scaling::Auto { min_margins, min_resolution } => {
-                    let (overlay_resolution, tile_kind, tile_scaling) =
-                        match Self::best_settings_for_requested_scaling(osd_kind, target_resolution, &Scaling::No) {
-                            Ok(values) => {
-                                let (overlay_dimensions, _, _) = values;
-                                let (margin_width, margin_height) = utils::margins(target_resolution.dimensions(), overlay_dimensions);
-                                let min_margins_condition_met = margin_width >= min_margins.horizontal as i32 && margin_height >= min_margins.vertical as i32;
-                                let min_dimensions_condition_met = overlay_dimensions.width >= min_resolution.width && overlay_dimensions.height >= min_resolution.height;
-                                if min_margins_condition_met && min_dimensions_condition_met {
-                                    values
-                                } else {
-                                    Self::best_settings_for_requested_scaling(osd_kind, target_resolution, &Scaling::Yes { min_margins })?
-                                }
-                            },
-                            Err(_) => Self::best_settings_for_requested_scaling(osd_kind, target_resolution, &Scaling::Yes { min_margins })?,
-                        };
-                    let tile_scaling_yes_no = match tile_scaling { Some(_) => "yes", None => "no" };
-                    log::info!("calculated best approach: tile kind: {tile_kind} - scaling {tile_scaling_yes_no} - overlay resolution {overlay_resolution}");
-                    (overlay_resolution, tile_kind, tile_scaling)
-                },
-            }
-        )
+    fn best_settings_for_requested_scaling(osd_kind: DJIOSDKind, scaling: &Scaling) -> Result<(Resolution, tile::Kind, Option<TileDimensions>), DrawFrameOverlayError> {
+        Ok(match *scaling {
+
+            Scaling::No { target_resolution } => {
+                match target_resolution {
+
+                    // no scaling requested but target resolution provided: use the tile kind best matching the target resolution
+                    Some(target_resolution) => {
+                        let tile_kind = osd_kind.best_kind_of_tiles_to_use_without_scaling(target_resolution.dimensions()).map_err(|error| {
+                            let VideoResolutionTooSmallError { osd_kind, video_resolution } = error;
+                            DrawFrameOverlayError::VideoResolutionTooSmallError { osd_kind, video_resolution }
+                        })?;
+                        (osd_kind.dimensions_pixels_for_tile_kind(tile_kind), tile_kind, None)
+                    },
+
+                    // no target resolution specified so use the native tile kind for the OSD kind
+                    None => (osd_kind.dimensions_pixels(), osd_kind.tile_kind(), None)
+
+                }
+            },
+
+            Scaling::Yes { min_margins, target_resolution } => {
+                let max_resolution = VideoResolution::new(
+                    target_resolution.dimensions().width - 2 * min_margins.horizontal,
+                    target_resolution.dimensions().height - 2 * min_margins.vertical,
+                );
+                let (tile_kind, tile_dimensions, overlay_dimensions) = osd_kind.best_kind_of_tiles_to_use_with_scaling(max_resolution);
+                (overlay_dimensions, tile_kind, Some(tile_dimensions))
+            },
+
+            Scaling::Auto { min_margins, min_resolution, target_resolution } => {
+                let (overlay_resolution, tile_kind, tile_scaling) =
+
+                    // check results without scaling
+                    match Self::best_settings_for_requested_scaling(osd_kind, &Scaling::No { target_resolution: Some(target_resolution) }) {
+
+                        // no scaling is possible
+                        Ok(values) => {
+                            let (overlay_dimensions, _, _) = values;
+                            let (margin_width, margin_height) = utils::margins(target_resolution.dimensions(), overlay_dimensions);
+                            let min_margins_condition_met = margin_width >= min_margins.horizontal as i32 && margin_height >= min_margins.vertical as i32;
+                            let min_dimensions_condition_met = overlay_dimensions.width >= min_resolution.width && overlay_dimensions.height >= min_resolution.height;
+
+                            // check whether the result would match the user specified conditions
+                            if min_margins_condition_met && min_dimensions_condition_met {
+                                values
+                            } else {
+                                // else return parameters with scaling enabled
+                                Self::best_settings_for_requested_scaling(osd_kind, &Scaling::Yes { target_resolution, min_margins })?
+                            }
+
+                        },
+
+                        // no scaling does not work, return parameters with scaling enabled
+                        Err(_) => Self::best_settings_for_requested_scaling(osd_kind, &Scaling::Yes { target_resolution, min_margins })?,
+                    };
+
+                let tile_scaling_yes_no = match tile_scaling { Some(_) => "yes", None => "no" };
+                log::info!("calculated best approach: tile kind: {tile_kind} - scaling {tile_scaling_yes_no} - overlay resolution {overlay_resolution}");
+
+                (overlay_resolution, tile_kind, tile_scaling)
+            },
+        })
     }
 
-    pub fn new(mut reader: OSDFileReader, font_dir: &FontDir, font_ident: &Option<Option<&str>>, target_resolution: TargetResolution, scaling: Scaling) -> Result<Self, DrawFrameOverlayError> {
+    pub fn new(mut reader: OSDFileReader, font_dir: &FontDir, font_ident: &Option<Option<&str>>, scaling: Scaling) -> Result<Self, DrawFrameOverlayError> {
         let osd_kind = reader.osd_kind();
-        let (overlay_resolution, tile_kind, tile_scaling) = Self::best_settings_for_requested_scaling(osd_kind, target_resolution, &scaling)?;
+        let (overlay_resolution, tile_kind, tile_scaling) = Self::best_settings_for_requested_scaling(osd_kind, &scaling)?;
 
         let tiles = match font_ident {
             Some(font_ident) => font_dir.load_with_fallback(tile_kind, font_ident, reader.max_used_tile_index().unwrap())?,
@@ -301,14 +415,16 @@ impl Generator {
             None => tiles.into_iter().map(|tile| tile.image().clone()).collect(),
         };
 
-        let overlay_res_scale =
-            (
-                (overlay_resolution.width as f64 / target_resolution.dimensions().width as f64) +
-                (overlay_resolution.height as f64 / target_resolution.dimensions().height as f64)
-            ) / 2.0;
+        if let Scaling::No { target_resolution: Some(target_resolution) } = scaling {
+            let overlay_res_scale =
+                (
+                    (overlay_resolution.width as f64 / target_resolution.dimensions().width as f64) +
+                    (overlay_resolution.height as f64 / target_resolution.dimensions().height as f64)
+                ) / 2.0;
 
-        if tile_scaling.is_none() && overlay_res_scale < 0.8 {
-            log::warn!("without scaling the overlay resolution is much smaller than the target video resolution, consider using scaling for better results");
+            if overlay_res_scale < 0.8 {
+                log::warn!("without scaling the overlay resolution is much smaller than the target video resolution, consider using scaling for better results");
+            }
         }
 
         Ok(Self { reader, tile_images, overlay_resolution })

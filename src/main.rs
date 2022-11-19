@@ -7,7 +7,7 @@ use std::{
     path::Path
 };
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, Args};
 use derive_more::{From, Display, Error};
 
 use hd_fpv_osd_font_tool::prelude::*;
@@ -23,9 +23,10 @@ use dji_fpv_video_tool::{
         },
         frame_overlay::{
             DrawFrameOverlayError,
+            Generator as OverlayGenerator,
             SaveFramesToDirError,
-            TargetResolution,
             Scaling,
+            ScalingArgs,
         },
     },
     log_level::LogLevel
@@ -48,6 +49,27 @@ struct Cli {
 
 }
 
+#[derive(Args)]
+struct FontOptions {
+    /// path to the directory containing font sets
+    #[clap(short, long, value_parser, value_name = "dirpath")]
+    font_dir: Option<PathBuf>,
+
+    /// force using this font identifier when loading fonts, default is automatic
+    #[clap(short = 'i', long, value_parser, value_name = "ident")]
+    font_ident: Option<String>,
+}
+
+#[derive(Args)]
+struct OSDArgs {
+    /// shift frames to sync OSD with video
+    #[clap(short = 'o', long, value_parser, value_name = "frames", default_value_t = 0)]
+    frame_shift: i32,
+
+    /// path to FPV.WTF .osd file
+    osd_file: PathBuf,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Displays information about the specified OSD file
@@ -57,47 +79,30 @@ enum Commands {
 
     /// Generates OSD overlay frames
     ///
+    /// This command generates numbered OSD frame images from the specified WTF.FPV OSD file and writes
+    /// them into the specified directory.
+    ///
+    /// Use this command when you want to generate OSD frame images to check what the OSD looks like
+    /// or when you want to manually burn the OSD onto a video.
+    ///
     /// Fonts are loaded either from the directory specified with the --font-dir option or
     /// from the directory found in the environment variable FONTS_DIR or
     /// if neither of these are available it falls back to the `fonts` directory inside the current directory
-    GenerateOverlay {
-        /// force using scaling, default is automatic
-        #[clap(short, long, value_parser)]
-        scaling: bool,
+    GenerateOverlayFrames {
 
-        /// force disable scaling, default is automatic
-        #[clap(short, long, value_parser)]
-        no_scaling: bool,
+        #[clap(flatten)]
+        scaling_args: ScalingArgs,
 
-        /// minimum margins to decide whether scaling should be used and how much to scale
-        #[clap(long, value_parser, value_name = "horizontal:vertical", default_value = "20:20")]
-        min_margins: String,
+        #[clap(flatten)]
+        font_options: FontOptions,
 
-        /// minimum percentage of OSD coverage under which scaling will be used if --scaling/--no-scaling options are not provided
-        #[clap(long, value_parser = clap::value_parser!(u8).range(1..=100), value_name = "percent", default_value = "90")]
-        min_coverage: u8,
-
-        /// path to the directory containing font sets
-        #[clap(short, long, value_parser, value_name = "dirpath")]
-        font_dir: Option<String>,
-
-        /// force using this font identifier when loading fonts, default is automatic
-        #[clap(short = 'i', long, value_parser, value_name = "ident")]
-        font_ident: Option<String>,
-
-        /// shift frames to sync OSD with video
-        #[clap(short = 'o', long, value_parser, value_name = "frames", default_value_t = 0)]
-        frame_shift: i32,
-
-        /// path to FPV.WTF .osd file
-        osd_file: PathBuf,
-
-        /// valid values are 720p, 720p4:3, 1080p, 1080p4:3 or a custom resolution in the format <width>x<height>
-        target_video_resolution: String,
+        #[clap(flatten)]
+        osd_args: OSDArgs,
 
         /// directory in which the OSD frames will be written
         target_dir: PathBuf,
-    }
+    },
+
 }
 
 #[derive(Debug, Error, From, Display)]
@@ -108,7 +113,7 @@ enum GenerateOverlayError {
     SaveFramesToDir(SaveFramesToDirError),
 }
 
-fn display_osd_file_info<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
+fn display_osd_file_info_command<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
     let mut file = OSDFileReader::open(&path)?;
     let frames = file.frames()?;
     let header = file.header();
@@ -142,23 +147,23 @@ fn transform_font_ident<'a>(font_ident: &'a Option<&str>) -> Option<Option<&'a s
     }
 }
 
-fn generate_overlay(command: &Commands) -> anyhow::Result<()> {
-    if let Commands::GenerateOverlay {
-            scaling, no_scaling, min_margins, font_dir, osd_file, target_video_resolution,
-            target_dir, min_coverage, font_ident, frame_shift: frame_offset
-        } = command {
-            let osd_file = OSDFileReader::open(osd_file)?;
-            let target_video_resolution = TargetResolution::try_from(target_video_resolution.as_str())?;
-            let scaling = Scaling::try_from(*scaling, *no_scaling, min_margins, *min_coverage, target_video_resolution)?;
-            let font_dir_path = font_dir.clone().unwrap_or_else(|| std::env::var(FONT_DIR_ENV_VAR_NAME).unwrap_or_else(|_| DEFAULT_FONT_DIR.to_owned()));
-            let font_dir = FontDir::new(font_dir_path);
-            let mut overlay_generator = osd_file.into_frame_overlay_generator(
-                &font_dir,
-                &transform_font_ident(&font_ident.as_deref()),
-                target_video_resolution,
-                scaling
-            )?;
-            overlay_generator.save_frames_to_dir(target_dir, *frame_offset)?;
+fn prepare_overlay_generator(scaling_args: &ScalingArgs, font_options: &FontOptions, osd_args: &OSDArgs) -> anyhow::Result<OverlayGenerator> {
+    let scaling = Scaling::try_from(scaling_args)?;
+    let osd_file = OSDFileReader::open(&osd_args.osd_file)?;
+    let font_dir_path = font_options.font_dir.clone().unwrap_or_else(|| PathBuf::from(std::env::var(FONT_DIR_ENV_VAR_NAME).unwrap_or_else(|_| DEFAULT_FONT_DIR.to_owned())));
+    let font_dir = FontDir::new(&font_dir_path);
+    let overlay_generator = osd_file.into_frame_overlay_generator(
+        &font_dir,
+        &transform_font_ident(&font_options.font_ident.as_deref()),
+        scaling
+    )?;
+    Ok(overlay_generator)
+}
+
+fn generate_overlay_frames_command(command: &Commands) -> anyhow::Result<()> {
+    if let Commands::GenerateOverlayFrames { scaling_args, font_options, osd_args, target_dir, } = command {
+        let mut overlay_generator = prepare_overlay_generator(scaling_args, font_options, osd_args)?;
+        overlay_generator.save_frames_to_dir(target_dir, osd_args.frame_shift)?;
     }
     Ok(())
 }
@@ -169,8 +174,8 @@ fn main() {
     pretty_env_logger::formatted_builder().parse_filters(cli.log_level.to_string().as_str()).init();
 
     let command_result = match &cli.command {
-        command @ Commands::GenerateOverlay {..} => generate_overlay(command),
-        Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info(osd_file),
+        command @ Commands::GenerateOverlayFrames {..} => generate_overlay_frames_command(command),
+        Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info_command(osd_file),
     };
 
     if let Err(error) = command_result {

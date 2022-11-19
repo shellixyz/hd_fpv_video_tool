@@ -80,6 +80,10 @@ impl Kind {
         self.dimensions_tiles() * tile_dimensions
     }
 
+    pub fn dimensions_pixels(&self) -> FrameOverlayResolution {
+        self.dimensions_tiles() * self.tile_kind().dimensions()
+    }
+
     /// Returns the best kind of tile to use without rescaling tiles so that the OSD fills as much as the screen as possible
     pub fn best_kind_of_tiles_to_use_without_scaling(&self, video_resolution: VideoResolution) -> Result<tile::Kind, VideoResolutionTooSmallError> {
         let avg_margins = tile::Kind::iter().flat_map(|tile_kind| {
