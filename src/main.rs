@@ -35,7 +35,7 @@ use dji_fpv_video_tool::{
     video::{
         transcode_video,
         transcode_video_burn_osd,
-        TranscodeArgs
+        TranscodeArgs, fix_dji_air_unit_video_file_audio
     },
 };
 
@@ -164,6 +164,16 @@ enum Commands {
         output_video_file: PathBuf,
     },
 
+    /// Fixes audio sync and volume from DJI Air Unit video
+    FixAudio {
+
+        /// input video file path
+        input_video_file: PathBuf,
+
+        /// output video file path
+        output_video_file: PathBuf,
+    },
+
 }
 
 #[derive(Debug, Error, From, Display)]
@@ -237,8 +247,17 @@ fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[derive(Debug, thiserror::Error)]
+enum TranscodeVideoArgsError {
+    #[error("start timestamp >= end timestamp")]
+    StartGtEnd
+}
+
 fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
     if let Commands::TranscodeVideo { scaling_args, font_options, frame_shift, osd_file, input_video_file, output_video_file, transcode_args } = command {
+        if transcode_args.start() >= transcode_args.end() {
+            Err(TranscodeVideoArgsError::StartGtEnd)?
+        }
         match osd_file {
             Some(osd_file) => {
                 let osd_args = OSDArgs { frame_shift: *frame_shift, osd_file: osd_file.clone() };
@@ -248,6 +267,11 @@ fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
             None => transcode_video(input_video_file, output_video_file, transcode_args)?,
         }
     }
+    Ok(())
+}
+
+fn fix_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: Q) -> anyhow::Result<()> {
+    fix_dji_air_unit_video_file_audio(input_video_file, output_video_file)?;
     Ok(())
 }
 
@@ -261,6 +285,7 @@ fn main() {
         command @ Commands::GenerateOverlayVideo {..} => generate_overlay_video_command(command),
         command @ Commands::TranscodeVideo {..} => transcode_video_command(command),
         Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info_command(osd_file),
+        Commands::FixAudio { input_video_file, output_video_file } => fix_audio_command(input_video_file, output_video_file),
     };
 
     if let Err(error) = command_result {
