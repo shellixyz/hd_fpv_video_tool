@@ -33,9 +33,11 @@ use dji_fpv_video_tool::{
     },
     log_level::LogLevel,
     video::{
+        fix_dji_air_unit_video_file_audio,
         transcode_video,
         transcode_video_burn_osd,
-        TranscodeArgs, fix_dji_air_unit_video_file_audio
+        TranscodeArgs,
+        AudioFixType as VideoAudioFixType,
     },
 };
 
@@ -170,7 +172,13 @@ enum Commands {
     /// as the input video with the same file name with suffix `_fixed_audio`
     FixVideoAudio {
 
-        // TODO: add --volume and --sync options
+        /// fix audio sync only
+        #[clap(short, long, value_parser)]
+        sync: bool,
+
+        /// fix audio volume only
+        #[clap(short, long, value_parser)]
+        volume: bool,
 
         /// input video file path
         input_video_file: PathBuf,
@@ -275,8 +283,13 @@ fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn fix_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>) -> anyhow::Result<()> {
-    fix_dji_air_unit_video_file_audio(input_video_file, output_video_file)?;
+fn fix_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>, sync: bool, volume: bool) -> anyhow::Result<()> {
+    let fix_type = match (sync, volume) {
+        (true, true) | (false, false) => VideoAudioFixType::SyncAndVolume,
+        (true, false) => VideoAudioFixType::Sync,
+        (false, true) => VideoAudioFixType::Volume,
+    };
+    fix_dji_air_unit_video_file_audio(input_video_file, output_video_file, fix_type)?;
     Ok(())
 }
 
@@ -290,7 +303,7 @@ fn main() {
         command @ Commands::GenerateOverlayVideo {..} => generate_overlay_video_command(command),
         command @ Commands::TranscodeVideo {..} => transcode_video_command(command),
         Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info_command(osd_file),
-        Commands::FixVideoAudio { input_video_file, output_video_file } => fix_audio_command(input_video_file, output_video_file),
+        Commands::FixVideoAudio { input_video_file, output_video_file, sync, volume } => fix_audio_command(input_video_file, output_video_file, *sync, *volume),
     };
 
     if let Err(error) = command_result {

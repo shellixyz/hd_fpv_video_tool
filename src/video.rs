@@ -224,7 +224,25 @@ pub enum FixVideoFileAudioError {
     InputVideoDoesNotHaveAnAudioStream,
 }
 
-pub fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>) -> Result<(), FixVideoFileAudioError> {
+#[derive(Debug, Clone)]
+pub enum AudioFixType {
+    Sync,
+    Volume,
+    SyncAndVolume,
+}
+
+impl AudioFixType {
+    fn ffmpeg_audio_filter_string(&self) -> String {
+        use AudioFixType::*;
+        match self {
+            Sync => "atempo=1.001480".to_owned(),
+            Volume => "volume=20".to_owned(),
+            SyncAndVolume => [Sync.ffmpeg_audio_filter_string(), Volume.ffmpeg_audio_filter_string()].join(","),
+        }
+    }
+}
+
+pub fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>, fix_type: AudioFixType) -> Result<(), FixVideoFileAudioError> {
 
     if ! input_video_file.as_ref().exists() { return Err(FixVideoFileAudioError::InputVideoFileDoesNotExist); }
 
@@ -259,7 +277,7 @@ pub fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_v
         .arg("-i").arg(input_video_file.as_ref().as_os_str())
         .args([
             "-c:v", "copy",
-            "-filter:a", "atempo=1.001480,volume=20",
+            "-filter:a", fix_type.ffmpeg_audio_filter_string().as_str(),
             "-c:a", "aac",
             "-b:a", "93k",
             "-y"
