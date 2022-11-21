@@ -1,5 +1,5 @@
 
-use std::{path::{Path, PathBuf}, process::{Command, Stdio, ExitStatus, Child}, io::Read};
+use std::{path::{Path, PathBuf}, process::{Command, Stdio, ExitStatus, Child}, io::Read, ffi::OsStr};
 
 use clap::Args;
 use derive_more::From;
@@ -27,6 +27,8 @@ pub enum TranscodeVideoError {
     InputVideoFileDoesNotExist,
     #[error("output video file exists")]
     OutputVideoFileExists,
+    #[error("input file and output file are the same file")]
+    InputAndOutputFileIsTheSame,
     #[error("failed spawning ffmpeg process: {0}")]
     #[from(ignore)]
     FailedSpawningFFMpegProcess(IOError),
@@ -147,6 +149,7 @@ fn frame_count_for_interval(total_frames: u64, frame_rate: Rational, start: &Opt
 pub fn transcode_video<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: Q, args: &TranscodeArgs) -> Result<(), TranscodeVideoError> {
     if ! input_video_file.as_ref().exists() { return Err(TranscodeVideoError::InputVideoFileDoesNotExist); }
     if output_video_file.as_ref().exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
+    if input_video_file.as_ref() == output_video_file.as_ref() { return Err(TranscodeVideoError::InputAndOutputFileIsTheSame) }
     log::info!("transcoding video: {} -> {}", input_video_file.as_ref().to_string_lossy(), output_video_file.as_ref().to_string_lossy());
 
     let (frame_count, frame_rate, _has_audio_stream) = video_probe(&input_video_file)?;
@@ -199,6 +202,14 @@ pub enum FixVideoFileAudioError {
     InputVideoFileDoesNotExist,
     #[error("output video file exists")]
     OutputVideoFileExists,
+    #[error("input file and output file are the same file")]
+    InputAndOutputFileIsTheSame,
+    #[error("input has no file name")]
+    InputHasNoFileName,
+    #[error("input has no extension")]
+    InputHasNoExtension,
+    #[error("output file has a different extension than input")]
+    OutputHasADifferentExtensionThanInput,
     #[error("failed spawning ffmpeg process: {0}")]
     #[from(ignore)]
     FailedSpawningFFMpegProcess(IOError),
@@ -208,10 +219,27 @@ pub enum FixVideoFileAudioError {
     InputVideoDoesNotHaveAnAudioStream,
 }
 
-pub fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: Q) -> Result<(), FixVideoFileAudioError> {
+pub fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>) -> Result<(), FixVideoFileAudioError> {
+
     if ! input_video_file.as_ref().exists() { return Err(FixVideoFileAudioError::InputVideoFileDoesNotExist); }
-    if output_video_file.as_ref().exists() { return Err(FixVideoFileAudioError::OutputVideoFileExists); }
-    log::info!("fixing video file audio: {} -> {}", input_video_file.as_ref().to_string_lossy(), output_video_file.as_ref().to_string_lossy());
+
+    let output_video_file = match output_video_file {
+        Some(output_video_file) => {
+            if input_video_file.as_ref() == output_video_file.as_ref() { return Err(FixVideoFileAudioError::InputAndOutputFileIsTheSame) }
+            if input_video_file.as_ref().extension() != output_video_file.as_ref().extension() { return Err(FixVideoFileAudioError::OutputHasADifferentExtensionThanInput) }
+            output_video_file.as_ref().to_path_buf()
+        },
+        None => {
+            let input_file_name = input_video_file.as_ref().file_name().ok_or(FixVideoFileAudioError::InputHasNoFileName)?;
+            let input_file_extension = input_video_file.as_ref().extension().ok_or(FixVideoFileAudioError::InputHasNoExtension)?;
+            let file_name = [input_file_name, OsStr::new("_fixed_audio")].iter().collect::<PathBuf>().with_extension(input_file_extension);
+            input_video_file.as_ref().with_file_name(file_name)
+        },
+    };
+
+    if output_video_file.exists() { return Err(FixVideoFileAudioError::OutputVideoFileExists); }
+
+    log::info!("fixing video file audio: {} -> {}", input_video_file.as_ref().to_string_lossy(), output_video_file.to_string_lossy());
 
     let (frame_count, _frame_rate, has_audio_stream) = video_probe(&input_video_file)?;
 
@@ -231,7 +259,7 @@ pub fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_v
             "-b:a 93k",
             "-y"
         ])
-        .arg(output_video_file.as_ref().as_os_str());
+        .arg(output_video_file.as_os_str());
 
     let ffmpeg_child = ffmpeg_command_with_args
         .stdin(Stdio::null())

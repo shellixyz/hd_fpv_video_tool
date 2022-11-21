@@ -171,7 +171,7 @@ enum Commands {
         input_video_file: PathBuf,
 
         /// output video file path
-        output_video_file: PathBuf,
+        output_video_file: Option<PathBuf>,
     },
 
 }
@@ -270,7 +270,7 @@ fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn fix_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: Q) -> anyhow::Result<()> {
+fn fix_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>) -> anyhow::Result<()> {
     fix_dji_air_unit_video_file_audio(input_video_file, output_video_file)?;
     Ok(())
 }
