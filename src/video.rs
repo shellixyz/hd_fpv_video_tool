@@ -29,6 +29,8 @@ pub enum TranscodeVideoError {
     OutputVideoFileExists,
     #[error("input file and output file are the same file")]
     InputAndOutputFileIsTheSame,
+    #[error("incompatible arguments")]
+    IncompatibleArguments(String),
     #[error("failed spawning ffmpeg process: {0}")]
     #[from(ignore)]
     FailedSpawningFFMpegProcess(IOError),
@@ -39,9 +41,17 @@ pub enum TranscodeVideoError {
 #[derive(Args, Getters)]
 #[getset(get = "pub")]
 pub struct TranscodeArgs {
-    /// fix DJI AU audio: fix sync + boost volume
+    /// fix DJI AU audio: fix sync + volume
     #[clap(short, long, value_parser)]
     fix_audio: bool,
+
+    /// fix DJI AU audio volume
+    #[clap(short, long, value_parser)]
+    fix_audio_volume: bool,
+
+    /// fix DJI AU audio sync
+    #[clap(short, long, value_parser)]
+    fix_audio_sync: bool,
 
     /// video encoder to use
     #[clap(short, long, value_parser, default_value = "libx265")]
@@ -66,6 +76,18 @@ pub struct TranscodeArgs {
 
 fn timestamp_value_parser(timestamp_str: &str) -> Result<Timestamp, TimestampFormatError> {
     Timestamp::try_from(timestamp_str)
+}
+
+impl TranscodeArgs {
+    pub fn video_audio_fix_type(&self) -> AudioFixType {
+        use AudioFixType::*;
+        match (self.fix_audio, self.fix_audio_sync, self.fix_audio_volume) {
+            (true, _, _) | (false, true, true) => SyncAndVolume,
+            (false, true, false) => Sync,
+            (false, false, true) => Volume,
+            (false, false, false) => None,
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -152,9 +174,14 @@ fn frame_count_for_interval(total_frames: u64, frame_rate: Rational, start: &Opt
 }
 
 pub fn transcode_video<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: Q, args: &TranscodeArgs) -> Result<(), TranscodeVideoError> {
+
     if ! input_video_file.as_ref().exists() { return Err(TranscodeVideoError::InputVideoFileDoesNotExist); }
     if output_video_file.as_ref().exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
     if input_video_file.as_ref() == output_video_file.as_ref() { return Err(TranscodeVideoError::InputAndOutputFileIsTheSame) }
+    if args.start.is_some() && matches!(args.video_audio_fix_type(), AudioFixType::Sync | AudioFixType::SyncAndVolume) {
+        return Err(TranscodeVideoError::IncompatibleArguments("incompatible arguments: cannot fix video audio sync while not starting at the beginning of the file".to_owned()));
+    }
+
     log::info!("transcoding video: {} -> {}", input_video_file.as_ref().to_string_lossy(), output_video_file.as_ref().to_string_lossy());
 
     let (frame_count, frame_rate, _has_audio_stream) = video_probe(&input_video_file)?;
@@ -171,16 +198,21 @@ pub fn transcode_video<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, outp
         ffmpeg_command_with_args.args(["-to", end.to_ffmpeg_position().as_str()]);
     }
 
-    ffmpeg_command_with_args
-        .arg("-i").arg(input_video_file.as_ref().as_os_str())
-        .args([
-            "-c:a", "copy",
-            "-c:v", args.encoder.as_str(),
-            "-crf", args.crf.to_string().as_str(),
-            "-b:v", args.bitrate.as_str(),
-            "-y"
-        ])
-        .arg(output_video_file.as_ref().as_os_str());
+    // input args
+    ffmpeg_command_with_args.arg("-i").arg(input_video_file.as_ref().as_os_str());
+
+    // audio args
+    ffmpeg_command_with_args.args(args.video_audio_fix_type().ffmpeg_audio_args().iter().map(String::as_str).collect::<Vec<_>>());
+
+    // video args
+    ffmpeg_command_with_args.args([
+        "-c:v", args.encoder.as_str(),
+        "-crf", args.crf.to_string().as_str(),
+        "-b:v", args.bitrate.as_str(),
+    ]);
+
+    // output args
+    ffmpeg_command_with_args.arg("-y").arg(output_video_file.as_ref().as_os_str());
 
     let ffmpeg_child = ffmpeg_command_with_args
         .stdin(Stdio::null())
@@ -226,20 +258,36 @@ pub enum FixVideoFileAudioError {
 
 #[derive(Debug, Clone)]
 pub enum AudioFixType {
+    None,
     Sync,
     Volume,
     SyncAndVolume,
 }
 
 impl AudioFixType {
-    fn ffmpeg_audio_filter_string(&self) -> String {
+
+    fn ffmpeg_audio_filter_string(&self) -> Option<String> {
         use AudioFixType::*;
         match self {
-            Sync => "atempo=1.001480".to_owned(),
-            Volume => "volume=20".to_owned(),
-            SyncAndVolume => [Sync.ffmpeg_audio_filter_string(), Volume.ffmpeg_audio_filter_string()].join(","),
+            None => Option::None,
+            Sync => Some("atempo=1.001480".to_owned()),
+            Volume => Some("volume=20".to_owned()),
+            SyncAndVolume => Some([Sync.ffmpeg_audio_filter_string().unwrap(), Volume.ffmpeg_audio_filter_string().unwrap()].join(",")),
         }
     }
+
+    fn ffmpeg_audio_args(&self) -> Vec<String> {
+        use AudioFixType::*;
+        match self {
+            None => vec!["-c:a".to_owned(), "copy".to_owned()],
+            fix_type => vec![
+                "-filter:a".to_owned(), fix_type.ffmpeg_audio_filter_string().unwrap(),
+                "-c:a".to_owned(), "aac".to_owned(),
+                "-b:a".to_owned(), "93k".to_owned(),
+            ]
+        }
+    }
+
 }
 
 pub fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>, fix_type: AudioFixType) -> Result<(), FixVideoFileAudioError> {
@@ -277,7 +325,7 @@ pub fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_v
         .arg("-i").arg(input_video_file.as_ref().as_os_str())
         .args([
             "-c:v", "copy",
-            "-filter:a", fix_type.ffmpeg_audio_filter_string().as_str(),
+            "-filter:a", fix_type.ffmpeg_audio_filter_string().unwrap().as_str(),
             "-c:a", "aac",
             "-b:a", "93k",
             "-y"
