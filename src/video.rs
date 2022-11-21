@@ -1,5 +1,5 @@
 
-use std::{path::{Path, PathBuf}, process::{Command, Stdio, ExitStatus, Child}, io::Read, ffi::OsStr};
+use std::{path::{Path, PathBuf}, process::{Command, Stdio, ExitStatus, Child}, io::Read};
 
 use clap::Args;
 use derive_more::From;
@@ -43,19 +43,24 @@ pub struct TranscodeArgs {
     #[clap(short, long, value_parser)]
     fix_audio: bool,
 
+    /// video encoder to use
     #[clap(short, long, value_parser, default_value = "libx265")]
     encoder: String,
 
+    /// max bitrate
     #[clap(short, long, value_parser, default_value = "25M")]
     bitrate: String,
 
+    /// constant quality setting
     #[clap(short, long, value_parser, default_value_t = 30)]
     crf: u8,
 
-    #[clap(long, value_parser = timestamp_value_parser)]
+    /// start timestamp
+    #[clap(long, value_parser = timestamp_value_parser, value_name = "[HH:]MM:SS")]
     start: Option<Timestamp>,
 
-    #[clap(long, value_parser = timestamp_value_parser)]
+    /// end timestamp
+    #[clap(long, value_parser = timestamp_value_parser, value_name = "[HH:]MM:SS")]
     end: Option<Timestamp>,
 }
 
@@ -230,10 +235,10 @@ pub fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_v
             output_video_file.as_ref().to_path_buf()
         },
         None => {
-            let input_file_name = input_video_file.as_ref().file_name().ok_or(FixVideoFileAudioError::InputHasNoFileName)?;
+            let mut output_file_stem = Path::new(input_video_file.as_ref().file_stem().ok_or(FixVideoFileAudioError::InputHasNoFileName)?).as_os_str().to_os_string();
+            output_file_stem.push("_fixed_audio");
             let input_file_extension = input_video_file.as_ref().extension().ok_or(FixVideoFileAudioError::InputHasNoExtension)?;
-            let file_name = [input_file_name, OsStr::new("_fixed_audio")].iter().collect::<PathBuf>().with_extension(input_file_extension);
-            input_video_file.as_ref().with_file_name(file_name)
+            input_video_file.as_ref().with_file_name(output_file_stem).with_extension(input_file_extension)
         },
     };
 
@@ -256,7 +261,7 @@ pub fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_v
             "-c:v", "copy",
             "-filter:a", "atempo=1.001480,volume=20",
             "-c:a", "aac",
-            "-b:a 93k",
+            "-b:a", "93k",
             "-y"
         ])
         .arg(output_video_file.as_os_str());

@@ -133,7 +133,7 @@ enum Commands {
         video_file: PathBuf,
     },
 
-    /// Generates OSD overlay video
+    /// Transcodes video file optionally burning OSD onto it
     ///
     /// Fonts are loaded either from the directory specified with the --font-dir option or
     /// from the directory found in the environment variable FONTS_DIR or
@@ -164,8 +164,13 @@ enum Commands {
         output_video_file: PathBuf,
     },
 
-    /// Fixes audio sync and volume from DJI Air Unit video
-    FixAudio {
+    /// Fixes DJI Air Unit video audio sync and/or volume
+    ///
+    /// If the output video file is not provided the output video will be written in the same directory
+    /// as the input video with the same file name with suffix `_fixed_audio`
+    FixVideoAudio {
+
+        // TODO: add --volume and --sync options
 
         /// input video file path
         input_video_file: PathBuf,
@@ -285,7 +290,7 @@ fn main() {
         command @ Commands::GenerateOverlayVideo {..} => generate_overlay_video_command(command),
         command @ Commands::TranscodeVideo {..} => transcode_video_command(command),
         Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info_command(osd_file),
-        Commands::FixAudio { input_video_file, output_video_file } => fix_audio_command(input_video_file, output_video_file),
+        Commands::FixVideoAudio { input_video_file, output_video_file } => fix_audio_command(input_video_file, output_video_file),
     };
 
     if let Err(error) = command_result {
