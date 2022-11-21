@@ -41,7 +41,7 @@ use dji_fpv_video_tool::{
 
 
 const DEFAULT_FONT_DIR: &str = "fonts";
-const FONT_DIR_ENV_VAR_NAME: &str = "FONTS_DIR";
+const FONT_DIR_ENV_VAR_NAME: &str = "DJI_OSD_FONTS_DIR";
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
