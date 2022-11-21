@@ -79,9 +79,9 @@ impl VideoProbingError {
 fn video_probe<P: AsRef<Path>>(video_file: P) -> Result<(u64, Rational, bool), VideoProbingError> {
     ffmpeg::init().unwrap();
     ffmpeg::log::set_level(ffmpeg::log::Level::Quiet);
-    let ictx = format::input(&video_file).map_err(|_| VideoProbingError::new(&video_file, "failed to open video file"))?;
-    let has_audio_stream = ictx.streams().best(media::Type::Audio).is_some();
-    let video_stream = ictx.streams().best(media::Type::Video).ok_or_else(|| VideoProbingError::new(&video_file, "cannot find video stream"))?;
+    let input = format::input(&video_file).map_err(|_| VideoProbingError::new(&video_file, "failed to open video file"))?;
+    let has_audio_stream = input.streams().best(media::Type::Audio).is_some();
+    let video_stream = input.streams().best(media::Type::Video).ok_or_else(|| VideoProbingError::new(&video_file, "cannot find video stream"))?;
     let rate = video_stream.rate();
     let frames = u64::try_from(video_stream.frames()).map_err(|_| VideoProbingError::new(&video_file, "failed to get frame count"))?;
     Ok((frames, rate, has_audio_stream))
