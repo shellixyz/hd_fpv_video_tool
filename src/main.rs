@@ -12,11 +12,8 @@ use derive_more::{From, Display, Error};
 
 use hd_fpv_osd_font_tool::prelude::*;
 
-use dji_fpv_video_tool::prelude::*;
+use dji_fpv_video_tool::{prelude::*, cli::{font_options::FontOptions, osd_args::OSDArgs}};
 
-
-const DEFAULT_FONT_DIR: &str = "fonts";
-const FONT_DIR_ENV_VAR_NAME: &str = "DJI_OSD_FONTS_DIR";
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -29,27 +26,6 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-}
-
-#[derive(Args)]
-struct FontOptions {
-    /// path to the directory containing font sets
-    #[clap(short, long, value_parser, value_name = "dirpath")]
-    font_dir: Option<PathBuf>,
-
-    /// force using this font identifier when loading fonts, default is automatic
-    #[clap(short = 'i', long, value_parser, value_name = "ident")]
-    font_ident: Option<String>,
-}
-
-#[derive(Args)]
-struct OSDArgs {
-    /// shift frames to sync OSD with video
-    #[clap(short = 'o', long, value_parser, value_name = "frames", default_value_t = 0)]
-    frame_shift: i32,
-
-    /// path to FPV.WTF .osd file
-    osd_file: PathBuf,
 }
 
 #[derive(Subcommand)]
@@ -196,39 +172,40 @@ fn display_osd_file_info_command<P: AsRef<Path>>(path: P) -> anyhow::Result<()> 
 }
 
 // if --font-ident was passed with a non-empty string return Some(Some(ident)) but if it was passed with an empty string return Some(None)
-fn transform_font_ident<'a>(font_ident: &'a Option<&str>) -> Option<Option<&'a str>> {
-    match font_ident {
-        Some("") => Some(None),
-        Some(font_ident_str) => Some(Some(font_ident_str)),
-        None => None,
-    }
-}
+// fn transform_font_ident<'a>(font_ident: &'a Option<&str>) -> Option<Option<&'a str>> {
+//     match font_ident {
+//         Some("") => Some(None),
+//         Some(font_ident_str) => Some(Some(font_ident_str)),
+//         None => None,
+//     }
+// }
 
-fn prepare_overlay_generator(scaling_args: &ScalingArgs, font_options: &FontOptions, osd_args: &OSDArgs) -> anyhow::Result<OverlayGenerator> {
-    let scaling = Scaling::try_from(scaling_args)?;
-    let osd_file = OSDFileReader::open(&osd_args.osd_file)?;
-    let font_dir_path = font_options.font_dir.clone().unwrap_or_else(|| PathBuf::from(std::env::var(FONT_DIR_ENV_VAR_NAME).unwrap_or_else(|_| DEFAULT_FONT_DIR.to_owned())));
-    let font_dir = FontDir::new(&font_dir_path);
-    let overlay_generator = osd_file.into_frame_overlay_generator(
-        &font_dir,
-        &transform_font_ident(&font_options.font_ident.as_deref()),
-        scaling
-    )?;
-    Ok(overlay_generator)
-}
+// fn prepare_overlay_generator(scaling_args: &ScalingArgs, font_options: &FontOptions, osd_args: &OSDArgs) -> anyhow::Result<OverlayGenerator> {
+//     let scaling = Scaling::try_from(scaling_args)?;
+//     let osd_file = OSDFileReader::open(&osd_args.osd_file)?;
+//     let font_dir_path = font_options.font_dir.clone().unwrap_or_else(|| PathBuf::from(std::env::var(FONT_DIR_ENV_VAR_NAME).unwrap_or_else(|_| DEFAULT_FONT_DIR.to_owned())));
+//     let font_dir = FontDir::new(&font_dir_path);
+//     let overlay_generator = osd_file.into_frame_overlay_generator(
+//         &font_dir,
+//         &transform_font_ident(&font_options.font_ident.as_deref()),
+//         scaling
+//     )?;
+//     Ok(overlay_generator)
+// }
 
 fn generate_overlay_frames_command(command: &Commands) -> anyhow::Result<()> {
     if let Commands::GenerateOverlayFrames { scaling_args, font_options, osd_args, target_dir, } = command {
-        let mut overlay_generator = prepare_overlay_generator(scaling_args, font_options, osd_args)?;
-        overlay_generator.save_frames_to_dir(target_dir, osd_args.frame_shift)?;
+        // let mut overlay_generator = prepare_overlay_generator(scaling_args, font_options, osd_args)?;
+        let mut overlay_generator = OverlayGenerator::new_from_cli_args(scaling_args, font_options, osd_args)?;
+        overlay_generator.save_frames_to_dir(target_dir, osd_args.frame_shift())?;
     }
     Ok(())
 }
 
 fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()> {
     if let Commands::GenerateOverlayVideo { scaling_args, font_options, osd_args, video_file: video_file_path } = command {
-        let mut overlay_generator = prepare_overlay_generator(scaling_args, font_options, osd_args)?;
-        overlay_generator.generate_overlay_video(video_file_path, osd_args.frame_shift)?;
+        let mut overlay_generator = OverlayGenerator::new_from_cli_args(scaling_args, font_options, osd_args)?;
+        overlay_generator.generate_overlay_video(video_file_path, osd_args.frame_shift())?;
     }
     Ok(())
 }
@@ -240,15 +217,20 @@ enum TranscodeVideoArgsError {
 }
 
 fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
-    if let Commands::TranscodeVideo { scaling_args, font_options, frame_shift, osd_file, input_video_file, output_video_file, transcode_args } = command {
-        if transcode_args.start() >= transcode_args.end() {
-            Err(TranscodeVideoArgsError::StartGtEnd)?
+    if let Commands::TranscodeVideo {
+        scaling_args, font_options, frame_shift, osd_file,
+        input_video_file, output_video_file, transcode_args } = command {
+
+        if let (Some(start), Some(end)) = (transcode_args.start(), transcode_args.end()) {
+            if start >= end { Err(TranscodeVideoArgsError::StartGtEnd)? }
         }
+
         match osd_file {
             Some(osd_file) => {
-                let osd_args = OSDArgs { frame_shift: *frame_shift, osd_file: osd_file.clone() };
-                let generator = prepare_overlay_generator(scaling_args, font_options, &osd_args)?;
-                transcode_video_burn_osd(input_video_file, output_video_file, transcode_args, generator)?;
+                let osd_args = OSDArgs::new(*frame_shift, osd_file.clone());
+                // let generator = prepare_overlay_generator(scaling_args, font_options, &osd_args)?;
+                let overlay_generator = OverlayGenerator::new_from_cli_args(scaling_args, font_options, &osd_args)?;
+                transcode_video_burn_osd(input_video_file, output_video_file, transcode_args, overlay_generator, *frame_shift)?;
             },
             None => transcode_video(input_video_file, output_video_file, transcode_args)?,
         }

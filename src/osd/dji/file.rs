@@ -189,7 +189,7 @@ pub type ScreenCoordinate = u8;
 // frame payloads are always 1320*2=2640 bytes representing a 60x22 grid which corresponds to the FakeHD OSD format
 pub const TILE_INDICES_DIMENSIONS_TILES: Dimensions = Kind::FakeHD.dimensions_tiles();
 
-#[derive(Debug, Deref)]
+#[derive(Debug, Deref, Clone)]
 pub struct TileIndices(Vec<TileIndex>);
 
 impl TileIndices {
@@ -235,7 +235,7 @@ impl<'a> Iterator for TileIndicesEnumeratorIter<'a> {
     }
 }
 
-#[derive(Debug, Getters, Deref)]
+#[derive(Debug, Getters, Deref, Clone)]
 #[getset(get = "pub")]
 pub struct Frame {
     index: u32,

@@ -27,6 +27,11 @@ impl Timestamp {
         format!("{}:{}:{}", self.hours, self.minutes, self.seconds)
     }
 
+    pub fn frame_index(&self, fps: Rational) -> u64 {
+        let frame_exact = fps * ffmpeg_next::Rational::new(self.total_seconds() as i32, 1);
+        (frame_exact.numerator() as f64 / frame_exact.denominator() as f64).round() as u64
+    }
+
     pub fn interval_frames(start_timestamp: &Self, end_timestamp: &Self, fps: Rational) -> u64 {
         let interval_seconds = end_timestamp.total_seconds() as i32 - start_timestamp.total_seconds() as i32;
         if interval_seconds < 0 { return 0 }

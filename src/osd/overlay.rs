@@ -16,6 +16,7 @@ use std::{
 };
 
 use derive_more::From;
+use getset::CopyGetters;
 use thiserror::Error;
 use image::{ImageBuffer, Rgba, GenericImage};
 use indicatif::{ProgressStyle, ParallelProgressIterator, ProgressIterator};
@@ -39,7 +40,7 @@ use crate::{
     image::{
         WriteImageFile,
         WriteError as ImageWriteError,
-    },
+    }, cli::{font_options::FontOptions, osd_args::OSDArgs},
 };
 
 use super::{
@@ -63,7 +64,7 @@ use self::{
         Resolution,
         VideoResolution,
     },
-    scaling::Scaling,
+    scaling::{Scaling, ScalingArgs},
 };
 
 
@@ -118,9 +119,12 @@ pub enum GenerateOverlayVideoError {
     FFMpegExitedWithError(i32),
 }
 
+#[derive(CopyGetters)]
 pub struct Generator {
     reader: OSDFileReader,
     tile_images: Vec<tile::Image>,
+
+    #[getset(get_copy = "pub")]
     overlay_resolution: VideoResolution,
 }
 
@@ -220,9 +224,21 @@ impl Generator {
         Ok(Self { reader, tile_images, overlay_resolution })
     }
 
+    pub fn new_from_cli_args(scaling_args: &ScalingArgs, font_options: &FontOptions, osd_args: &OSDArgs) -> anyhow::Result<Self> {
+        let scaling = Scaling::try_from(scaling_args)?;
+        let osd_file = OSDFileReader::open(osd_args.osd_file())?;
+        let font_dir = FontDir::new(&font_options.font_dir());
+        let overlay_generator = osd_file.into_frame_overlay_generator(
+            &font_dir,
+            &font_options.font_ident(),
+            scaling
+        )?;
+        Ok(overlay_generator)
+    }
+
     pub fn draw_next_frame(&mut self) -> Result<Option<Image>, DrawFrameOverlayError> {
         match self.reader.read_frame()? {
-            Some(frame) => Ok(Some(self.draw_frame_overlay(&frame).unwrap())),
+            Some(frame) => Ok(Some(self.draw_frame_overlay(&frame))),
             None => Ok(None),
         }
     }
@@ -231,13 +247,13 @@ impl Generator {
         Image::new(self.overlay_resolution.width, self.overlay_resolution.height)
     }
 
-    fn draw_frame_overlay(&self, osd_file_frame: &OSDFileFrame) -> Result<Image, DrawFrameOverlayError> {
+    fn draw_frame_overlay(&self, osd_file_frame: &OSDFileFrame) -> Image {
         let (tiles_width, tiles_height) = self.tile_images.first().unwrap().dimensions();
         let mut image = self.transparent_frame_overlay();
         for (screen_x, screen_y, tile_index) in osd_file_frame.enumerate_tile_indices() {
             image.copy_from(&self.tile_images[tile_index as usize], screen_x as u32 * tiles_width, screen_y as u32 * tiles_height).unwrap();
         }
-        Ok(image)
+        image
     }
 
     fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &BTreeSet<FrameIndex>) -> Result<(), IOError> {
@@ -286,7 +302,7 @@ impl Generator {
         frames.par_iter().progress_with_style(progress_style).try_for_each(|frame| {
             let actual_frame_index = (*frame.index() as i32 + frame_shift) as u32;
             log::debug!("{} -> {}", frame.index(), &actual_frame_index);
-            let frame_image = self.draw_frame_overlay(frame).unwrap();
+            let frame_image = self.draw_frame_overlay(frame);
             frame_image.write_image_file(make_overlay_frame_file_path(&path, actual_frame_index))
         })?;
 
@@ -340,7 +356,7 @@ impl Generator {
             log::debug!("{} -> {}", &frame_index, &actual_frame_index);
             debug_assert!(frame_index <= *current_frame.index());
             if frame_index == *current_frame.index() {
-                let frame_image = self.draw_frame_overlay(&current_frame).unwrap();
+                let frame_image = self.draw_frame_overlay(&current_frame);
                 ffmpeg_stdin.write_all(frame_image.as_raw())?;
                 prev_frame_image = frame_image;
                 if frame_index < frame_count - 1 {
@@ -362,4 +378,75 @@ impl Generator {
         Ok(())
     }
 
+    pub fn into_iter(mut self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> Result<FramesIntoIter, ReadError> {
+
+        let frames = self.reader.frames()?;
+
+        let first_frame_index = first_frame as i32 - frame_shift;
+        let first_osd_file_frame_index = frames.iter().position(|frame| (*frame.index() as i32) > first_frame_index).unwrap();
+        let osd_file_frames = frames[first_osd_file_frame_index..].to_vec();
+        let transparent_frame = self.transparent_frame_overlay();
+
+        Ok(FramesIntoIter {
+            generator: self,
+            osd_file_frames,
+            osd_file_frame_index: 0,
+            current_frame_index: 0,
+            first_frame,
+            last_frame,
+            frame_shift,
+            prev_frame: transparent_frame,
+        })
+    }
+
+}
+
+pub struct FramesIntoIter {
+    generator: Generator,
+    osd_file_frames: Vec<OSDFileFrame>,
+    osd_file_frame_index: usize,
+    current_frame_index: u32,
+    first_frame: u32,
+    last_frame: Option<u32>,
+    frame_shift: i32,
+    prev_frame: Image,
+}
+
+impl Iterator for FramesIntoIter {
+    type Item = Image;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.osd_file_frame_index > self.osd_file_frames.len() - 1
+            || self.last_frame.map(|last_frame| self.current_frame_index > last_frame).unwrap_or(false) {
+            return None;
+            // match self.last_frame {
+            //     Some(last_frame) => {
+            //         if self.current_frame_index > last_frame {
+            //             return None;
+            //         } else {
+            //             self.current_frame_index += 1;
+            //             return Some(self.prev_frame.clone());
+            //         }
+            //     },
+            //     None => return None,
+            // }
+        }
+
+        let osd_file_frame = &self.osd_file_frames[self.osd_file_frame_index];
+        let actual_osd_file_frame_frame_index = *osd_file_frame.index() as i32 + self.frame_shift;
+
+        let frame =
+            if (self.current_frame_index as i32) < actual_osd_file_frame_frame_index {
+                self.prev_frame.clone()
+            } else {
+                let frame = self.generator.draw_frame_overlay(osd_file_frame);
+                self.osd_file_frame_index += 1;
+                self.prev_frame = frame.clone();
+                frame
+            };
+
+        self.current_frame_index += 1;
+
+        Some(frame)
+    }
 }
