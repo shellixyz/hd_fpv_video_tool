@@ -15,32 +15,43 @@ use std::{
     },
 };
 
-use derive_more::From;
+use derive_more::{From, Deref};
 use getset::CopyGetters;
 use thiserror::Error;
-use image::{ImageBuffer, Rgba, GenericImage};
+use image::{ImageBuffer, Rgba, GenericImage, ImageResult};
 use indicatif::{ProgressStyle, ParallelProgressIterator, ProgressIterator};
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
-pub mod resolution;
 pub mod scaling;
 pub mod margins;
+pub mod osd_kind_ext;
 
-use hd_fpv_osd_font_tool::prelude::*;
+use hd_fpv_osd_font_tool::{
+    dimensions::Dimensions as GenericDimensions,
+    prelude::*,
+};
 
 use crate::{
     create_path::{
         CreatePathError,
-        create_path
+        create_path,
     },
     file::{
         self,
-        HardLinkError
+        HardLinkError,
     },
     image::{
         WriteImageFile,
         WriteError as ImageWriteError,
-    }, cli::{font_options::FontOptions, osd_args::OSDArgs},
+    },
+    cli::{
+        font_options::FontOptions,
+        osd_args::OSDArgs,
+    },
+    video::{
+        FrameIndex as VideoFrameIndex,
+        resolution::Resolution as VideoResolution,
+    },
 };
 
 use super::{
@@ -49,27 +60,60 @@ use super::{
         VideoResolutionTooSmallError,
         font_dir::FontDir,
         file::{
-            Frame as OSDFileFrame,
-            FrameIndex,
             ReadError,
             Reader as OSDFileReader,
+            frame::{
+                Frame as OSDFileFrame,
+            },
+            sorted_frames::{SortedFrames as OSDFileSortedFrames, VideoFramesIter},
         },
-        utils,
     },
     tile_resize::ResizeTiles,
 };
 
 use self::{
-    resolution::{
-        Resolution,
-        VideoResolution,
-    },
     scaling::{Scaling, ScalingArgs},
 };
+
+pub type Dimensions = GenericDimensions<u32>;
+#[derive(Deref, Clone, CopyGetters)]
+pub struct Frame {
+    #[getset(get_copy = "pub")]
+    dimensions: Dimensions,
+
+    #[deref]
+    image: ImageBuffer<Rgba<u8>, Vec<u8>>
+}
+
+impl Frame {
+    pub fn new(dimensions: Dimensions) -> Self {
+        Self { dimensions, image: ImageBuffer::new(dimensions.width, dimensions.height) }
+    }
+
+    pub fn copy_from(&mut self, image: &ImageBuffer<Rgba<u8>, Vec<u8>>, x: u32, y: u32) -> ImageResult<()> {
+        self.image.copy_from(image, x, y)
+    }
+}
+
+
+impl OSDFileFrame {
+
+    fn draw_overlay_frame(&self, dimensions: Dimensions, tile_images: &[tile::Image]) -> Frame {
+        let (tiles_width, tiles_height) = tile_images.first().unwrap().dimensions();
+        let mut frame = Frame::new(dimensions);
+        for (screen_x, screen_y, tile_index) in self.enumerate_tile_indices() {
+            frame.copy_from(&tile_images[tile_index as usize], screen_x as u32 * tiles_width, screen_y as u32 * tiles_height).unwrap();
+        }
+        frame
+    }
+
+}
 
 
 #[derive(Debug, Error, From)]
 pub enum DrawFrameOverlayError {
+    #[error("OSD file is empty")]
+    OSDFileIsEmpty,
     #[error(transparent)]
     ReadError(ReadError),
     #[error("failed to load font file: {0}")]
@@ -78,13 +122,11 @@ pub enum DrawFrameOverlayError {
     VideoResolutionTooSmallError{ osd_kind: DJIOSDKind, video_resolution: VideoResolution },
 }
 
-pub type Image = ImageBuffer<Rgba<u8>, Vec<u8>>;
-
-pub fn format_overlay_frame_file_index(frame_index: FrameIndex) -> String {
+pub fn format_overlay_frame_file_index(frame_index: VideoFrameIndex) -> String {
     format!("{:010}.png", frame_index)
 }
 
-pub fn make_overlay_frame_file_path<P: AsRef<Path>>(dir_path: P, frame_index: FrameIndex) -> PathBuf {
+pub fn make_overlay_frame_file_path<P: AsRef<Path>>(dir_path: P, frame_index: VideoFrameIndex) -> PathBuf {
     [dir_path.as_ref().to_str().unwrap(), &format_overlay_frame_file_index(frame_index)].iter().collect()
 }
 
@@ -119,89 +161,91 @@ pub enum GenerateOverlayVideoError {
     FFMpegExitedWithError(i32),
 }
 
+fn best_settings_for_requested_scaling(osd_kind: DJIOSDKind, scaling: &Scaling) -> Result<(Dimensions, tile::Kind, Option<TileDimensions>), DrawFrameOverlayError> {
+    Ok(match *scaling {
+
+        Scaling::No { target_resolution } => {
+            match target_resolution {
+
+                // no scaling requested but target resolution provided: use the tile kind best matching the target resolution
+                Some(target_resolution) => {
+                    let tile_kind = osd_kind.best_kind_of_tiles_to_use_without_scaling(target_resolution.dimensions()).map_err(|error| {
+                        let VideoResolutionTooSmallError { osd_kind, video_resolution } = error;
+                        DrawFrameOverlayError::VideoResolutionTooSmallError { osd_kind, video_resolution }
+                    })?;
+                    (osd_kind.dimensions_pixels_for_tile_kind(tile_kind), tile_kind, None)
+                },
+
+                // no target resolution specified so use the native tile kind for the OSD kind
+                None => (osd_kind.dimensions_pixels(), osd_kind.tile_kind(), None)
+
+            }
+        },
+
+        Scaling::Yes { min_margins, target_resolution } => {
+            let max_resolution = VideoResolution::new(
+                target_resolution.dimensions().width - 2 * min_margins.horizontal(),
+                target_resolution.dimensions().height - 2 * min_margins.vertical(),
+            );
+            let (tile_kind, tile_dimensions, overlay_dimensions) = osd_kind.best_kind_of_tiles_to_use_with_scaling(max_resolution);
+            (overlay_dimensions, tile_kind, Some(tile_dimensions))
+        },
+
+        Scaling::Auto { min_margins, min_resolution, target_resolution } => {
+            let (overlay_resolution, tile_kind, tile_scaling) =
+
+                // check results without scaling
+                match best_settings_for_requested_scaling(osd_kind, &Scaling::No { target_resolution: Some(target_resolution) }) {
+
+                    // no scaling is possible
+                    Ok(values) => {
+                        let (overlay_dimensions, _, _) = values;
+                        let (margin_width, margin_height) = crate::video::utils::margins(target_resolution.dimensions(), overlay_dimensions);
+                        let min_margins_condition_met = margin_width >= min_margins.horizontal() as i32 && margin_height >= min_margins.vertical() as i32;
+                        let min_dimensions_condition_met = overlay_dimensions.width >= min_resolution.width && overlay_dimensions.height >= min_resolution.height;
+
+                        // check whether the result would match the user specified conditions
+                        if min_margins_condition_met && min_dimensions_condition_met {
+                            values
+                        } else {
+                            // else return parameters with scaling enabled
+                            best_settings_for_requested_scaling(osd_kind, &Scaling::Yes { target_resolution, min_margins })?
+                        }
+
+                    },
+
+                    // no scaling does not work, return parameters with scaling enabled
+                    Err(_) => best_settings_for_requested_scaling(osd_kind, &Scaling::Yes { target_resolution, min_margins })?,
+                };
+
+            let tile_scaling_yes_no = match tile_scaling { Some(_) => "yes", None => "no" };
+            log::info!("calculated best approach: tile kind: {tile_kind} - scaling {tile_scaling_yes_no} - overlay resolution {overlay_resolution}");
+
+            (overlay_resolution, tile_kind, tile_scaling)
+        },
+    })
+}
+
 #[derive(CopyGetters)]
 pub struct Generator {
-    reader: OSDFileReader,
+    osd_file_frames: OSDFileSortedFrames,
     tile_images: Vec<tile::Image>,
 
     #[getset(get_copy = "pub")]
-    overlay_resolution: VideoResolution,
+    frame_dimensions: Dimensions,
 }
 
 impl Generator {
 
-    fn best_settings_for_requested_scaling(osd_kind: DJIOSDKind, scaling: &Scaling) -> Result<(Resolution, tile::Kind, Option<TileDimensions>), DrawFrameOverlayError> {
-        Ok(match *scaling {
+    pub fn new(osd_file_frames: OSDFileSortedFrames, font_dir: &FontDir, font_ident: &Option<Option<&str>>, scaling: Scaling) -> Result<Self, DrawFrameOverlayError> {
+        if osd_file_frames.is_empty() { return Err(DrawFrameOverlayError::OSDFileIsEmpty) }
 
-            Scaling::No { target_resolution } => {
-                match target_resolution {
+        let (overlay_resolution, tile_kind, tile_scaling) = best_settings_for_requested_scaling(osd_file_frames.kind(), &scaling)?;
 
-                    // no scaling requested but target resolution provided: use the tile kind best matching the target resolution
-                    Some(target_resolution) => {
-                        let tile_kind = osd_kind.best_kind_of_tiles_to_use_without_scaling(target_resolution.dimensions()).map_err(|error| {
-                            let VideoResolutionTooSmallError { osd_kind, video_resolution } = error;
-                            DrawFrameOverlayError::VideoResolutionTooSmallError { osd_kind, video_resolution }
-                        })?;
-                        (osd_kind.dimensions_pixels_for_tile_kind(tile_kind), tile_kind, None)
-                    },
-
-                    // no target resolution specified so use the native tile kind for the OSD kind
-                    None => (osd_kind.dimensions_pixels(), osd_kind.tile_kind(), None)
-
-                }
-            },
-
-            Scaling::Yes { min_margins, target_resolution } => {
-                let max_resolution = VideoResolution::new(
-                    target_resolution.dimensions().width - 2 * min_margins.horizontal(),
-                    target_resolution.dimensions().height - 2 * min_margins.vertical(),
-                );
-                let (tile_kind, tile_dimensions, overlay_dimensions) = osd_kind.best_kind_of_tiles_to_use_with_scaling(max_resolution);
-                (overlay_dimensions, tile_kind, Some(tile_dimensions))
-            },
-
-            Scaling::Auto { min_margins, min_resolution, target_resolution } => {
-                let (overlay_resolution, tile_kind, tile_scaling) =
-
-                    // check results without scaling
-                    match Self::best_settings_for_requested_scaling(osd_kind, &Scaling::No { target_resolution: Some(target_resolution) }) {
-
-                        // no scaling is possible
-                        Ok(values) => {
-                            let (overlay_dimensions, _, _) = values;
-                            let (margin_width, margin_height) = utils::margins(target_resolution.dimensions(), overlay_dimensions);
-                            let min_margins_condition_met = margin_width >= min_margins.horizontal() as i32 && margin_height >= min_margins.vertical() as i32;
-                            let min_dimensions_condition_met = overlay_dimensions.width >= min_resolution.width && overlay_dimensions.height >= min_resolution.height;
-
-                            // check whether the result would match the user specified conditions
-                            if min_margins_condition_met && min_dimensions_condition_met {
-                                values
-                            } else {
-                                // else return parameters with scaling enabled
-                                Self::best_settings_for_requested_scaling(osd_kind, &Scaling::Yes { target_resolution, min_margins })?
-                            }
-
-                        },
-
-                        // no scaling does not work, return parameters with scaling enabled
-                        Err(_) => Self::best_settings_for_requested_scaling(osd_kind, &Scaling::Yes { target_resolution, min_margins })?,
-                    };
-
-                let tile_scaling_yes_no = match tile_scaling { Some(_) => "yes", None => "no" };
-                log::info!("calculated best approach: tile kind: {tile_kind} - scaling {tile_scaling_yes_no} - overlay resolution {overlay_resolution}");
-
-                (overlay_resolution, tile_kind, tile_scaling)
-            },
-        })
-    }
-
-    pub fn new(mut reader: OSDFileReader, font_dir: &FontDir, font_ident: &Option<Option<&str>>, scaling: Scaling) -> Result<Self, DrawFrameOverlayError> {
-        let osd_kind = reader.osd_kind();
-        let (overlay_resolution, tile_kind, tile_scaling) = Self::best_settings_for_requested_scaling(osd_kind, &scaling)?;
-
+        let highest_used_tile_index = osd_file_frames.highest_used_tile_index().unwrap();
         let tiles = match font_ident {
-            Some(font_ident) => font_dir.load_with_fallback(tile_kind, font_ident, reader.max_used_tile_index().unwrap())?,
-            None => font_dir.load_variant_with_fallback(tile_kind, &reader.header().font_variant(), reader.max_used_tile_index().unwrap())?,
+            Some(font_ident) => font_dir.load_with_fallback(tile_kind, font_ident, highest_used_tile_index)?,
+            None => font_dir.load_variant_with_fallback(tile_kind, &osd_file_frames.font_variant(), highest_used_tile_index)?,
         };
 
         let tile_images = match tile_scaling {
@@ -221,14 +265,15 @@ impl Generator {
             }
         }
 
-        Ok(Self { reader, tile_images, overlay_resolution })
+        Ok(Self { osd_file_frames, tile_images, frame_dimensions: overlay_resolution })
     }
 
     pub fn new_from_cli_args(scaling_args: &ScalingArgs, font_options: &FontOptions, osd_args: &OSDArgs) -> anyhow::Result<Self> {
         let scaling = Scaling::try_from(scaling_args)?;
-        let osd_file = OSDFileReader::open(osd_args.osd_file())?;
+        let mut osd_file = OSDFileReader::open(osd_args.osd_file())?;
         let font_dir = FontDir::new(&font_options.font_dir());
-        let overlay_generator = osd_file.into_frame_overlay_generator(
+        let overlay_generator = Self::new(
+            osd_file.frames()?,
             &font_dir,
             &font_options.font_ident(),
             scaling
@@ -236,28 +281,12 @@ impl Generator {
         Ok(overlay_generator)
     }
 
-    pub fn draw_next_frame(&mut self) -> Result<Option<Image>, DrawFrameOverlayError> {
-        match self.reader.read_frame()? {
-            Some(frame) => Ok(Some(self.draw_frame_overlay(&frame))),
-            None => Ok(None),
-        }
+    fn draw_frame(&self, osd_file_frame: &OSDFileFrame) -> Frame {
+        osd_file_frame.draw_overlay_frame(self.frame_dimensions, &self.tile_images)
     }
 
-    fn transparent_frame_overlay(&self) -> Image {
-        Image::new(self.overlay_resolution.width, self.overlay_resolution.height)
-    }
-
-    fn draw_frame_overlay(&self, osd_file_frame: &OSDFileFrame) -> Image {
-        let (tiles_width, tiles_height) = self.tile_images.first().unwrap().dimensions();
-        let mut image = self.transparent_frame_overlay();
-        for (screen_x, screen_y, tile_index) in osd_file_frame.enumerate_tile_indices() {
-            image.copy_from(&self.tile_images[tile_index as usize], screen_x as u32 * tiles_width, screen_y as u32 * tiles_height).unwrap();
-        }
-        image
-    }
-
-    fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &BTreeSet<FrameIndex>) -> Result<(), IOError> {
-        let existing_frame_indices_vec = existing_frame_indices.iter().collect::<Vec<&FrameIndex>>();
+    fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &BTreeSet<VideoFrameIndex>) -> Result<(), IOError> {
+        let existing_frame_indices_vec = existing_frame_indices.iter().collect::<Vec<&VideoFrameIndex>>();
         for indices in existing_frame_indices_vec.windows(2) {
             if let &[lower_index, greater_index] = indices {
                 if *greater_index > lower_index + 1 {
@@ -279,35 +308,34 @@ impl Generator {
         }
         create_path(&path)?;
         log::info!("generating overlay frames and saving into directory: {}", path.as_ref().to_string_lossy());
-        let frames = self.reader.frames()?;
 
-        let first_frame_index = frames.iter().position(|frame| (*frame.index() as i32) > -frame_shift).unwrap();
-        let frames = &frames[first_frame_index..];
+        let first_frame_index = self.osd_file_frames.iter().position(|frame| (frame.index() as i32) > -frame_shift).unwrap();
+        let frames = &self.osd_file_frames[first_frame_index..];
         let first_frame_index = frames.first().unwrap().index();
 
-        let missing_frames = frame_shift + *first_frame_index as i32;
+        let missing_frames = frame_shift + first_frame_index as i32;
 
         // we are missing frames at the beginning
         if missing_frames > 0 {
             log::debug!("Generating blank frames 0..{}", missing_frames - 1);
             let frame_0_path = make_overlay_frame_file_path(&path, 0);
-            self.transparent_frame_overlay().write_image_file(&frame_0_path)?;
+            Frame::new(self.frame_dimensions).write_image_file(&frame_0_path)?;
             for frame_index in 1..missing_frames {
-                file::hard_link(&frame_0_path, make_overlay_frame_file_path(&path, frame_index as FrameIndex))?;
+                file::hard_link(&frame_0_path, make_overlay_frame_file_path(&path, frame_index as VideoFrameIndex))?;
             }
         }
 
-        let frame_count = *frames.last().unwrap().index();
+        let frame_count = frames.last().unwrap().index();
         let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
         frames.par_iter().progress_with_style(progress_style).try_for_each(|frame| {
-            let actual_frame_index = (*frame.index() as i32 + frame_shift) as u32;
+            let actual_frame_index = (frame.index() as i32 + frame_shift) as u32;
             log::debug!("{} -> {}", frame.index(), &actual_frame_index);
-            let frame_image = self.draw_frame_overlay(frame);
+            let frame_image = self.draw_frame(frame);
             frame_image.write_image_file(make_overlay_frame_file_path(&path, actual_frame_index))
         })?;
 
         log::info!("linking missing overlay frames");
-        let frame_indices = frames.iter().map(|x| (*x.index() as i32 + frame_shift) as u32).collect();
+        let frame_indices = frames.iter().map(|frame| (frame.index() as i32 + frame_shift) as u32).collect();
         Self::link_missing_frames(&path, &frame_indices)?;
 
         log::info!("overlay frames generation completed: {} frames", frame_count);
@@ -326,7 +354,7 @@ impl Generator {
             .args([
                 "-f", "rawvideo",
                 "-pix_fmt", "rgba",
-                "-video_size", self.overlay_resolution.to_string().as_str(),
+                "-video_size", self.frame_dimensions.to_string().as_str(),
                 "-r", "60",
                 "-i", "pipe:0",
                 "-c:v", "libvpx-vp9",
@@ -345,27 +373,24 @@ impl Generator {
             .map_err(GenerateOverlayVideoError::FailedSpawningFFMpegProcess)?;
         let mut ffmpeg_stdin = ffmpeg_child.stdin.take().expect("failed to open ffmpeg stdin");
 
-        let transparent_frame_image = self.transparent_frame_overlay();
-
-        let frame_count = self.reader.last_frame_frame_index()?;
         let progress_style = ProgressStyle::with_template("{wide_bar} {percent:>3}% [ETA {eta:>3}]").unwrap();
-        let mut prev_frame_image = transparent_frame_image;
-        let mut current_frame = self.reader.read_frame()?.unwrap();
-        for frame_index in (0..frame_count).progress_with_style(progress_style) {
-            let actual_frame_index = (frame_index as i32 + frame_shift) as u32;
-            log::debug!("{} -> {}", &frame_index, &actual_frame_index);
-            debug_assert!(frame_index <= *current_frame.index());
-            if frame_index == *current_frame.index() {
-                let frame_image = self.draw_frame_overlay(&current_frame);
-                ffmpeg_stdin.write_all(frame_image.as_raw())?;
-                prev_frame_image = frame_image;
-                if frame_index < frame_count - 1 {
-                    current_frame = self.reader.read_frame()?.unwrap();
-                }
-            } else {
-                ffmpeg_stdin.write_all(prev_frame_image.as_raw())?;
-            }
-        };
+        // let mut prev_frame_image = Frame::new(self.frame_dimensions);
+        // let mut video_frames_iter = self.osd_file_frames.video_frames_iter(0, None, frame_shift);
+        // for osd_file_frame in video_frames_iter.progress_with_style(progress_style) {
+        //     match osd_file_frame {
+        //         Some(osd_file_frame) => {
+        //             let new_frame_image = self.draw_frame(osd_file_frame);
+        //             ffmpeg_stdin.write_all(new_frame_image.as_raw())?;
+        //             prev_frame_image = new_frame_image;
+        //         },
+        //         None => ffmpeg_stdin.write_all(prev_frame_image.as_raw())?,
+        //     }
+        // }
+        let frames_iter = self.iter_advanced(0, None, frame_shift);
+        let frame_count = frames_iter.len();
+        for frame in frames_iter.progress_with_style(progress_style) {
+            ffmpeg_stdin.write_all(frame.as_raw())?;
+        }
 
         drop(ffmpeg_stdin);
 
@@ -378,75 +403,155 @@ impl Generator {
         Ok(())
     }
 
-    pub fn into_iter(mut self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> Result<FramesIntoIter, ReadError> {
-
-        let frames = self.reader.frames()?;
-
-        let first_frame_index = first_frame as i32 - frame_shift;
-        let first_osd_file_frame_index = frames.iter().position(|frame| (*frame.index() as i32) > first_frame_index).unwrap();
-        let osd_file_frames = frames[first_osd_file_frame_index..].to_vec();
-        let transparent_frame = self.transparent_frame_overlay();
-
-        Ok(FramesIntoIter {
-            generator: self,
-            osd_file_frames,
-            osd_file_frame_index: 0,
-            current_frame_index: 0,
-            first_frame,
-            last_frame,
-            frame_shift,
-            prev_frame: transparent_frame,
-        })
+    pub fn iter(&self) -> FramesIter {
+        // self.osd_file_frames.overlay_frames_iter(self.frame_dimensions, 0, None, 0, &self.tile_images)
+        self.into_iter()
     }
 
+    pub fn iter_advanced(&self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> FramesIter {
+        self.osd_file_frames.overlay_frames_iter(self.frame_dimensions, first_frame, last_frame, frame_shift, &self.tile_images)
+    }
+
+    // pub fn into_iter(mut self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> Result<FramesIntoIter, ReadError> {
+
+    //     let frames = self.reader.frames()?;
+
+    //     let first_frame_index = first_frame as i32 - frame_shift;
+    //     let first_osd_file_frame_index = frames.iter().position(|frame| (frame.index() as i32) >= first_frame_index);
+    //     let osd_file_frames = match first_osd_file_frame_index {
+    //         Some(index) => frames[index..].to_vec(),
+    //         None => vec![],
+    //     };
+    //     let transparent_frame = self.transparent_frame_overlay();
+
+    //     Ok(FramesIntoIter {
+    //         generator: self,
+    //         osd_file_frames,
+    //         osd_file_frame_index: 0,
+    //         current_frame_index: first_frame,
+    //         last_frame,
+    //         frame_shift,
+    //         prev_frame: transparent_frame,
+    //     })
+    // }
+
+    // pub fn into_iter(mut self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> Result<FramesIntoIter, ReadError> {
+
+    //     let transparent_frame = self.transparent_frame_overlay();
+    //     let vframes_iter = self.reader.into_video_frames_iter(first_frame, last_frame, frame_shift)?;
+
+    //     Ok(FramesIntoIter {
+    //         generator: self,
+    //         vframes_iter,
+    //         prev_frame: transparent_frame
+    //     })
+    // }
+
 }
 
-pub struct FramesIntoIter {
-    generator: Generator,
-    osd_file_frames: Vec<OSDFileFrame>,
-    osd_file_frame_index: usize,
-    current_frame_index: u32,
-    first_frame: u32,
-    last_frame: Option<u32>,
-    frame_shift: i32,
-    prev_frame: Image,
+// pub struct FramesIntoIter {
+//     generator: Generator,
+//     osd_file_frames: Vec<OSDFileFrame>,
+//     osd_file_frame_index: usize,
+//     current_frame_index: u32,
+//     last_frame: Option<u32>,
+//     frame_shift: i32,
+//     prev_frame: Image,
+// }
+
+// impl Iterator for FramesIntoIter {
+//     type Item = Image;
+
+//     fn next(&mut self) -> Option<Self::Item> {
+//         match self.last_frame {
+//             Some(last_frame) => {
+//                 if self.current_frame_index > last_frame {
+//                     return None;
+//                 } else if self.osd_file_frame_index >= self.osd_file_frames.len() {
+//                     self.current_frame_index += 1;
+//                     return Some(self.prev_frame.clone());
+//                 }
+//             },
+//             None => {
+//                 if self.osd_file_frame_index >= self.osd_file_frames.len() {
+//                     return None;
+//                 }
+//             }
+//         }
+
+//         let osd_file_frame = &self.osd_file_frames[self.osd_file_frame_index];
+//         let actual_osd_file_frame_frame_index = osd_file_frame.index() as i32 + self.frame_shift;
+
+//         let frame =
+//             if (self.current_frame_index as i32) < actual_osd_file_frame_frame_index {
+//                 self.prev_frame.clone()
+//             } else {
+//                 let frame = self.generator.draw_frame_overlay(osd_file_frame);
+//                 self.osd_file_frame_index += 1;
+//                 self.prev_frame = frame.clone();
+//                 frame
+//             };
+
+//         self.current_frame_index += 1;
+
+//         Some(frame)
+//     }
+
+// }
+
+impl<'a> IntoIterator for &'a Generator {
+    type Item = Frame;
+
+    type IntoIter = FramesIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.osd_file_frames.overlay_frames_iter(self.frame_dimensions, 0, None, 0, &self.tile_images)
+    }
 }
 
-impl Iterator for FramesIntoIter {
-    type Item = Image;
+impl OSDFileSortedFrames {
+    pub fn overlay_frames_iter<'a>(&'a self, frame_dimensions: Dimensions, first_frame: u32, last_frame: Option<u32>, frame_shift: i32, tile_images: &'a [tile::Image]) -> FramesIter {
+        FramesIter::new(self.video_frames_iter(first_frame, last_frame, frame_shift), frame_dimensions, tile_images)
+    }
+}
+
+#[derive(CopyGetters)]
+pub struct FramesIter<'a> {
+    #[getset(get_copy = "pub")]
+    frame_dimensions: Dimensions,
+    tile_images: &'a [tile::Image],
+    vframes_iter: VideoFramesIter<'a>,
+    prev_frame: Frame
+}
+
+impl<'a> FramesIter<'a> {
+    pub fn new(video_frames_iter: VideoFramesIter<'a>, frame_dimensions: Dimensions, tile_images: &'a [tile::Image]) -> Self {
+        Self {
+            frame_dimensions,
+            tile_images,
+            vframes_iter: video_frames_iter,
+            prev_frame: Frame::new(frame_dimensions)
+        }
+    }
+}
+
+impl<'a> Iterator for FramesIter<'a> {
+    type Item = Frame;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.osd_file_frame_index > self.osd_file_frames.len() - 1
-            || self.last_frame.map(|last_frame| self.current_frame_index > last_frame).unwrap_or(false) {
-            return None;
-            // match self.last_frame {
-            //     Some(last_frame) => {
-            //         if self.current_frame_index > last_frame {
-            //             return None;
-            //         } else {
-            //             self.current_frame_index += 1;
-            //             return Some(self.prev_frame.clone());
-            //         }
-            //     },
-            //     None => return None,
-            // }
-        }
-
-        let osd_file_frame = &self.osd_file_frames[self.osd_file_frame_index];
-        let actual_osd_file_frame_frame_index = *osd_file_frame.index() as i32 + self.frame_shift;
-
-        let frame =
-            if (self.current_frame_index as i32) < actual_osd_file_frame_frame_index {
-                self.prev_frame.clone()
-            } else {
-                let frame = self.generator.draw_frame_overlay(osd_file_frame);
-                self.osd_file_frame_index += 1;
+        match self.vframes_iter.next()? {
+            Some(osd_file_frame) => {
+                let frame = osd_file_frame.draw_overlay_frame(self.frame_dimensions, self.tile_images);
                 self.prev_frame = frame.clone();
-                frame
-            };
+                Some(frame)
+            },
+            None => Some(self.prev_frame.clone()),
+        }
+    }
+}
 
-        self.current_frame_index += 1;
-
-        Some(frame)
+impl<'a> ExactSizeIterator for FramesIter<'a> {
+    fn len(&self) -> usize {
+        self.vframes_iter.len()
     }
 }

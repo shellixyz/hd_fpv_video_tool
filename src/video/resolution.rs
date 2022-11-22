@@ -9,7 +9,6 @@ use hd_fpv_osd_font_tool::dimensions::Dimensions as GenericDimensions;
 use thiserror::Error;
 
 
-pub type VideoResolution = GenericDimensions<u32>;
 pub type Resolution = GenericDimensions<u32>;
 
 #[derive(Debug, Clone, Copy, EnumIter)]
@@ -40,13 +39,13 @@ impl StandardResolution {
         ).collect::<Vec<_>>().join(", ")
     }
 
-    pub fn dimensions(&self) -> VideoResolution {
+    pub fn dimensions(&self) -> Resolution {
         use StandardResolution::*;
         match self {
-            Tr720p => VideoResolution::new(1280, 720),
-            Tr720p4By3 => VideoResolution::new(960, 720),
-            Tr1080p => VideoResolution::new(1920, 1080),
-            Tr1080p4by3 => VideoResolution::new(1440, 1080),
+            Tr720p => Resolution::new(1280, 720),
+            Tr720p4By3 => Resolution::new(960, 720),
+            Tr1080p => Resolution::new(1920, 1080),
+            Tr1080p4by3 => Resolution::new(1440, 1080),
         }
     }
 }
@@ -54,11 +53,11 @@ impl StandardResolution {
 #[derive(Debug, Clone, Copy)]
 pub enum TargetResolution {
     Standard(StandardResolution),
-    Custom(VideoResolution),
+    Custom(Resolution),
 }
 
 impl TargetResolution {
-    pub fn dimensions(&self) -> VideoResolution {
+    pub fn dimensions(&self) -> Resolution {
         use TargetResolution::*;
         match self {
             Standard(std_res) => std_res.dimensions(),
@@ -96,7 +95,7 @@ impl TryFrom<&str> for TargetResolution {
                     Some(captures) => {
                         let width = captures.name("width").unwrap().as_str().parse().unwrap();
                         let height = captures.name("height").unwrap().as_str().parse().unwrap();
-                        Custom(VideoResolution::new(width, height))
+                        Custom(Resolution::new(width, height))
                     },
                     None =>
                         return Err(InvalidTargetResolutionError {

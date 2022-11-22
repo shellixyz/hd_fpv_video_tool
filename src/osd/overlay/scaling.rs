@@ -8,13 +8,13 @@ use super::{
         InvalidMarginsFormatError,
         Margins,
     },
-    resolution::{
-        InvalidTargetResolutionError,
-        Resolution,
-        TargetResolution,
-    },
 };
 
+use crate::video:: resolution::{
+    InvalidTargetResolutionError,
+    Resolution,
+    TargetResolution,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Scaling {

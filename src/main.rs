@@ -159,8 +159,8 @@ fn display_osd_file_info_command<P: AsRef<Path>>(path: P) -> anyhow::Result<()> 
     println!("Number of OSD frames: {}", frames.len());
     if let Some(last_frame) = frames.last() {
         println!("Highest video frame index: {}", last_frame.index());
-        let refresh_percent_frames = frames.len() as f64 * 100.0 / *last_frame.index() as f64;
-        let refresh_interval_frames = *last_frame.index() as f64 / frames.len() as f64;
+        let refresh_percent_frames = frames.len() as f64 * 100.0 / last_frame.index() as f64;
+        let refresh_interval_frames = last_frame.index() as f64 / frames.len() as f64;
         let refresh_interval_frames_str = match refresh_interval_frames.round() as u32 {
             1 => "every frame".to_owned(),
             frames => format!("every {frames} frames")

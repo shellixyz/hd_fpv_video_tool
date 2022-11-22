@@ -2,8 +2,6 @@
 use std::{
     fmt::Display,
     io::SeekFrom,
-    iter::Enumerate,
-    ops::Index,
     path::{
         Path,
         PathBuf,
@@ -13,20 +11,19 @@ use std::{
 use byte_struct::*;
 
 use getset::{Getters, CopyGetters};
-use derive_more::{Deref, From};
+use derive_more::From;
 use strum::Display;
 use thiserror::Error;
 
 use hd_fpv_osd_font_tool::prelude::*;
 
+pub mod frame;
+pub mod tile_indices;
+pub mod sorted_frames;
+
 use crate::{
     osd::{
         dji::InvalidDimensionsError,
-        overlay::{
-            DrawFrameOverlayError,
-            Generator as FrameOverlayGenerator,
-            scaling::Scaling,
-        },
     },
     file::{
         Error as FileError,
@@ -37,7 +34,17 @@ use crate::{
 use super::{
     Dimensions,
     Kind,
-    font_dir::FontDir,
+};
+
+use self::{
+    frame::{
+        Frame,
+        Header as FrameHeader,
+    },
+    tile_indices::{
+        TileIndex,
+        TileIndices,
+    }, sorted_frames::{SortedFrames},
 };
 
 
@@ -109,7 +116,7 @@ impl Display for Offset {
 #[error("unknown font variant ID: {0}")]
 pub struct UnknownFontVariantID(pub u8);
 
-#[derive(Debug, Display)]
+#[derive(Debug, Display, Clone, Copy)]
 pub enum FontVariant {
     Generic,
     Ardupilot,
@@ -174,79 +181,7 @@ impl From<FileHeaderRaw> for FileHeader {
     }
 }
 
-pub type FrameIndex = u32;
-
-#[derive(ByteStruct, Debug)]
-#[byte_struct_le]
-struct FrameHeader {
-    frame_index: FrameIndex,
-    data_len: u32
-}
-
-pub type TileIndex = u16;
-pub type ScreenCoordinate = u8;
-
-// frame payloads are always 1320*2=2640 bytes representing a 60x22 grid which corresponds to the FakeHD OSD format
-pub const TILE_INDICES_DIMENSIONS_TILES: Dimensions = Kind::FakeHD.dimensions_tiles();
-
-#[derive(Debug, Deref, Clone)]
-pub struct TileIndices(Vec<TileIndex>);
-
-impl TileIndices {
-
-    fn screen_coordinates_to_index(x: ScreenCoordinate, y: ScreenCoordinate) -> usize {
-        y as usize + x as usize * TILE_INDICES_DIMENSIONS_TILES.height as usize
-    }
-
-    fn index_to_screen_coordinates(index: usize) -> (ScreenCoordinate, ScreenCoordinate) {
-        (
-            (index / TILE_INDICES_DIMENSIONS_TILES.height as usize) as ScreenCoordinate,
-            (index % TILE_INDICES_DIMENSIONS_TILES.height as usize) as ScreenCoordinate
-        )
-    }
-
-    pub fn enumerate(&self) -> TileIndicesEnumeratorIter {
-        TileIndicesEnumeratorIter(self.iter().enumerate())
-    }
-
-}
-
-impl Index<(ScreenCoordinate, ScreenCoordinate)> for TileIndices {
-    type Output = TileIndex;
-
-    fn index(&self, index: (ScreenCoordinate, ScreenCoordinate)) -> &Self::Output {
-        &self.0[Self::screen_coordinates_to_index(index.0, index.1)]
-    }
-}
-
-pub struct TileIndicesEnumeratorIter<'a>(Enumerate<std::slice::Iter<'a, u16>>);
-
-impl<'a> Iterator for TileIndicesEnumeratorIter<'a> {
-    type Item = (ScreenCoordinate, ScreenCoordinate, TileIndex);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        for (tile_index_index, tile_index) in self.0.by_ref() {
-            if *tile_index > 0 {
-                let (screen_x, screen_y) = TileIndices::index_to_screen_coordinates(tile_index_index);
-                return Some((screen_x, screen_y, *tile_index))
-            }
-        }
-        None
-    }
-}
-
-#[derive(Debug, Getters, Deref, Clone)]
-#[getset(get = "pub")]
-pub struct Frame {
-    index: u32,
-    #[deref] tile_indices: TileIndices
-}
-
-impl Frame {
-    pub fn enumerate_tile_indices(&self) -> TileIndicesEnumeratorIter {
-        self.tile_indices().enumerate()
-    }
-}
+const FIRST_FRAME_FILE_POS: u64 = (SIGNATURE.len() + FileHeaderRaw::BYTE_LEN) as u64;
 
 #[derive(Getters, CopyGetters)]
 pub struct Reader {
@@ -301,14 +236,17 @@ impl Reader {
             Some(header) => header,
             None => return Ok(None),
         };
-        let mut data_bytes= vec![0; header.data_len as usize * 2];
+        let mut data_bytes= vec![0; header.data_len() as usize * 2];
         self.file.read_exact(&mut data_bytes)?;
-        let tile_indices = TileIndices(data_bytes.chunks_exact(u16::BYTE_LEN)
+        let tile_indices = TileIndices::new(data_bytes.chunks_exact(u16::BYTE_LEN)
             .map(|bytes| u16::from_le_bytes(bytes.try_into().unwrap())).collect());
-        Ok(Some(Frame { index: header.frame_index, tile_indices }))
+        Ok(Some(Frame::new(header.frame_index(), tile_indices)))
     }
 
-    pub fn frames(&mut self) -> Result<Vec<Frame>, ReadError> {
+    pub fn frames(&mut self) -> Result<SortedFrames, ReadError> {
+        self.rewind()?;
+        let osd_kind = self.osd_kind;
+        let font_variant = self.header.font_variant();
         let mut frames = vec![];
         for frame_read_result in self {
             match frame_read_result {
@@ -316,11 +254,11 @@ impl Reader {
                 Err(error) => return Err(error),
             }
         }
-        Ok(frames)
+        Ok(SortedFrames::new(osd_kind, font_variant, frames))
     }
 
     pub fn rewind(&mut self) -> Result<(), FileError> {
-        self.file.seek(SeekFrom::Start((SIGNATURE.len() + FileHeaderRaw::BYTE_LEN) as u64))?;
+        self.file.seek(SeekFrom::Start(FIRST_FRAME_FILE_POS))?;
         Ok(())
     }
 
@@ -336,14 +274,14 @@ impl Reader {
     pub fn last_frame_frame_index(&mut self) -> Result<u32, ReadError> {
         self.keep_position_do(|reader| {
             reader.rewind()?;
-            Ok(*reader.frames()?.last().unwrap().index())
+            Ok(reader.frames()?.last().unwrap().index())
         })
     }
 
     pub fn max_used_tile_index(&mut self) -> Result<TileIndex, ReadError> {
         self.keep_position_do(|reader| {
             reader.rewind()?;
-            Ok(reader.frames()?.into_iter().flat_map(|frame| frame.tile_indices.0).max().unwrap())
+            Ok(*reader.frames()?.iter().flat_map(|frame| frame.tile_indices().as_slice()).max().unwrap())
         })
     }
 
@@ -351,9 +289,33 @@ impl Reader {
         self.into_iter()
     }
 
-    pub fn into_frame_overlay_generator(self, font_dir: &FontDir, font_ident: &Option<Option<&str>>, scale: Scaling) -> Result<FrameOverlayGenerator, DrawFrameOverlayError> {
-        FrameOverlayGenerator::new(self, font_dir, font_ident, scale)
-    }
+    // pub fn into_frame_overlay_generator(self, font_dir: &FontDir, font_ident: &Option<Option<&str>>, scale: Scaling) -> Result<FrameOverlayGenerator, DrawFrameOverlayError> {
+    //     FrameOverlayGenerator::new(self, font_dir, font_ident, scale)
+    // }
+
+    // pub fn into_video_frames_iter(mut self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> Result<VideoFramesIntoIter, ReadError> {
+
+    //     let frames = self.frames()?;
+
+    //     let first_video_frame_index = first_frame as i32 - frame_shift;
+    //     let first_frame_index = frames.iter().position(|frame| (frame.index() as i32) >= first_video_frame_index);
+    //     let osd_file_frames = match first_frame_index {
+    //         Some(index) => frames[index..].to_vec(),
+    //         None => vec![],
+    //     };
+
+    //     Ok(VideoFramesIntoIter {
+    //         frames: osd_file_frames,
+    //         frame_index: 0,
+    //         video_frame_index: first_frame,
+    //         last_video_frame_index: last_frame,
+    //         video_frame_shift: frame_shift,
+    //     })
+    // }
+
+    // pub fn into_video_frames_iter(self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> Result<VideoFramesIter, ReadError> {
+    //     Ok(self.frames()?.video_frames_iter(first_frame, last_frame, frame_shift))
+    // }
 
 }
 
@@ -400,3 +362,49 @@ impl<'a> IntoIterator for &'a mut Reader {
         Self::IntoIter { reader: self }
     }
 }
+
+// pub struct VideoFramesIntoIter {
+//     frames: Vec<Frame>,
+//     frame_index: usize,
+//     video_frame_index: u32,
+//     last_video_frame_index: Option<u32>,
+//     video_frame_shift: i32,
+// }
+
+// impl Iterator for VideoFramesIntoIter {
+//     type Item = Option<Frame>;
+
+//     fn next(&mut self) -> Option<Self::Item> {
+//         match self.last_video_frame_index {
+//             Some(last_frame) => {
+//                 if self.video_frame_index > last_frame {
+//                     return None;
+//                 } else if self.frame_index >= self.frames.len() {
+//                     self.video_frame_index += 1;
+//                     return Some(None);
+//                 }
+//             },
+//             None => {
+//                 if self.frame_index >= self.frames.len() {
+//                     return None;
+//                 }
+//             }
+//         }
+
+//         let current_frame = &self.frames[self.frame_index];
+//         let actual_frame_video_frame_index = current_frame.index() as i32 + self.video_frame_shift;
+
+//         let frame =
+//             if (self.video_frame_index as i32) < actual_frame_video_frame_index {
+//                 None
+//             } else {
+//                 self.frame_index += 1;
+//                 Some(current_frame.clone())
+//             };
+
+//         self.video_frame_index += 1;
+
+//         Some(frame)
+//     }
+
+// }

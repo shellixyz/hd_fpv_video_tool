@@ -18,7 +18,11 @@ use crate::osd::dji::file::ReadError as OSDFileReadError;
 use self::timestamp::{Timestamp, TimestampFormatError};
 
 pub mod timestamp;
+pub mod resolution;
+pub mod utils;
 
+
+pub type FrameIndex = u32;
 
 #[derive(Debug, Error, From)]
 pub enum TranscodeVideoError {
@@ -349,7 +353,7 @@ pub fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_v
     Ok(())
 }
 
-pub fn transcode_video_burn_osd<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: Q, args: &TranscodeArgs, mut osd_frames_generator: OSDOverlayFramesGenerator, frame_shift: i32) -> Result<(), TranscodeVideoError> {
+pub fn transcode_video_burn_osd<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: Q, args: &TranscodeArgs, osd_frames_generator: OSDOverlayFramesGenerator, frame_shift: i32) -> Result<(), TranscodeVideoError> {
 
     if ! input_video_file.as_ref().exists() { return Err(TranscodeVideoError::InputVideoFileDoesNotExist); }
     if output_video_file.as_ref().exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
@@ -371,8 +375,8 @@ pub fn transcode_video_burn_osd<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file
         }
         None => frame_count as u32,
     } - 1;
-    let osd_overlay_resolution = osd_frames_generator.overlay_resolution();
-    let osd_frames_iter = osd_frames_generator.into_iter(first_frame_index, Some(last_frame_index), frame_shift)?;
+    let osd_overlay_resolution = osd_frames_generator.frame_dimensions();
+    let osd_frames_iter = osd_frames_generator.iter_advanced(first_frame_index, Some(last_frame_index), frame_shift);
 
     let mut ffmpeg_command = Command::new("ffmpeg");
     let ffmpeg_command_with_args = &mut ffmpeg_command;
@@ -434,8 +438,8 @@ pub fn transcode_video_burn_osd<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file
 
     drop(ffmpeg_stdin);
 
-    let ffmpeg_result = monitor_ffmpeg_progress(frame_count, ffmpeg_child);
-    // let ffmpeg_result = ffmpeg_child.wait().unwrap();
+    // let ffmpeg_result = monitor_ffmpeg_progress(frame_count, ffmpeg_child);
+    let ffmpeg_result = ffmpeg_child.wait().unwrap();
 
     if ! ffmpeg_result.success() {
         return Err(TranscodeVideoError::FFMpegExitedWithError(ffmpeg_result.code().unwrap()))

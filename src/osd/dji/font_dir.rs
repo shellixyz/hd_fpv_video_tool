@@ -3,7 +3,7 @@ use std::path::{PathBuf, Path};
 
 use hd_fpv_osd_font_tool::prelude::*;
 
-use super::file::{TileIndex, FontVariant};
+use super::file::{FontVariant, tile_indices::TileIndex};
 
 
 pub struct FontDir(PathBuf);
@@ -39,15 +39,15 @@ impl FontDir {
         Ok(tiles)
     }
 
-    pub fn load_with_fallback(&self, tile_kind: tile::Kind, ident: &Option<&str>, max_used_tile_index: TileIndex) -> Result<Vec<Tile>, bin_file::LoadError> {
-        let ident_load_result = self.load(tile_kind, ident, max_used_tile_index);
+    pub fn load_with_fallback(&self, tile_kind: tile::Kind, ident: &Option<&str>, highest_used_tile_index: TileIndex) -> Result<Vec<Tile>, bin_file::LoadError> {
+        let ident_load_result = self.load(tile_kind, ident, highest_used_tile_index);
         let tiles = match (ident, ident_load_result) {
             (None, Ok(tiles)) | (Some(_), Ok(tiles)) => tiles,
             (None, error @ Err(_)) => return error,
             (Some(ident), Err(error)) => {
                 if error.because_file_is_missing() {
                     log::warn!("font with ident `{ident}` not found, falling back to generic font");
-                    self.load(tile_kind, &None, max_used_tile_index)?
+                    self.load(tile_kind, &None, highest_used_tile_index)?
                 } else {
                     return Err(error);
                 }
