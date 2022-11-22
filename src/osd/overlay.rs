@@ -404,7 +404,6 @@ impl Generator {
     }
 
     pub fn iter(&self) -> FramesIter {
-        // self.osd_file_frames.overlay_frames_iter(self.frame_dimensions, 0, None, 0, &self.tile_images)
         self.into_iter()
     }
 
@@ -412,92 +411,7 @@ impl Generator {
         self.osd_file_frames.overlay_frames_iter(self.frame_dimensions, first_frame, last_frame, frame_shift, &self.tile_images)
     }
 
-    // pub fn into_iter(mut self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> Result<FramesIntoIter, ReadError> {
-
-    //     let frames = self.reader.frames()?;
-
-    //     let first_frame_index = first_frame as i32 - frame_shift;
-    //     let first_osd_file_frame_index = frames.iter().position(|frame| (frame.index() as i32) >= first_frame_index);
-    //     let osd_file_frames = match first_osd_file_frame_index {
-    //         Some(index) => frames[index..].to_vec(),
-    //         None => vec![],
-    //     };
-    //     let transparent_frame = self.transparent_frame_overlay();
-
-    //     Ok(FramesIntoIter {
-    //         generator: self,
-    //         osd_file_frames,
-    //         osd_file_frame_index: 0,
-    //         current_frame_index: first_frame,
-    //         last_frame,
-    //         frame_shift,
-    //         prev_frame: transparent_frame,
-    //     })
-    // }
-
-    // pub fn into_iter(mut self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> Result<FramesIntoIter, ReadError> {
-
-    //     let transparent_frame = self.transparent_frame_overlay();
-    //     let vframes_iter = self.reader.into_video_frames_iter(first_frame, last_frame, frame_shift)?;
-
-    //     Ok(FramesIntoIter {
-    //         generator: self,
-    //         vframes_iter,
-    //         prev_frame: transparent_frame
-    //     })
-    // }
-
 }
-
-// pub struct FramesIntoIter {
-//     generator: Generator,
-//     osd_file_frames: Vec<OSDFileFrame>,
-//     osd_file_frame_index: usize,
-//     current_frame_index: u32,
-//     last_frame: Option<u32>,
-//     frame_shift: i32,
-//     prev_frame: Image,
-// }
-
-// impl Iterator for FramesIntoIter {
-//     type Item = Image;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         match self.last_frame {
-//             Some(last_frame) => {
-//                 if self.current_frame_index > last_frame {
-//                     return None;
-//                 } else if self.osd_file_frame_index >= self.osd_file_frames.len() {
-//                     self.current_frame_index += 1;
-//                     return Some(self.prev_frame.clone());
-//                 }
-//             },
-//             None => {
-//                 if self.osd_file_frame_index >= self.osd_file_frames.len() {
-//                     return None;
-//                 }
-//             }
-//         }
-
-//         let osd_file_frame = &self.osd_file_frames[self.osd_file_frame_index];
-//         let actual_osd_file_frame_frame_index = osd_file_frame.index() as i32 + self.frame_shift;
-
-//         let frame =
-//             if (self.current_frame_index as i32) < actual_osd_file_frame_frame_index {
-//                 self.prev_frame.clone()
-//             } else {
-//                 let frame = self.generator.draw_frame_overlay(osd_file_frame);
-//                 self.osd_file_frame_index += 1;
-//                 self.prev_frame = frame.clone();
-//                 frame
-//             };
-
-//         self.current_frame_index += 1;
-
-//         Some(frame)
-//     }
-
-// }
 
 impl<'a> IntoIterator for &'a Generator {
     type Item = Frame;
