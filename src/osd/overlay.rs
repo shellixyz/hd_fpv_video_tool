@@ -47,7 +47,7 @@ use crate::{
     video::{
         FrameIndex as VideoFrameIndex,
         resolution::Resolution as VideoResolution, timestamp::{Timestamp, StartEndOverlayFrameIndex},
-    },
+    }, osd::dji::file::sorted_frames::GetFramesExt,
 };
 
 use super::{
@@ -267,7 +267,7 @@ impl Generator {
         osd_file_frame.draw_overlay_frame(self.frame_dimensions, &self.tile_images)
     }
 
-    fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &BTreeSet<VideoFrameIndex>) -> Result<(), IOError> {
+    fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &BTreeSet<VideoFrameIndex>) -> Result<(), HardLinkError> {
         if ! existing_frame_indices.is_empty() {
             let existing_frame_indices_vec = existing_frame_indices.iter().collect::<Vec<&VideoFrameIndex>>();
             for indices in existing_frame_indices_vec.windows(2) {
@@ -277,7 +277,7 @@ impl Generator {
                         for link_to_index in lower_index+1..*greater_index {
                             let copy_path = make_overlay_frame_file_path(&dir_path, link_to_index);
                             #[allow(clippy::needless_borrow)]
-                            std::fs::hard_link(&original_path, copy_path)?;
+                            file::hard_link(&original_path, copy_path)?;
                         }
                     }
                 }
@@ -305,7 +305,8 @@ impl Generator {
         let first_video_frame = start.start_overlay_frame_count();
         let last_video_frame = end.end_overlay_frame_index();
 
-        let frames_iter = self.osd_file_frames.par_shift_iter(first_video_frame, last_video_frame, frame_shift);
+        // let frames_iter = self.osd_file_frames.par_shift_iter(first_video_frame, last_video_frame, frame_shift);
+        let frames_iter = self.osd_file_frames.shift_iter(first_video_frame, last_video_frame, frame_shift);
         let frame_count = frames_iter.len();
         if frame_count == 0 { return Err(SaveFramesToDirError::NoFrameToWrite); }
 
