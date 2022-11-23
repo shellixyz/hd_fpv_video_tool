@@ -7,12 +7,12 @@ use std::{
     path::Path
 };
 
-use clap::{Parser, Subcommand, Args};
+use clap::{Parser, Subcommand};
 use derive_more::{From, Display, Error};
 
 use hd_fpv_osd_font_tool::prelude::*;
 
-use dji_fpv_video_tool::{prelude::*, cli::{font_options::FontOptions, osd_args::OSDArgs}};
+use dji_fpv_video_tool::{prelude::*, cli::{transcode_video_args::TranscodeVideoOSDArgs, generate_overlay_args::GenerateOverlayArgs}};
 
 
 #[derive(Parser)]
@@ -49,13 +49,7 @@ enum Commands {
     GenerateOverlayFrames {
 
         #[clap(flatten)]
-        scaling_args: ScalingArgs,
-
-        #[clap(flatten)]
-        font_options: FontOptions,
-
-        #[clap(flatten)]
-        osd_args: OSDArgs,
+        common_args: GenerateOverlayArgs,
 
         /// directory in which the OSD frames will be written
         target_dir: PathBuf,
@@ -72,13 +66,7 @@ enum Commands {
     GenerateOverlayVideo {
 
         #[clap(flatten)]
-        scaling_args: ScalingArgs,
-
-        #[clap(flatten)]
-        font_options: FontOptions,
-
-        #[clap(flatten)]
-        osd_args: OSDArgs,
+        common_args: GenerateOverlayArgs,
 
         /// path of the video file to generate
         video_file: PathBuf,
@@ -92,27 +80,10 @@ enum Commands {
     TranscodeVideo {
 
         #[clap(flatten)]
-        scaling_args: ScalingArgs,
+        osd_args: TranscodeVideoOSDArgs,
 
         #[clap(flatten)]
-        font_options: FontOptions,
-
-        /// shift frames to sync OSD with video
-        #[clap(short = 'o', long, value_parser, value_name = "frames", default_value_t = 0)]
-        frame_shift: i32,
-
-        /// path to FPV.WTF .osd file to use to generate OSD frames to burn onto video
-        #[clap(long, value_parser, value_name = "OSD file path")]
-        osd_file: Option<PathBuf>,
-
-        #[clap(flatten)]
-        transcode_args: TranscodeArgs,
-
-        /// input video file path
-        input_video_file: PathBuf,
-
-        /// output video file path
-        output_video_file: PathBuf,
+        transcode_args: TranscodeVideoArgs,
     },
 
     /// Fixes DJI Air Unit video audio sync and/or volume
@@ -171,84 +142,61 @@ fn display_osd_file_info_command<P: AsRef<Path>>(path: P) -> anyhow::Result<()> 
     Ok(())
 }
 
-// if --font-ident was passed with a non-empty string return Some(Some(ident)) but if it was passed with an empty string return Some(None)
-// fn transform_font_ident<'a>(font_ident: &'a Option<&str>) -> Option<Option<&'a str>> {
-//     match font_ident {
-//         Some("") => Some(None),
-//         Some(font_ident_str) => Some(Some(font_ident_str)),
-//         None => None,
-//     }
-// }
-
-// fn prepare_overlay_generator(scaling_args: &ScalingArgs, font_options: &FontOptions, osd_args: &OSDArgs) -> anyhow::Result<OverlayGenerator> {
-//     let scaling = Scaling::try_from(scaling_args)?;
-//     let osd_file = OSDFileReader::open(&osd_args.osd_file)?;
-//     let font_dir_path = font_options.font_dir.clone().unwrap_or_else(|| PathBuf::from(std::env::var(FONT_DIR_ENV_VAR_NAME).unwrap_or_else(|_| DEFAULT_FONT_DIR.to_owned())));
-//     let font_dir = FontDir::new(&font_dir_path);
-//     let overlay_generator = osd_file.into_frame_overlay_generator(
-//         &font_dir,
-//         &transform_font_ident(&font_options.font_ident.as_deref()),
-//         scaling
-//     )?;
-//     Ok(overlay_generator)
-// }
+fn generate_overlay_prepare_generator(common_args: &GenerateOverlayArgs) -> anyhow::Result<OverlayGenerator> {
+    let scaling = Scaling::try_from(common_args.scaling_args())?;
+    let mut osd_file = OSDFileReader::open(common_args.osd_file())?;
+    let font_dir = FontDir::new(&common_args.font_options().font_dir());
+    let overlay_generator = OverlayGenerator::new(
+        osd_file.frames()?,
+        &font_dir,
+        &common_args.font_options().font_ident(),
+        scaling
+    )?;
+    Ok(overlay_generator)
+}
 
 fn generate_overlay_frames_command(command: &Commands) -> anyhow::Result<()> {
-    if let Commands::GenerateOverlayFrames { scaling_args, font_options, osd_args, target_dir, } = command {
-        // let mut overlay_generator = prepare_overlay_generator(scaling_args, font_options, osd_args)?;
-        let mut overlay_generator = OverlayGenerator::new_from_cli_args(scaling_args, font_options, osd_args)?;
-        overlay_generator.save_frames_to_dir(target_dir, osd_args.frame_shift())?;
+    if let Commands::GenerateOverlayFrames { common_args, target_dir } = command {
+        let mut overlay_generator = generate_overlay_prepare_generator(common_args)?;
+        overlay_generator.save_frames_to_dir(common_args.start_end().start(), common_args.start_end().end(), target_dir, common_args.frame_shift())?;
     }
     Ok(())
 }
 
 fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()> {
-    if let Commands::GenerateOverlayVideo { scaling_args, font_options, osd_args, video_file: video_file_path } = command {
-        let mut overlay_generator = OverlayGenerator::new_from_cli_args(scaling_args, font_options, osd_args)?;
-        overlay_generator.generate_overlay_video(video_file_path, osd_args.frame_shift())?;
+    if let Commands::GenerateOverlayVideo { common_args, video_file } = command {
+        let mut overlay_generator = generate_overlay_prepare_generator(common_args)?;
+        overlay_generator.generate_overlay_video(common_args.start_end().start(), common_args.start_end().end(), video_file, common_args.frame_shift())?;
     }
     Ok(())
 }
 
-#[derive(Debug, thiserror::Error)]
-enum TranscodeVideoArgsError {
-    #[error("start timestamp >= end timestamp")]
-    StartGtEnd
-}
+async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
+    if let Commands::TranscodeVideo { osd_args, transcode_args } = command {
 
-fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
-    if let Commands::TranscodeVideo {
-        scaling_args, font_options, frame_shift, osd_file,
-        input_video_file, output_video_file, transcode_args } = command {
+        transcode_args.start_end().check_valid()?;
 
-        if let (Some(start), Some(end)) = (transcode_args.start(), transcode_args.end()) {
-            if start >= end { Err(TranscodeVideoArgsError::StartGtEnd)? }
-        }
-
-        match osd_file {
-            Some(osd_file) => {
-                let osd_args = OSDArgs::new(*frame_shift, osd_file.clone());
-                // let generator = prepare_overlay_generator(scaling_args, font_options, &osd_args)?;
-                let overlay_generator = OverlayGenerator::new_from_cli_args(scaling_args, font_options, &osd_args)?;
-                transcode_video_burn_osd(input_video_file, output_video_file, transcode_args, overlay_generator, *frame_shift)?;
-            },
-            None => transcode_video(input_video_file, output_video_file, transcode_args)?,
+        // TODO: support --osd (without file)
+        match osd_args.osd_file() {
+            Some(_) => transcode_video_burn_osd(transcode_args, osd_args).await?,
+            None => transcode_video(transcode_args).await?,
         }
     }
     Ok(())
 }
 
-fn fix_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>, sync: bool, volume: bool) -> anyhow::Result<()> {
+async fn fix_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>, sync: bool, volume: bool) -> anyhow::Result<()> {
     let fix_type = match (sync, volume) {
         (true, true) | (false, false) => VideoAudioFixType::SyncAndVolume,
         (true, false) => VideoAudioFixType::Sync,
         (false, true) => VideoAudioFixType::Volume,
     };
-    fix_dji_air_unit_video_file_audio(input_video_file, output_video_file, fix_type)?;
+    fix_dji_air_unit_video_file_audio(input_video_file, output_video_file, fix_type).await?;
     Ok(())
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
 
     pretty_env_logger::formatted_builder().parse_filters(cli.log_level.to_string().as_str()).init();
@@ -256,9 +204,9 @@ fn main() {
     let command_result = match &cli.command {
         command @ Commands::GenerateOverlayFrames {..} => generate_overlay_frames_command(command),
         command @ Commands::GenerateOverlayVideo {..} => generate_overlay_video_command(command),
-        command @ Commands::TranscodeVideo {..} => transcode_video_command(command),
+        command @ Commands::TranscodeVideo {..} => transcode_video_command(command).await,
         Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info_command(osd_file),
-        Commands::FixVideoAudio { input_video_file, output_video_file, sync, volume } => fix_audio_command(input_video_file, output_video_file, *sync, *volume),
+        Commands::FixVideoAudio { input_video_file, output_video_file, sync, volume } => fix_audio_command(input_video_file, output_video_file, *sync, *volume).await,
     };
 
     if let Err(error) = command_result {

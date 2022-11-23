@@ -1,5 +1,5 @@
 
-#![forbid(unsafe_code)]
+// #![forbid(unsafe_code)]
 
 pub mod log_level;
 pub mod osd;

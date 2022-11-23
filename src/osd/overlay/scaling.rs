@@ -1,6 +1,7 @@
 
 use clap::Args;
 use derive_more::From;
+use getset::CopyGetters;
 use thiserror::Error;
 
 use super::{
@@ -10,9 +11,9 @@ use super::{
     },
 };
 
-use crate::video:: resolution::{
+use crate::video::resolution::{
     InvalidTargetResolutionError,
-    Resolution,
+    Resolution as VideoResolution,
     TargetResolution,
 };
 
@@ -28,7 +29,7 @@ pub enum Scaling {
     Auto {
         target_resolution: TargetResolution,
         min_margins: Margins,
-        min_resolution: Resolution,
+        min_resolution: VideoResolution,
     }
 }
 
@@ -46,7 +47,8 @@ pub enum ScalingArgsError {
     InvalidResolutionFormat(InvalidTargetResolutionError)
 }
 
-#[derive(Args)]
+#[derive(Args, CopyGetters)]
+#[getset(get_copy = "pub")]
 pub struct ScalingArgs {
 
     // TODO: try to generate list of valid values at run time so that it is always in sync with the TargetResolution enum
@@ -71,6 +73,28 @@ pub struct ScalingArgs {
     min_coverage: u8,
 }
 
+#[derive(Args, CopyGetters)]
+#[getset(get_copy = "pub")]
+pub struct OSDScalingArgs {
+
+    /// force using scaling, default is automatic
+    #[clap(short, long, value_parser)]
+    osd_scaling: bool,
+
+    /// force disable scaling, default is automatic
+    #[clap(short, long, value_parser)]
+    no_osd_scaling: bool,
+
+    /// minimum margins to decide whether scaling should be used and how much to scale
+    #[clap(long, value_parser = min_margins_value_parser, value_name = "horizontal:vertical", default_value = "20:20")]
+    min_osd_margins: Margins,
+
+    /// minimum percentage of OSD coverage under which scaling will be used if --scaling/--no-scaling options are not provided
+    #[clap(long, value_parser = clap::value_parser!(u8).range(1..=100), value_name = "percent", default_value = "90")]
+    min_osd_coverage: u8,
+}
+
+
 fn min_margins_value_parser(min_margins_str: &str) -> Result<Margins, InvalidMarginsFormatError> {
     Margins::try_from(min_margins_str)
 }
@@ -79,8 +103,10 @@ fn target_resolution_value_parser(target_resolution_str: &str) -> Result<TargetR
     TargetResolution::try_from(target_resolution_str)
 }
 
-impl Scaling {
-    pub fn try_from(args: &ScalingArgs) -> Result<Self, ScalingArgsError> {
+impl TryFrom<&ScalingArgs> for Scaling {
+    type Error = ScalingArgsError;
+
+    fn try_from(args: &ScalingArgs) -> Result<Self, Self::Error> {
         Ok(match (args.scaling, args.no_scaling) {
             (true, true) => return Err(ScalingArgsError::IncompatibleArguments),
             (true, false) => {
@@ -91,7 +117,7 @@ impl Scaling {
             (false, false) => {
                 if let Some(target_resolution) = args.target_resolution {
                     let min_coverage = args.min_coverage as f64 / 100.0;
-                    let min_resolution = Resolution::new(
+                    let min_resolution = VideoResolution::new(
                         (target_resolution.dimensions().width as f64 * min_coverage) as u32,
                         (target_resolution.dimensions().height as f64 * min_coverage) as u32
                     );
@@ -99,6 +125,25 @@ impl Scaling {
                 } else {
                     Scaling::No { target_resolution: args.target_resolution }
                 }
+            },
+        })
+    }
+}
+
+impl Scaling {
+    pub fn try_from_osd_args(args: &OSDScalingArgs, video_resolution: VideoResolution) -> Result<Self, ScalingArgsError> {
+        Ok(match (args.osd_scaling, args.no_osd_scaling) {
+            (true, true) => return Err(ScalingArgsError::IncompatibleArguments),
+            (true, false) => Scaling::Yes { target_resolution: TargetResolution::Custom(video_resolution), min_margins: args.min_osd_margins },
+            (false, true) => Scaling::No { target_resolution: Some(TargetResolution::Custom(video_resolution)) },
+            (false, false) => {
+                let target_resolution = TargetResolution::Custom(video_resolution);
+                let min_coverage = args.min_osd_coverage as f64 / 100.0;
+                let min_resolution = VideoResolution::new(
+                    (target_resolution.dimensions().width as f64 * min_coverage) as u32,
+                    (target_resolution.dimensions().height as f64 * min_coverage) as u32
+                );
+                Scaling::Auto { target_resolution, min_margins: args.min_osd_margins, min_resolution }
             },
         })
     }

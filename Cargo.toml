@@ -31,6 +31,7 @@ anyhow = "1.0.66"
 regex = "1.7.0"
 lazy_static = "1.4.0"
 ffmpeg-next = "5.1.1"
+tokio = { version = "1.22.0", features = ["rt-multi-thread", "macros"] }
 
 [profile.release]
 panic = 'abort'

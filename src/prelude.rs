@@ -1,5 +1,8 @@
 
 pub use crate::{
+    cli::{
+        transcode_video_args::TranscodeVideoArgs,
+    },
     osd::{
         dji::{
             font_dir::FontDir,
@@ -23,7 +26,10 @@ pub use crate::{
         fix_dji_air_unit_video_file_audio,
         transcode_video,
         transcode_video_burn_osd,
-        TranscodeArgs,
         AudioFixType as VideoAudioFixType,
+        probe::{
+            probe as video_probe,
+            Error as VideoProbingError,
+        }
     },
 };

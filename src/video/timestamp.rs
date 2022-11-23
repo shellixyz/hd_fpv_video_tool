@@ -9,7 +9,7 @@ use thiserror::Error;
 use lazy_static::lazy_static;
 
 
-#[derive(CopyGetters, Setters, Constructor, Clone, Default, PartialEq, Eq)]
+#[derive(CopyGetters, Setters, Constructor, Clone, Copy, Default, PartialEq, Eq)]
 #[getset(get_copy = "pub", set = "pub")]
 pub struct Timestamp {
     hours: u16,
@@ -27,9 +27,21 @@ impl Timestamp {
         format!("{}:{}:{}", self.hours, self.minutes, self.seconds)
     }
 
-    pub fn frame_index(&self, fps: Rational) -> u64 {
+    pub fn frame_count(&self, fps: Rational) -> u64 {
         let frame_exact = fps * ffmpeg_next::Rational::new(self.total_seconds() as i32, 1);
         (frame_exact.numerator() as f64 / frame_exact.denominator() as f64).round() as u64
+    }
+
+    pub fn overlay_frame_count(&self) -> u32 {
+        u32::try_from(self.frame_count(Rational::from((60, 1)))).unwrap()
+    }
+
+    pub fn overlay_frame_index(&self) -> u32 {
+        let frame_count = self.overlay_frame_count();
+        if frame_count < 1 {
+            return frame_count;
+        }
+        frame_count - 1
     }
 
     pub fn interval_frames(start_timestamp: &Self, end_timestamp: &Self, fps: Rational) -> u64 {
@@ -81,4 +93,24 @@ impl TryFrom<&str> for Timestamp {
             None => return Err(TimestampFormatError(value.to_owned())),
         })
     }
+}
+
+pub trait StartEndOverlayFrameIndex {
+    fn start_overlay_frame_count(&self) -> u32;
+    fn end_overlay_frame_index(&self) -> Option<u32>;
+}
+
+impl StartEndOverlayFrameIndex for Option<Timestamp> {
+
+    fn start_overlay_frame_count(&self) -> u32 {
+        match self {
+            Some(start) => start.overlay_frame_count(),
+            None => 0,
+        }
+    }
+
+    fn end_overlay_frame_index(&self) -> Option<u32> {
+        self.as_ref().map(|end| end.overlay_frame_index())
+    }
+
 }

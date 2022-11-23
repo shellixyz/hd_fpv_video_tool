@@ -44,13 +44,9 @@ use crate::{
         WriteImageFile,
         WriteError as ImageWriteError,
     },
-    cli::{
-        font_options::FontOptions,
-        osd_args::OSDArgs,
-    },
     video::{
         FrameIndex as VideoFrameIndex,
-        resolution::Resolution as VideoResolution,
+        resolution::Resolution as VideoResolution, timestamp::{Timestamp, StartEndOverlayFrameIndex},
     },
 };
 
@@ -61,7 +57,6 @@ use super::{
         font_dir::FontDir,
         file::{
             ReadError,
-            Reader as OSDFileReader,
             frame::{
                 Frame as OSDFileFrame,
             },
@@ -71,9 +66,7 @@ use super::{
     tile_resize::ResizeTiles,
 };
 
-use self::{
-    scaling::{Scaling, ScalingArgs},
-};
+use self::scaling::Scaling;
 
 pub type Dimensions = GenericDimensions<u32>;
 #[derive(Deref, Clone, CopyGetters)]
@@ -268,19 +261,6 @@ impl Generator {
         Ok(Self { osd_file_frames, tile_images, frame_dimensions: overlay_resolution })
     }
 
-    pub fn new_from_cli_args(scaling_args: &ScalingArgs, font_options: &FontOptions, osd_args: &OSDArgs) -> anyhow::Result<Self> {
-        let scaling = Scaling::try_from(scaling_args)?;
-        let mut osd_file = OSDFileReader::open(osd_args.osd_file())?;
-        let font_dir = FontDir::new(&font_options.font_dir());
-        let overlay_generator = Self::new(
-            osd_file.frames()?,
-            &font_dir,
-            &font_options.font_ident(),
-            scaling
-        )?;
-        Ok(overlay_generator)
-    }
-
     fn draw_frame(&self, osd_file_frame: &OSDFileFrame) -> Frame {
         osd_file_frame.draw_overlay_frame(self.frame_dimensions, &self.tile_images)
     }
@@ -302,7 +282,7 @@ impl Generator {
         Ok(())
     }
 
-    pub fn save_frames_to_dir<P: AsRef<Path> + std::marker::Sync>(&mut self, path: P, frame_shift: i32) -> Result<(), SaveFramesToDirError> {
+    pub fn save_frames_to_dir<P: AsRef<Path> + std::marker::Sync>(&mut self, start: Option<Timestamp>, end: Option<Timestamp>, path: P, frame_shift: i32) -> Result<(), SaveFramesToDirError> {
         if path.as_ref().exists() {
             return Err(SaveFramesToDirError::TargetDirectoryExists);
         }
@@ -342,7 +322,7 @@ impl Generator {
         Ok(())
     }
 
-    pub fn generate_overlay_video<P: AsRef<Path>>(&mut self, output_video_path: P, frame_shift: i32) -> Result<(), GenerateOverlayVideoError> {
+    pub fn generate_overlay_video<P: AsRef<Path>>(&mut self, start: Option<Timestamp>, end: Option<Timestamp>, output_video_path: P, frame_shift: i32) -> Result<(), GenerateOverlayVideoError> {
         if output_video_path.as_ref().exists() {
             return Err(GenerateOverlayVideoError::TargetVideoFileExists);
         }
@@ -386,7 +366,7 @@ impl Generator {
         //         None => ffmpeg_stdin.write_all(prev_frame_image.as_raw())?,
         //     }
         // }
-        let frames_iter = self.iter_advanced(0, None, frame_shift);
+        let frames_iter = self.iter_advanced(start.start_overlay_frame_count(), end.end_overlay_frame_index(), frame_shift);
         let frame_count = frames_iter.len();
         for frame in frames_iter.progress_with_style(progress_style) {
             ffmpeg_stdin.write_all(frame.as_raw())?;
