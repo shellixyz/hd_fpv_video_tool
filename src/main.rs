@@ -157,6 +157,7 @@ fn generate_overlay_prepare_generator(common_args: &GenerateOverlayArgs) -> anyh
 
 fn generate_overlay_frames_command(command: &Commands) -> anyhow::Result<()> {
     if let Commands::GenerateOverlayFrames { common_args, target_dir } = command {
+        common_args.start_end().check_valid()?;
         let mut overlay_generator = generate_overlay_prepare_generator(common_args)?;
         overlay_generator.save_frames_to_dir(common_args.start_end().start(), common_args.start_end().end(), target_dir, common_args.frame_shift())?;
     }
@@ -165,6 +166,7 @@ fn generate_overlay_frames_command(command: &Commands) -> anyhow::Result<()> {
 
 fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()> {
     if let Commands::GenerateOverlayVideo { common_args, video_file } = command {
+        common_args.start_end().check_valid()?;
         let mut overlay_generator = generate_overlay_prepare_generator(common_args)?;
         overlay_generator.generate_overlay_video(common_args.start_end().start(), common_args.start_end().end(), video_file, common_args.frame_shift())?;
     }
