@@ -280,8 +280,8 @@ impl<'a> ExactSizeIterator for VideoFramesIter<'a> {
 
 pub struct ShiftIter<'a> {
     frames: &'a [Frame],
-    next_frame_index: usize,
-    next_back_frame_index: usize,
+    frame_index: isize,
+    back_frame_index: isize,
     video_frame_shift: i32,
 }
 
@@ -289,8 +289,8 @@ impl<'a> ShiftIter<'a> {
     fn new(frames: &'a [Frame], video_frame_shift: i32) -> Self {
         Self {
             frames,
-            next_frame_index: 0,
-            next_back_frame_index: frames.len() - 1,
+            frame_index: -1,
+            back_frame_index: frames.len() as isize,
             video_frame_shift,
         }
     }
@@ -300,9 +300,9 @@ impl<'a> Iterator for ShiftIter<'a> {
     type Item = (u32, &'a Frame);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.next_frame_index == self.next_back_frame_index { return None }
-        let frame = &self.frames[self.next_frame_index];
-        self.next_frame_index += 1;
+        self.frame_index += 1;
+        if self.frame_index == self.back_frame_index { return None }
+        let frame = &self.frames[self.frame_index as usize];
         let actual_frame_video_frame_index = u32::try_from(frame.index() as i32 + self.video_frame_shift).unwrap();
         Some((actual_frame_video_frame_index, frame))
     }
@@ -317,9 +317,9 @@ impl<'a> ExactSizeIterator for ShiftIter<'a> {
 
 impl<'a> DoubleEndedIterator for ShiftIter<'a> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        if self.next_frame_index == self.next_back_frame_index { return None }
-        let frame = &self.frames[self.next_back_frame_index];
-        self.next_back_frame_index -= 1;
+        self.back_frame_index -= 1;
+        if self.frame_index == self.back_frame_index { return None }
+        let frame = &self.frames[self.back_frame_index as usize];
         let actual_frame_video_frame_index = u32::try_from(frame.index() as i32 + self.video_frame_shift).unwrap();
         Some((actual_frame_video_frame_index, frame))
     }
@@ -388,12 +388,7 @@ impl<'a> rayon::iter::plumbing::Producer for ParallelShiftIter<'a> {
     type IntoIter = ShiftIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        ShiftIter {
-            frames: self.frames,
-            video_frame_shift: self.video_frame_shift,
-            next_frame_index: 0,
-            next_back_frame_index: self.frames.len() - 1,
-        }
+        ShiftIter::new(self.frames, self.video_frame_shift)
     }
 
     fn split_at(self, index: usize) -> (Self, Self) {

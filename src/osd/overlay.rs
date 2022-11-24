@@ -1,6 +1,5 @@
 
 use std::{
-    // collections::BTreeSet,
     path::{
         Path,
         PathBuf
@@ -20,7 +19,7 @@ use getset::CopyGetters;
 use thiserror::Error;
 use image::{ImageBuffer, Rgba, GenericImage, ImageResult};
 use indicatif::{ProgressStyle, ParallelProgressIterator, ProgressIterator};
-use rayon::prelude::ParallelIterator;
+use rayon::prelude::{ParallelIterator, IntoParallelRefIterator};
 
 pub mod scaling;
 pub mod margins;
@@ -267,7 +266,6 @@ impl Generator {
         osd_file_frame.draw_overlay_frame(self.frame_dimensions, &self.tile_images)
     }
 
-    // fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &BTreeSet<VideoFrameIndex>) -> Result<(), HardLinkError> {
     fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &SortedUniqFrameIndices) -> Result<(), HardLinkError> {
         if ! existing_frame_indices.is_empty() {
             let existing_frame_indices_vec = existing_frame_indices.iter().collect::<Vec<&VideoFrameIndex>>();
@@ -294,20 +292,10 @@ impl Generator {
         create_path(&path)?;
         log::info!("generating overlay frames and saving into directory: {}", path.as_ref().to_string_lossy());
 
-        // let first_video_frame_index = start.start_overlay_frame_count() as i32 - frame_shift;
-        // let first_frame_index = self.osd_file_frames.iter().position(|frame| (frame.index() as i32) >= first_video_frame_index);
-        // // let first_frame_index = self.osd_file_frames.iter().position(|frame| (frame.index() as i32) > -frame_shift).unwrap();
-        // // let frames = &self.osd_file_frames[first_frame_index..];
-        // let frames = first_frame_index.map(|index| &self.osd_file_frames[index..]).unwrap_or(&[]);
-        // let first_frame_index = frames.first().unwrap().index();
-
-        // let missing_frames = frame_shift + first_frame_index as i32;
-
         let first_video_frame = start.start_overlay_frame_count();
         let last_video_frame = end.end_overlay_frame_index();
+        dbg!(last_video_frame);
 
-        // let frames_iter = self.osd_file_frames.par_shift_iter(first_video_frame, last_video_frame, frame_shift);
-        // let frames_iter = self.osd_file_frames.shift_iter(first_video_frame, last_video_frame, frame_shift);
         let osd_file_frames = self.osd_file_frames.select_sorted_frames_slice(first_video_frame, last_video_frame, frame_shift);
         if osd_file_frames.is_empty() { return Err(SaveFramesToDirError::NoFrameToWrite); }
 
@@ -323,19 +311,18 @@ impl Generator {
             }
         }
 
-        // let frame_count = frames.last().unwrap().index();
         let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
         osd_file_frames.par_shift_iter(frame_shift).progress_with_style(progress_style).try_for_each(|(frame_index, frame)| {
             let dir_frame_index = (frame_index as i32 - first_video_frame as i32) as u32;
+        // osd_file_frames.par_iter().progress_with_style(progress_style).try_for_each(|frame| {
+        //     let dir_frame_index = (frame.index() as i32 + frame_shift - first_video_frame as i32) as u32;
             log::debug!("{} -> {}", frame.index(), &dir_frame_index);
             let frame_image = self.draw_frame(frame);
             frame_image.write_image_file(make_overlay_frame_file_path(&path, dir_frame_index))
         })?;
 
         log::info!("linking missing overlay frames");
-        // let frame_indices = frames.iter().map(|frame| (frame.index() as i32 + frame_shift) as u32).collect();
-        // let frame_indices = self.osd_file_frames.video_frame_indices(first_video_frame, last_video_frame, frame_shift);
-        let frame_indices = self.osd_file_frames.video_frame_indices(frame_shift);
+        let frame_indices = osd_file_frames.video_frame_indices(frame_shift - first_video_frame as i32);
         Self::link_missing_frames(&path, &frame_indices)?;
 
         log::info!("overlay frames generation completed: {} frames", osd_file_frames.len());
@@ -374,18 +361,6 @@ impl Generator {
         let mut ffmpeg_stdin = ffmpeg_child.stdin.take().expect("failed to open ffmpeg stdin");
 
         let progress_style = ProgressStyle::with_template("{wide_bar} {percent:>3}% [ETA {eta:>3}]").unwrap();
-        // let mut prev_frame_image = Frame::new(self.frame_dimensions);
-        // let mut video_frames_iter = self.osd_file_frames.video_frames_iter(0, None, frame_shift);
-        // for osd_file_frame in video_frames_iter.progress_with_style(progress_style) {
-        //     match osd_file_frame {
-        //         Some(osd_file_frame) => {
-        //             let new_frame_image = self.draw_frame(osd_file_frame);
-        //             ffmpeg_stdin.write_all(new_frame_image.as_raw())?;
-        //             prev_frame_image = new_frame_image;
-        //         },
-        //         None => ffmpeg_stdin.write_all(prev_frame_image.as_raw())?,
-        //     }
-        // }
         let frames_iter = self.iter_advanced(start.start_overlay_frame_count(), end.end_overlay_frame_index(), frame_shift);
         let frame_count = frames_iter.len();
         for frame in frames_iter.progress_with_style(progress_style) {
