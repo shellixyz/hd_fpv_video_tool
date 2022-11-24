@@ -1,5 +1,5 @@
 
-use std::collections::BTreeSet;
+// use std::collections::BTreeSet;
 
 use derive_more::Deref;
 use getset::CopyGetters;
@@ -23,6 +23,14 @@ pub struct SortedFrames {
     frames: Vec<Frame>
 }
 
+impl SortedFrames {
+
+    pub fn new(kind: Kind, font_variant: FontVariant, frames: Vec<Frame>) -> Self {
+        Self { frames, kind, font_variant }
+    }
+
+}
+
 #[derive(Deref, Clone, CopyGetters)]
 pub struct SortedFramesSlice<'a> {
 
@@ -34,6 +42,14 @@ pub struct SortedFramesSlice<'a> {
 
     #[deref]
     frames: &'a [Frame]
+}
+
+impl<'a> SortedFramesSlice<'a> {
+
+    pub fn new(kind: Kind, font_variant: FontVariant, frames: &'a [Frame]) -> Self {
+        Self { frames, kind, font_variant }
+    }
+
 }
 
 pub trait AsSortedFramesSlice {
@@ -72,13 +88,19 @@ impl<'a> GetFrames for SortedFramesSlice<'a> {
     }
 }
 
+#[derive(Deref)]
+pub struct SortedUniqFrameIndices(Vec<VideoFrameIndex>);
+
 pub trait GetFramesExt {
     fn highest_video_frame_index(&self) -> Option<VideoFrameIndex>;
     fn highest_used_tile_index(&self) -> Option<TileIndex>;
     fn first_video_frame_index(&self, first_video_frame: u32, video_frame_shift: i32) -> Option<u32>;
-    fn video_frame_indices(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> BTreeSet<u32>;
-    fn shift_iter(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> ShiftIter;
-    fn par_shift_iter(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> ParallelShiftIter;
+    // fn video_frame_indices(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> BTreeSet<u32>;
+    fn video_frame_indices(&self, video_frame_shift: i32) -> SortedUniqFrameIndices;
+    fn shift_iter(&self, video_frame_shift: i32) -> ShiftIter;
+    fn interval_shift_iter(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> ShiftIter;
+    fn par_shift_iter(&self, video_frame_shift: i32) -> ParallelShiftIter;
+    fn par_interval_shift_iter(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> ParallelShiftIter;
     fn video_frames_iter(&self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> VideoFramesIter;
     fn select_slice(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> &[Frame];
 }
@@ -100,18 +122,33 @@ impl<T> GetFramesExt for T where T: GetFrames {
         Some(u32::try_from(self.frames()[first_frame_index].index() as i32 + video_frame_shift).unwrap())
     }
 
-    fn video_frame_indices(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> BTreeSet<u32> {
-        self.select_slice(first_video_frame, last_video_frame, video_frame_shift)
-            .iter().map(|frame| (frame.index() as i32 + video_frame_shift) as u32).collect()
+    // fn video_frame_indices(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> BTreeSet<u32> {
+    //     self.select_slice(first_video_frame, last_video_frame, video_frame_shift)
+    //         .iter().map(|frame| (frame.index() as i32 + video_frame_shift) as u32).collect()
+    // }
+
+    fn video_frame_indices(&self, video_frame_shift: i32) -> SortedUniqFrameIndices {
+        SortedUniqFrameIndices(self.frames().iter().map(|frame| (frame.index() as i32 + video_frame_shift) as u32).collect())
+    }
+
+    fn shift_iter(&self, video_frame_shift: i32) -> ShiftIter {
+        ShiftIter::new(self.frames(), video_frame_shift)
     }
 
     /// returns an iterator which for each frame in the specified video frame interval returns the video frame shifted index and the frame
-    fn shift_iter(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> ShiftIter {
+    fn interval_shift_iter(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> ShiftIter {
         let frames = self.select_slice(first_video_frame, last_video_frame, video_frame_shift);
         ShiftIter::new(frames, video_frame_shift)
     }
 
-    fn par_shift_iter(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> ParallelShiftIter {
+    fn par_shift_iter(&self, video_frame_shift: i32) -> ParallelShiftIter {
+        ParallelShiftIter {
+            frames: self.frames(),
+            video_frame_shift,
+        }
+    }
+
+    fn par_interval_shift_iter(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> ParallelShiftIter {
         ParallelShiftIter {
             frames: self.select_slice(first_video_frame, last_video_frame, video_frame_shift),
             video_frame_shift,
@@ -185,80 +222,6 @@ impl<T> SelectSortedFramesSlice for T where T: AsSortedFramesSlice {
     }
 
 }
-
-// impl SortedFrames {
-
-//     pub fn new(kind: Kind, font_variant: FontVariant, frames: Vec<Frame>) -> Self {
-//         Self { frames, kind, font_variant }
-//     }
-
-//     pub fn highest_video_frame_index(&self) -> Option<VideoFrameIndex> {
-//         self.last().map(Frame::index)
-//     }
-
-//     pub fn highest_used_tile_index(&self) -> Option<TileIndex> {
-//         self.iter().flat_map(|frame| frame.tile_indices().as_slice()).max().cloned()
-//     }
-
-//     /// returns the video frame shifted index of the first frame which has a video frame shifted index greater than the specified first video frame
-//     pub fn first_video_frame_index(&self, first_video_frame: u32, video_frame_shift: i32) -> Option<u32> {
-//         let first_video_frame_index = first_video_frame as i32 - video_frame_shift;
-//         let first_frame_index = self.iter().position(|frame| (frame.index() as i32) >= first_video_frame_index)?;
-//         Some(u32::try_from(self[first_frame_index].index() as i32 + video_frame_shift).unwrap())
-//     }
-
-//     fn select_slice(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> &[Frame] {
-//         let first_video_frame_index = first_video_frame as i32 - video_frame_shift;
-//         let first_frame_index = self.iter().position(|frame| (frame.index() as i32) >= first_video_frame_index);
-
-//         match (first_frame_index, last_video_frame) {
-
-//             (Some(first_frame_index), Some(last_video_frame)) => {
-//                 let last_video_frame_index = last_video_frame as i32 - video_frame_shift;
-//                 let last_frame_index = self.iter().rposition(|frame| (frame.index() as i32) <= last_video_frame_index);
-//                 last_frame_index.map(|index| &self[first_frame_index..=index]).unwrap_or(&[])
-//             },
-
-//             (Some(first_frame_index), None) => &self[first_frame_index..],
-
-//             (None, _) => &[],
-
-//         }
-//     }
-
-//     pub fn video_frame_indices(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> BTreeSet<u32> {
-//         self.select_slice(first_video_frame, last_video_frame, video_frame_shift)
-//             .iter().map(|frame| (frame.index() as i32 + video_frame_shift) as u32).collect()
-//     }
-
-//     /// returns an iterator which for each frame in the specified video frame interval returns the video frame shifted index and the frame
-//     pub fn shift_iter(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> ShiftIter {
-//         let frames = self.select_slice(first_video_frame, last_video_frame, video_frame_shift);
-//         ShiftIter::new(frames, video_frame_shift)
-//     }
-
-//     pub fn par_shift_iter(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> ParallelShiftIter {
-//         ParallelShiftIter {
-//             frames: self.select_slice(first_video_frame, last_video_frame, video_frame_shift),
-//             video_frame_shift,
-//         }
-//     }
-
-//     pub fn video_frames_iter(&self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> VideoFramesIter {
-//         let first_video_frame_index = first_frame as i32 - frame_shift;
-//         let first_frame_index = self.iter().position(|frame| (frame.index() as i32) >= first_video_frame_index);
-//         let osd_file_frames = first_frame_index.map(|index| &self[index..]).unwrap_or(&[]);
-
-//         VideoFramesIter {
-//             frames: osd_file_frames,
-//             frame_index: 0,
-//             video_frame_index: first_frame,
-//             last_video_frame_index: last_frame,
-//             video_frame_shift: frame_shift,
-//         }
-//     }
-
-// }
 
 pub struct VideoFramesIter<'a> {
     frames: &'a [Frame],
@@ -362,27 +325,27 @@ impl<'a> DoubleEndedIterator for ShiftIter<'a> {
     }
 }
 
-pub struct ShiftIntoIter {
-    frames_iter: std::vec::IntoIter<Frame>,
-    video_frame_shift: i32,
-}
+// pub struct ShiftIntoIter {
+//     frames_iter: std::vec::IntoIter<Frame>,
+//     video_frame_shift: i32,
+// }
 
-impl Iterator for ShiftIntoIter {
-    type Item = (u32, Frame);
+// impl Iterator for ShiftIntoIter {
+//     type Item = (u32, Frame);
 
-    fn next(&mut self) -> Option<Self::Item> {
-        let frame = self.frames_iter.next()?;
-        let actual_frame_video_frame_index = u32::try_from(frame.index() as i32 + self.video_frame_shift).unwrap();
-        Some((actual_frame_video_frame_index, frame))
-    }
+//     fn next(&mut self) -> Option<Self::Item> {
+//         let frame = self.frames_iter.next()?;
+//         let actual_frame_video_frame_index = u32::try_from(frame.index() as i32 + self.video_frame_shift).unwrap();
+//         Some((actual_frame_video_frame_index, frame))
+//     }
 
-}
+// }
 
-impl ExactSizeIterator for ShiftIntoIter {
-    fn len(&self) -> usize {
-        self.frames_iter.len()
-    }
-}
+// impl ExactSizeIterator for ShiftIntoIter {
+//     fn len(&self) -> usize {
+//         self.frames_iter.len()
+//     }
+// }
 
 type ShiftIterItem<'a> = (u32, &'a Frame);
 

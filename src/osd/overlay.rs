@@ -1,6 +1,6 @@
 
 use std::{
-    collections::BTreeSet,
+    // collections::BTreeSet,
     path::{
         Path,
         PathBuf
@@ -20,7 +20,7 @@ use getset::CopyGetters;
 use thiserror::Error;
 use image::{ImageBuffer, Rgba, GenericImage, ImageResult};
 use indicatif::{ProgressStyle, ParallelProgressIterator, ProgressIterator};
-use rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelBridge, IntoParallelIterator, IndexedParallelIterator};
+use rayon::prelude::ParallelIterator;
 
 pub mod scaling;
 pub mod margins;
@@ -47,7 +47,7 @@ use crate::{
     video::{
         FrameIndex as VideoFrameIndex,
         resolution::Resolution as VideoResolution, timestamp::{Timestamp, StartEndOverlayFrameIndex},
-    }, osd::dji::file::sorted_frames::GetFramesExt,
+    }, osd::dji::file::sorted_frames::{GetFramesExt, SelectSortedFramesSlice},
 };
 
 use super::{
@@ -60,7 +60,7 @@ use super::{
             frame::{
                 Frame as OSDFileFrame,
             },
-            sorted_frames::{SortedFrames as OSDFileSortedFrames, VideoFramesIter},
+            sorted_frames::{SortedFrames as OSDFileSortedFrames, VideoFramesIter, SortedUniqFrameIndices},
         },
     },
     tile_resize::ResizeTiles,
@@ -267,7 +267,8 @@ impl Generator {
         osd_file_frame.draw_overlay_frame(self.frame_dimensions, &self.tile_images)
     }
 
-    fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &BTreeSet<VideoFrameIndex>) -> Result<(), HardLinkError> {
+    // fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &BTreeSet<VideoFrameIndex>) -> Result<(), HardLinkError> {
+    fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &SortedUniqFrameIndices) -> Result<(), HardLinkError> {
         if ! existing_frame_indices.is_empty() {
             let existing_frame_indices_vec = existing_frame_indices.iter().collect::<Vec<&VideoFrameIndex>>();
             for indices in existing_frame_indices_vec.windows(2) {
@@ -306,9 +307,9 @@ impl Generator {
         let last_video_frame = end.end_overlay_frame_index();
 
         // let frames_iter = self.osd_file_frames.par_shift_iter(first_video_frame, last_video_frame, frame_shift);
-        let frames_iter = self.osd_file_frames.shift_iter(first_video_frame, last_video_frame, frame_shift);
-        let frame_count = frames_iter.len();
-        if frame_count == 0 { return Err(SaveFramesToDirError::NoFrameToWrite); }
+        // let frames_iter = self.osd_file_frames.shift_iter(first_video_frame, last_video_frame, frame_shift);
+        let osd_file_frames = self.osd_file_frames.select_sorted_frames_slice(first_video_frame, last_video_frame, frame_shift);
+        if osd_file_frames.is_empty() { return Err(SaveFramesToDirError::NoFrameToWrite); }
 
         let first_frame_index = self.osd_file_frames.first_video_frame_index(first_video_frame, frame_shift).unwrap();
 
@@ -324,7 +325,7 @@ impl Generator {
 
         // let frame_count = frames.last().unwrap().index();
         let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
-        frames_iter.progress_with_style(progress_style).try_for_each(|(frame_index, frame)| {
+        osd_file_frames.par_shift_iter(frame_shift).progress_with_style(progress_style).try_for_each(|(frame_index, frame)| {
             let dir_frame_index = (frame_index as i32 - first_video_frame as i32) as u32;
             log::debug!("{} -> {}", frame.index(), &dir_frame_index);
             let frame_image = self.draw_frame(frame);
@@ -333,10 +334,11 @@ impl Generator {
 
         log::info!("linking missing overlay frames");
         // let frame_indices = frames.iter().map(|frame| (frame.index() as i32 + frame_shift) as u32).collect();
-        let frame_indices = self.osd_file_frames.video_frame_indices(first_video_frame, last_video_frame, frame_shift);
+        // let frame_indices = self.osd_file_frames.video_frame_indices(first_video_frame, last_video_frame, frame_shift);
+        let frame_indices = self.osd_file_frames.video_frame_indices(frame_shift);
         Self::link_missing_frames(&path, &frame_indices)?;
 
-        log::info!("overlay frames generation completed: {} frames", frame_count);
+        log::info!("overlay frames generation completed: {} frames", osd_file_frames.len());
         Ok(())
     }
 

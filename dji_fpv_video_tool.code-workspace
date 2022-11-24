@@ -20,7 +20,9 @@
 			"libx",
 			"MSPOSD",
 			"rawvideo",
+			"rposition",
 			"thiserror",
+			"unindexed",
 			"yuva"
 		]
 	}
