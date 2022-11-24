@@ -18,7 +18,7 @@ pub struct Header {
     data_len: u32
 }
 
-#[derive(Debug, CopyGetters, Getters, Deref, Clone)]
+#[derive(Debug, CopyGetters, Getters, Deref, Clone, PartialEq, Eq)]
 pub struct Frame {
     #[getset(get_copy = "pub")]
     index: u32,

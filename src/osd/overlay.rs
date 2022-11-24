@@ -46,7 +46,7 @@ use crate::{
     video::{
         FrameIndex as VideoFrameIndex,
         resolution::Resolution as VideoResolution, timestamp::{Timestamp, StartEndOverlayFrameIndex},
-    }, osd::dji::file::sorted_frames::{GetFramesExt, SelectSortedFramesSlice},
+    }, osd::dji::file::sorted_frames::GetFramesExt,
 };
 
 use super::{
@@ -296,7 +296,7 @@ impl Generator {
         let last_video_frame = end.end_overlay_frame_index();
         dbg!(last_video_frame);
 
-        let osd_file_frames = self.osd_file_frames.select_sorted_frames_slice(first_video_frame, last_video_frame, frame_shift);
+        let osd_file_frames = self.osd_file_frames.select_slice(first_video_frame, last_video_frame, frame_shift);
         if osd_file_frames.is_empty() { return Err(SaveFramesToDirError::NoFrameToWrite); }
 
         let first_frame_index = self.osd_file_frames.first_video_frame_index(first_video_frame, frame_shift).unwrap();
