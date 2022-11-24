@@ -11,7 +11,7 @@ use crate::{video::FrameIndex as VideoFrameIndex, osd::dji::Kind};
 
 
 #[derive(Deref, Clone, CopyGetters)]
-pub struct SortedFrames {
+pub struct SortedUniqFrames {
 
     #[getset(get_copy = "pub")]
     kind: Kind,
@@ -23,7 +23,7 @@ pub struct SortedFrames {
     frames: Vec<Frame>
 }
 
-impl SortedFrames {
+impl SortedUniqFrames {
 
     pub fn new(kind: Kind, font_variant: FontVariant, frames: Vec<Frame>) -> Self {
         Self { frames, kind, font_variant }
@@ -56,7 +56,7 @@ pub trait AsSortedFramesSlice {
     fn as_sorted_frames_slice(&self) -> SortedFramesSlice;
 }
 
-impl AsSortedFramesSlice for SortedFrames {
+impl AsSortedFramesSlice for SortedUniqFrames {
     fn as_sorted_frames_slice(&self) -> SortedFramesSlice {
         SortedFramesSlice {
             kind: self.kind(),
@@ -76,7 +76,7 @@ pub trait GetFrames {
     fn frames(&self) -> &[Frame];
 }
 
-impl GetFrames for SortedFrames {
+impl GetFrames for SortedUniqFrames {
     fn frames(&self) -> &[Frame] {
         self.frames.as_slice()
     }

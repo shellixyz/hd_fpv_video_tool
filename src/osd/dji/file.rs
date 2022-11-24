@@ -44,7 +44,7 @@ use self::{
     tile_indices::{
         TileIndex,
         TileIndices,
-    }, sorted_frames::{SortedFrames},
+    }, sorted_frames::{SortedUniqFrames},
 };
 
 
@@ -243,7 +243,7 @@ impl Reader {
         Ok(Some(Frame::new(header.frame_index(), tile_indices)))
     }
 
-    pub fn frames(&mut self) -> Result<SortedFrames, ReadError> {
+    pub fn frames(&mut self) -> Result<SortedUniqFrames, ReadError> {
         self.rewind()?;
         let osd_kind = self.osd_kind;
         let font_variant = self.header.font_variant();
@@ -254,7 +254,7 @@ impl Reader {
                 Err(error) => return Err(error),
             }
         }
-        Ok(SortedFrames::new(osd_kind, font_variant, frames))
+        Ok(SortedUniqFrames::new(osd_kind, font_variant, frames))
     }
 
     pub fn rewind(&mut self) -> Result<(), FileError> {

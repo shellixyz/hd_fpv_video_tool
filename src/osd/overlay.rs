@@ -59,7 +59,7 @@ use super::{
             frame::{
                 Frame as OSDFileFrame,
             },
-            sorted_frames::{SortedFrames as OSDFileSortedFrames, VideoFramesIter, SortedUniqFrameIndices},
+            sorted_frames::{SortedUniqFrames as OSDFileSortedFrames, VideoFramesIter, SortedUniqFrameIndices},
         },
     },
     tile_resize::ResizeTiles,
