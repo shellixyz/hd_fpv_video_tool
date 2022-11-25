@@ -16,10 +16,11 @@ use std::{
 
 use derive_more::{From, Deref};
 use getset::CopyGetters;
+use path_absolutize::Absolutize;
 use thiserror::Error;
 use image::{ImageBuffer, Rgba, GenericImage, ImageResult};
-use indicatif::{ProgressStyle, ParallelProgressIterator, ProgressIterator};
-use rayon::prelude::{ParallelIterator, IntoParallelRefIterator};
+use indicatif::{ProgressStyle, ParallelProgressIterator, ProgressIterator, ProgressBar};
+use rayon::prelude::{ParallelIterator, IndexedParallelIterator};
 
 pub mod scaling;
 pub mod margins;
@@ -37,7 +38,7 @@ use crate::{
     },
     file::{
         self,
-        HardLinkError,
+        HardLinkError, SymlinkError,
     },
     image::{
         WriteImageFile,
@@ -46,7 +47,7 @@ use crate::{
     video::{
         FrameIndex as VideoFrameIndex,
         resolution::Resolution as VideoResolution, timestamp::{Timestamp, StartEndOverlayFrameIndex},
-    }, osd::dji::file::sorted_frames::GetFramesExt,
+    }, osd::dji::file::sorted_frames::{GetFramesExt, EndOfFramesAction},
 };
 
 use super::{
@@ -59,7 +60,7 @@ use super::{
             frame::{
                 Frame as OSDFileFrame,
             },
-            sorted_frames::{SortedUniqFrames as OSDFileSortedFrames, VideoFramesIter, SortedUniqFrameIndices},
+            sorted_frames::{SortedUniqFrames as OSDFileSortedFrames, VideoFramesIter},
         },
     },
     tile_resize::ResizeTiles,
@@ -134,6 +135,8 @@ pub enum SaveFramesToDirError {
     ImageWriteError(ImageWriteError),
     #[error(transparent)]
     HardLinkError(HardLinkError),
+    #[error(transparent)]
+    SymlinkError(SymlinkError),
     #[error("no frame to write")]
     NoFrameToWrite,
     #[error("target directory exists")]
@@ -266,24 +269,24 @@ impl Generator {
         osd_file_frame.draw_overlay_frame(self.frame_dimensions, &self.tile_images)
     }
 
-    fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &SortedUniqFrameIndices) -> Result<(), HardLinkError> {
-        if ! existing_frame_indices.is_empty() {
-            let existing_frame_indices_vec = existing_frame_indices.iter().collect::<Vec<&VideoFrameIndex>>();
-            for indices in existing_frame_indices_vec.windows(2) {
-                if let &[lower_index, greater_index] = indices {
-                    if *greater_index > lower_index + 1 {
-                        let original_path = make_overlay_frame_file_path(&dir_path, *lower_index);
-                        for link_to_index in lower_index+1..*greater_index {
-                            let copy_path = make_overlay_frame_file_path(&dir_path, link_to_index);
-                            #[allow(clippy::needless_borrow)]
-                            file::hard_link(&original_path, copy_path)?;
-                        }
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
+    // fn link_missing_frames<P: AsRef<Path>>(dir_path: P, existing_frame_indices: &SortedUniqFrameIndices) -> Result<(), HardLinkError> {
+    //     if ! existing_frame_indices.is_empty() {
+    //         let existing_frame_indices_vec = existing_frame_indices.iter().collect::<Vec<&VideoFrameIndex>>();
+    //         for indices in existing_frame_indices_vec.windows(2) {
+    //             if let &[lower_index, greater_index] = indices {
+    //                 if *greater_index > lower_index + 1 {
+    //                     let original_path = make_overlay_frame_file_path(&dir_path, *lower_index);
+    //                     for link_to_index in lower_index+1..*greater_index {
+    //                         let copy_path = make_overlay_frame_file_path(&dir_path, link_to_index);
+    //                         #[allow(clippy::needless_borrow)]
+    //                         file::hard_link(&original_path, copy_path)?;
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     Ok(())
+    // }
 
     pub fn save_frames_to_dir<P: AsRef<Path> + std::marker::Sync>(&mut self, start: Option<Timestamp>, end: Option<Timestamp>, path: P, frame_shift: i32) -> Result<(), SaveFramesToDirError> {
         if path.as_ref().exists() {
@@ -294,38 +297,71 @@ impl Generator {
 
         let first_video_frame = start.start_overlay_frame_count();
         let last_video_frame = end.end_overlay_frame_index();
-        dbg!(last_video_frame);
+        // dbg!(last_video_frame);
 
-        let osd_file_frames = self.osd_file_frames.select_slice(first_video_frame, last_video_frame, frame_shift);
-        if osd_file_frames.is_empty() { return Err(SaveFramesToDirError::NoFrameToWrite); }
+        let osd_file_frames_slice = self.osd_file_frames.select_slice(first_video_frame, last_video_frame, frame_shift);
+        if osd_file_frames_slice.is_empty() { return Err(SaveFramesToDirError::NoFrameToWrite); }
 
-        let first_frame_index = self.osd_file_frames.first_video_frame_index(first_video_frame, frame_shift).unwrap();
+        // let first_frame_index = self.osd_file_frames.first_video_frame_index(first_video_frame, frame_shift).unwrap();
 
-        // we are missing frames at the beginning
-        if first_frame_index > 0 {
-            log::debug!("Generating blank frames 0..{}", first_frame_index - 1);
-            let frame_0_path = make_overlay_frame_file_path(&path, 0);
-            Frame::new(self.frame_dimensions).write_image_file(&frame_0_path)?;
-            for frame_index in 1..first_frame_index {
-                file::hard_link(&frame_0_path, make_overlay_frame_file_path(&path, frame_index as VideoFrameIndex))?;
-            }
-        }
+        // // we are missing frames at the beginning
+        // if first_frame_index > 0 {
+        //     log::debug!("Generating blank frames 0..{}", first_frame_index - 1);
+        //     let frame_0_path = make_overlay_frame_file_path(&path, 0);
+        //     Frame::new(self.frame_dimensions).write_image_file(&frame_0_path)?;
+        //     for frame_index in 1..first_frame_index {
+        //         file::hard_link(&frame_0_path, make_overlay_frame_file_path(&path, frame_index as VideoFrameIndex))?;
+        //     }
+        // }
 
         let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
-        osd_file_frames.par_shift_iter(frame_shift).progress_with_style(progress_style).try_for_each(|(frame_index, frame)| {
-            let dir_frame_index = (frame_index as i32 - first_video_frame as i32) as u32;
-        // osd_file_frames.par_iter().progress_with_style(progress_style).try_for_each(|frame| {
-        //     let dir_frame_index = (frame.index() as i32 + frame_shift - first_video_frame as i32) as u32;
-            log::debug!("{} -> {}", frame.index(), &dir_frame_index);
-            let frame_image = self.draw_frame(frame);
-            frame_image.write_image_file(make_overlay_frame_file_path(&path, dir_frame_index))
+        // osd_file_frames.par_shift_iter(frame_shift).progress_with_style(progress_style).try_for_each(|(frame_index, frame)| {
+        //     let dir_frame_index = (frame_index as i32 - first_video_frame as i32) as u32;
+        // // osd_file_frames.par_iter().progress_with_style(progress_style).try_for_each(|frame| {
+        // //     let dir_frame_index = (frame.index() as i32 + frame_shift - first_video_frame as i32) as u32;
+        //     log::debug!("{} -> {}", frame.index(), &dir_frame_index);
+        //     let frame_image = self.draw_frame(frame);
+        //     frame_image.write_image_file(make_overlay_frame_file_path(&path, dir_frame_index))
+        // })?;
+
+        // log::info!("linking missing overlay frames");
+        // let frame_indices = osd_file_frames.video_frame_indices(frame_shift - first_video_frame as i32);
+        // Self::link_missing_frames(&path, &frame_indices)?;
+
+        let iter = osd_file_frames_slice.video_frames_rel_index_par_iter(EndOfFramesAction::ContinueToLastVideoFrame);
+        let frame_count = iter.len();
+        // dbg!(&frame_count);
+        let progress_bar = ProgressBar::new(frame_count as u64).with_style(progress_style);
+        progress_bar.enable_steady_tick(std::time::Duration::new(0, 100_000_000));
+
+        // iter.progress_with_style(progress_style).try_for_each(|item| {
+        iter.progress_with(progress_bar).try_for_each(|item| {
+        // iter.try_for_each(|item| {
+            use crate::osd::dji::file::sorted_frames::VideoFramesRelIndexIterItem::*;
+            match item {
+                Existing { rel_index, frame } => {
+                    log::debug!("existing {}", &rel_index);
+                    let frame_image = self.draw_frame(frame);
+                    frame_image.write_image_file(make_overlay_frame_file_path(&path, rel_index))?;
+                },
+                FirstNonExisting => {
+                    log::debug!("first non existing");
+                    let frame_0_path = make_overlay_frame_file_path(&path, 0);
+                    Frame::new(self.frame_dimensions).write_image_file(&frame_0_path)?;
+                },
+                NonExisting { prev_rel_index, rel_index } => {
+                    log::debug!("non existing {} -> {}", rel_index, prev_rel_index);
+                    let prev_path = make_overlay_frame_file_path(&path, prev_rel_index);
+                    let link_path = make_overlay_frame_file_path(&path, rel_index);
+                    let abs_link_path = link_path.absolutize().unwrap();
+                    // let link_path = make_overlay_frame_file_path(&path, rel_index).canonicalize().unwrap();
+                    file::symlink(prev_path, abs_link_path)?;
+                },
+            }
+            Ok::<(), SaveFramesToDirError>(())
         })?;
 
-        log::info!("linking missing overlay frames");
-        let frame_indices = osd_file_frames.video_frame_indices(frame_shift - first_video_frame as i32);
-        Self::link_missing_frames(&path, &frame_indices)?;
-
-        log::info!("overlay frames generation completed: {} frames", osd_file_frames.len());
+        log::info!("overlay frames generation completed: {} frames files written", frame_count);
         Ok(())
     }
 

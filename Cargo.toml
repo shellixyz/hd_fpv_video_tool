@@ -32,6 +32,9 @@ regex = "1.7.0"
 lazy_static = "1.4.0"
 ffmpeg-next = "5.1.1"
 tokio = { version = "1.22.0", features = ["rt-multi-thread", "macros"] }
+tap = "1.0.1"
+itertools = "0.10.5"
+path-absolutize = "3.0.14"
 
 [profile.release]
 panic = 'abort'

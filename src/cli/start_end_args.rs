@@ -10,7 +10,7 @@ use crate::video::timestamp::{Timestamp, TimestampFormatError};
 pub struct StartEndArgs {
 
     /// start timestamp
-    #[clap(long, value_parser = timestamp_value_parser, value_name = "[HH:]MM:SS", conflicts_with("fix_audio"), conflicts_with("fix_audio_sync"))]
+    #[clap(long, value_parser = timestamp_value_parser, value_name = "[HH:]MM:SS")]
     start: Option<Timestamp>,
 
     /// end timestamp

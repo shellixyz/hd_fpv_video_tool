@@ -37,7 +37,7 @@ impl SortedUniqFrames {
 }
 
 #[derive(Deref, Clone, CopyGetters)]
-pub struct SortedFramesForVideoSlice<'a> {
+pub struct SortedUniqFramesForVideoSlice<'a> {
 
     #[getset(get_copy = "pub")]
     kind: Kind,
@@ -57,25 +57,31 @@ pub struct SortedFramesForVideoSlice<'a> {
     frames: &'a [Frame]
 }
 
-impl<'a> SortedFramesForVideoSlice<'a> {
+impl<'a> SortedUniqFramesForVideoSlice<'a> {
 
     pub fn new(kind: Kind, font_variant: FontVariant, frames: &'a [Frame], first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> Self {
         Self { frames, kind, font_variant, first_video_frame, last_video_frame, video_frame_shift }
     }
 
     pub fn video_frames_rel_index_iter(&self, eof_action: EndOfFramesAction) -> VideoFramesRelIndexIter {
-        VideoFramesRelIndexIter::new(self.frames, self.video_frame_shift, eof_action, self.last_video_frame)
+        let index_shift = self.video_frame_shift - self.first_video_frame as i32;
+        VideoFramesRelIndexIter::new(self.frames, index_shift, eof_action, self.last_video_frame)
+    }
+
+    pub fn video_frames_rel_index_par_iter(&self, eof_action: EndOfFramesAction) -> ParallelVideoFramesRelIndexIter {
+        let index_shift = self.video_frame_shift - self.first_video_frame as i32;
+        ParallelVideoFramesRelIndexIter::new(self.frames, index_shift, eof_action, self.last_video_frame)
     }
 
 }
 
 pub trait AsSortedFramesForVideoSlice {
-    fn as_sorted_frames_slice(&self) -> SortedFramesForVideoSlice;
+    fn as_sorted_frames_slice(&self) -> SortedUniqFramesForVideoSlice;
 }
 
 impl AsSortedFramesForVideoSlice for SortedUniqFrames {
-    fn as_sorted_frames_slice(&self) -> SortedFramesForVideoSlice {
-        SortedFramesForVideoSlice {
+    fn as_sorted_frames_slice(&self) -> SortedUniqFramesForVideoSlice {
+        SortedUniqFramesForVideoSlice {
             kind: self.kind(),
             font_variant: self.font_variant(),
             frames: self.frames.as_slice(),
@@ -86,8 +92,8 @@ impl AsSortedFramesForVideoSlice for SortedUniqFrames {
     }
 }
 
-impl<'a> AsSortedFramesForVideoSlice for SortedFramesForVideoSlice<'a> {
-    fn as_sorted_frames_slice(&self) -> SortedFramesForVideoSlice {
+impl<'a> AsSortedFramesForVideoSlice for SortedUniqFramesForVideoSlice<'a> {
+    fn as_sorted_frames_slice(&self) -> SortedUniqFramesForVideoSlice {
         self.clone()
     }
 }
@@ -102,7 +108,7 @@ impl GetFrames for SortedUniqFrames {
     }
 }
 
-impl<'a> GetFrames for SortedFramesForVideoSlice<'a> {
+impl<'a> GetFrames for SortedUniqFramesForVideoSlice<'a> {
     fn frames(&self) -> &[Frame] {
         self.frames
     }
@@ -180,7 +186,7 @@ impl<T> GetFramesExt for T where T: GetFrames {
 
 impl SortedUniqFrames {
 
-    pub fn select_slice(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> SortedFramesForVideoSlice {
+    pub fn select_slice(&self, first_video_frame: u32, last_video_frame: Option<u32>, video_frame_shift: i32) -> SortedUniqFramesForVideoSlice {
         let first_video_frame_index = first_video_frame as i32 - video_frame_shift;
         let first_frame_index = self.frames().iter().position(|frame| (frame.index() as i32) >= first_video_frame_index);
 
@@ -198,7 +204,7 @@ impl SortedUniqFrames {
 
         };
 
-        SortedFramesForVideoSlice::new(self.kind(), self.font_variant(), frames, first_video_frame, last_video_frame, video_frame_shift)
+        SortedUniqFramesForVideoSlice::new(self.kind(), self.font_variant(), frames, first_video_frame, last_video_frame, video_frame_shift)
     }
 
     // /// returns an iterator which for each frame in the specified video frame interval returns the video frame shifted index and the frame
@@ -441,6 +447,7 @@ pub enum EndOfFramesAction {
     Stop
 }
 
+#[derive(Debug)]
 pub struct VideoFramesRelIndexIter<'a> {
     frames: &'a [Frame],
     frame_index: usize,
@@ -458,7 +465,8 @@ impl<'a> ExactSizeIterator for VideoFramesRelIndexIter<'a> {
         use EndOfFramesAction::*;
         match (self.eof_action, self.last_video_frame) {
             (ContinueToLastVideoFrame, Some(last_video_frame)) => (last_video_frame + 1) as usize,
-            (Stop, _) | (ContinueToLastVideoFrame, None) => self.frames.last().map(|frame| frame.index() + 1).unwrap_or_default() as usize,
+            (Stop, _) | (ContinueToLastVideoFrame, None) =>
+                self.frames.last().map(|frame| u32::try_from(frame.index() as i32 + self.index_shift + 1).unwrap()).unwrap_or_default() as usize,
         }
     }
 }
@@ -503,7 +511,7 @@ impl<'a> Iterator for VideoFramesRelIndexIter<'a> {
         if self.frame_index >= self.frames.len() {
             if self.end_iter
                 && matches!(self.eof_action, EndOfFramesAction::ContinueToLastVideoFrame)
-                && matches!(self.last_video_frame, Some(lvf) if self.video_frame_index < lvf ) {
+                && matches!(self.last_video_frame, Some(lvf) if self.video_frame_index <= lvf ) {
                 let item = VideoFramesRelIndexIterItem::NonExisting { prev_rel_index: self.prev_index, rel_index: self.video_frame_index };
                 self.video_frame_index += 1;
                 return Some(item);
@@ -527,7 +535,12 @@ impl<'a> Iterator for VideoFramesRelIndexIter<'a> {
                 self.prev_index = self.video_frame_index;
                 VideoFramesRelIndexIterItem::Existing { rel_index: self.video_frame_index, frame }
             }
-            _ => unreachable!()
+            _ => {
+                // if that is reached it means the frame we are iterating over were either not sorted by index
+                // or each frame did not have an uniq index. Should not be possible if the iterator was created
+                // from SortedUniqFrames or SortedUniqFramesForVideoSlice  iter methods
+                unreachable!()
+            }
         };
 
         self.video_frame_index += 1;
@@ -538,7 +551,7 @@ impl<'a> Iterator for VideoFramesRelIndexIter<'a> {
 
 impl<'a> DoubleEndedIterator for VideoFramesRelIndexIter<'a> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        todo!()
+        unimplemented!()
     }
 }
 
@@ -554,6 +567,23 @@ pub struct ParallelVideoFramesRelIndexIter<'a> {
     last_video_frame: Option<u32>,
 }
 
+impl<'a> ParallelVideoFramesRelIndexIter<'a> {
+
+    pub fn new(frames: &'a [Frame], index_shift: i32, eof_action: EndOfFramesAction, last_video_frame: Option<u32>) -> Self {
+        Self {
+            frames,
+            frame_index: 0,
+            video_frame_index: 0,
+            prev_index: 0,
+            index_shift,
+            end_iter: true,
+            eof_action,
+            last_video_frame: last_video_frame.map(|index| u32::try_from(index as i32 + index_shift).unwrap_or_default()),
+        }
+    }
+
+}
+
 impl<'a> ParallelIterator for ParallelVideoFramesRelIndexIter<'a> {
     type Item = VideoFramesRelIndexIterItem<'a>;
 
@@ -566,7 +596,12 @@ impl<'a> ParallelIterator for ParallelVideoFramesRelIndexIter<'a> {
 
 impl<'a> IndexedParallelIterator for ParallelVideoFramesRelIndexIter<'a> {
     fn len(&self) -> usize {
-        self.frames.len()
+        use EndOfFramesAction::*;
+        match (self.eof_action, self.last_video_frame) {
+            (ContinueToLastVideoFrame, Some(last_video_frame)) => (last_video_frame + 1) as usize,
+            (Stop, _) | (ContinueToLastVideoFrame, None) =>
+                self.frames.last().map(|frame| u32::try_from(frame.index() as i32 + self.index_shift + 1).unwrap()).unwrap_or_default() as usize,
+        }
     }
 
     fn drive<C: RayonConsumer<Self::Item>>(self, consumer: C) -> C::Result {
@@ -588,8 +623,14 @@ impl<'a> RayonProducer for ParallelVideoFramesRelIndexIter<'a> {
     }
 
     fn split_at(self, index: usize) -> (Self, Self) {
+        // let shifted_index = u32::try_from(index as i32 - self.index_shift).unwrap();
+        // let frames_split_index = self.frames.iter().rposition(|frame| frame.index() < shifted_index).unwrap_or_default();
+        // FIXME
+        let index = self.frames.len() / 2;
         let (left, right) =
+            // if frames_split_index > self.frame_index {
             if index > self.frame_index {
+                // let (left_frames, right_frames) = self.frames.split_at(frames_split_index);
                 let (left_frames, right_frames) = self.frames.split_at(index);
                 let left = Self {
                     frames: left_frames,
@@ -614,6 +655,7 @@ impl<'a> RayonProducer for ParallelVideoFramesRelIndexIter<'a> {
                 };
                 (left, right)
             } else {
+                // let right_frames = &self.frames[frames_split_index..];
                 let right_frames = &self.frames[index..];
                 let left = Self { // null iter
                     frames: &[],
@@ -644,6 +686,7 @@ impl<'a> RayonProducer for ParallelVideoFramesRelIndexIter<'a> {
 
 #[cfg(test)]
 mod tests {
+    use derive_more::Deref;
     use rayon::iter::plumbing::Producer;
     use strum::IntoEnumIterator;
 
@@ -652,35 +695,33 @@ mod tests {
     use super::{SortedUniqFrames, EndOfFramesAction, VideoFramesRelIndexIterItem, VideoFramesRelIndexIter, ParallelVideoFramesRelIndexIter};
 
 
-    #[derive(PartialEq, Eq)]
+    #[derive(PartialEq, Eq, Deref)]
     struct VideoFramesRelIndexIterItems<'a>(Vec<VideoFramesRelIndexIterItem<'a>>);
 
     impl<'a> VideoFramesRelIndexIterItems<'a> {
-        fn to_string_base(&self) -> String {
-            self.0.iter().map(|item|
-                match item {
-                    VideoFramesRelIndexIterItem::Existing { rel_index, frame } => format!("e{rel_index}({})", frame.index()),
-                    VideoFramesRelIndexIterItem::FirstNonExisting => "c0".to_owned(),
-                    VideoFramesRelIndexIterItem::NonExisting { prev_rel_index: prev_index, rel_index: index } => format!("l{index}:{prev_index}"),
-                }
-            ).collect::<Vec<_>>().join(" ")
-        }
-
         fn display(&self) {
-            println!("count: {}", self.0.len());
+            println!("count: {}", self.len());
             println!("items: {}", self);
         }
     }
 
     impl<'a> std::fmt::Display for VideoFramesRelIndexIterItems<'a> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str(&self.to_string_base())
+            use VideoFramesRelIndexIterItem::*;
+            let string = self.iter().map(|item|
+                match item {
+                    Existing { rel_index, frame } => format!("e{rel_index}({})", frame.index()),
+                    FirstNonExisting => "c0".to_owned(),
+                    NonExisting { prev_rel_index: prev_index, rel_index: index } => format!("l{index}:{prev_index}"),
+                }
+            ).collect::<Vec<_>>().join(" ");
+            f.write_str(&string)
         }
     }
 
     impl<'a> std::fmt::Debug for VideoFramesRelIndexIterItems<'a> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str(&self.to_string_base())
+            f.write_str(&self.to_string())
         }
     }
 

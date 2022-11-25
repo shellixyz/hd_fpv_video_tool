@@ -12,6 +12,7 @@ use byte_struct::*;
 
 use getset::{Getters, CopyGetters};
 use derive_more::From;
+use itertools::Itertools;
 use strum::Display;
 use thiserror::Error;
 
@@ -254,6 +255,8 @@ impl Reader {
                 Err(error) => return Err(error),
             }
         }
+        // let frames = frames.into_iter().unique_by(Frame::index).sorted_unstable_by(|a, b| a.index().cmp(&b.index())).collect();
+        let frames = frames.into_iter().sorted_unstable_by_key(Frame::index).unique_by(Frame::index).collect();
         Ok(SortedUniqFrames::new(osd_kind, font_variant, frames))
     }
 

@@ -312,12 +312,15 @@ dependencies = [
  "hd_fpv_osd_font_tool",
  "image",
  "indicatif",
+ "itertools",
  "lazy_static",
  "log",
+ "path-absolutize",
  "pretty_env_logger",
  "rayon",
  "regex",
  "strum",
+ "tap",
  "thiserror",
  "tokio",
 ]
@@ -569,6 +572,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -785,6 +797,24 @@ name = "paste"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1de2e551fb905ac83f73f7aedf2f0cb4a0da7e35efa24a202a936269f1f18e1"
+
+[[package]]
+name = "path-absolutize"
+version = "3.0.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f1d4993b16f7325d90c18c3c6a3327db7808752db8d208cea0acee0abd52c52"
+dependencies = [
+ "path-dedot",
+]
+
+[[package]]
+name = "path-dedot"
+version = "3.0.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a81540d94551664b72b72829b12bd167c73c9d25fbac0e04fafa8023f7e4901"
+dependencies = [
+ "once_cell",
+]
 
 [[package]]
 name = "peeking_take_while"

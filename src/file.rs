@@ -119,3 +119,22 @@ impl HardLinkError {
 pub fn hard_link<P: AsRef<Path>, Q: AsRef<Path>>(original_path: P, link_path: Q) -> Result<(), HardLinkError> {
     std::fs::hard_link(&original_path, &link_path).map_err(|error| HardLinkError::new(original_path, link_path, error))
 }
+
+#[derive(Debug, Error, Getters)]
+#[getset(get = "pub")]
+#[error("error symlinking {original_path} -> {link_path}: {error}")]
+pub struct SymlinkError {
+    original_path: PathBuf,
+    link_path: PathBuf,
+    error: IOError,
+}
+
+impl SymlinkError {
+    pub fn new<P: AsRef<Path>, Q: AsRef<Path>>(original_path: P, link_path: Q, error: IOError) -> Self {
+        Self { original_path: original_path.as_ref().to_path_buf(), link_path: link_path.as_ref().to_path_buf(), error }
+    }
+}
+
+pub fn symlink<P: AsRef<Path>, Q: AsRef<Path>>(original_path: P, link_path: Q) -> Result<(), SymlinkError> {
+    std::os::unix::fs::symlink(&original_path, &link_path).map_err(|error| SymlinkError::new(original_path, link_path, error))
+}
