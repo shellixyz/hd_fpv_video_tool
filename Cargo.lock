@@ -320,7 +320,6 @@ dependencies = [
  "rayon",
  "regex",
  "strum",
- "tap",
  "thiserror",
  "tokio",
 ]
