@@ -459,7 +459,7 @@ impl<'a> Iterator for VideoFramesRelIndexIter<'a> {
                 VideoFramesRelIndexIterItem::Existing { rel_index: self.video_frame_index, frame }
             }
             _ => {
-                // if that block is reached it means the frame we are iterating over were either not sorted by index
+                // if that block is reached it means the frames we are iterating over were either not sorted by index
                 // or each frame did not have an uniq index. Should not be possible if the iterator was created
                 // from SortedUniqFrames or SortedUniqFramesForVideoSlice  iter methods
                 unreachable!()
@@ -690,4 +690,5 @@ mod tests {
             }
         }
     }
+
 }
