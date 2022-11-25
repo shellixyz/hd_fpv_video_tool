@@ -9,3 +9,4 @@ pub mod image;
 pub mod video;
 pub mod prelude;
 pub mod cli;
+pub mod ffmpeg;

@@ -193,7 +193,7 @@ async fn fix_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, 
         (true, false) => VideoAudioFixType::Sync,
         (false, true) => VideoAudioFixType::Volume,
     };
-    fix_dji_air_unit_video_file_audio(input_video_file, output_video_file, fix_type).await?;
+    fix_dji_air_unit_video_file_audio(input_video_file, output_video_file, false, fix_type).await?;
     Ok(())
 }
 

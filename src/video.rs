@@ -241,69 +241,49 @@ impl AudioFixType {
         ]
     }
 
-    // fn ffmpeg_audio_args(&self) -> Vec<String> {
-    //     use AudioFixType::*;
-    //     match self {
-    //         None => vec!["-c:a".to_owned(), "copy".to_owned()],
-    //         fix_type => vec![
-    //             "-filter:a".to_owned(), fix_type.ffmpeg_audio_filter_string().unwrap(),
-    //             "-c:a".to_owned(), "aac".to_owned(),
-    //             "-b:a".to_owned(), "93k".to_owned(),
-    //         ]
-    //     }
-    // }
-
 }
 
-pub async fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>, fix_type: AudioFixType) -> Result<(), FixVideoFileAudioError> {
+pub async fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>, overwrite: bool, fix_type: AudioFixType) -> Result<(), FixVideoFileAudioError> {
 
-    if ! input_video_file.as_ref().exists() { return Err(FixVideoFileAudioError::InputVideoFileDoesNotExist); }
+    let input_video_file = input_video_file.as_ref();
+
+    if ! input_video_file.exists() { return Err(FixVideoFileAudioError::InputVideoFileDoesNotExist); }
 
     let output_video_file = match output_video_file {
         Some(output_video_file) => {
-            if input_video_file.as_ref() == output_video_file.as_ref() { return Err(FixVideoFileAudioError::InputAndOutputFileIsTheSame) }
-            if input_video_file.as_ref().extension() != output_video_file.as_ref().extension() { return Err(FixVideoFileAudioError::OutputHasADifferentExtensionThanInput) }
-            output_video_file.as_ref().to_path_buf()
+            let output_video_file = output_video_file.as_ref();
+            if input_video_file == output_video_file { return Err(FixVideoFileAudioError::InputAndOutputFileIsTheSame) }
+            if input_video_file.extension() != output_video_file.extension() { return Err(FixVideoFileAudioError::OutputHasADifferentExtensionThanInput) }
+            output_video_file.to_path_buf()
         },
         None => {
-            let mut output_file_stem = Path::new(input_video_file.as_ref().file_stem().ok_or(FixVideoFileAudioError::InputHasNoFileName)?).as_os_str().to_os_string();
+            let mut output_file_stem = Path::new(input_video_file.file_stem().ok_or(FixVideoFileAudioError::InputHasNoFileName)?).as_os_str().to_os_string();
             output_file_stem.push("_fixed_audio");
-            let input_file_extension = input_video_file.as_ref().extension().ok_or(FixVideoFileAudioError::InputHasNoExtension)?;
-            input_video_file.as_ref().with_file_name(output_file_stem).with_extension(input_file_extension)
+            let input_file_extension = input_video_file.extension().ok_or(FixVideoFileAudioError::InputHasNoExtension)?;
+            input_video_file.with_file_name(output_file_stem).with_extension(input_file_extension)
         },
     };
 
     if output_video_file.exists() { return Err(FixVideoFileAudioError::OutputVideoFileExists); }
 
-    log::info!("fixing video file audio: {} -> {}", input_video_file.as_ref().to_string_lossy(), output_video_file.to_string_lossy());
+    log::info!("fixing video file audio: {} -> {}", input_video_file.to_string_lossy(), output_video_file.to_string_lossy());
 
-    let video_info = video_probe(&input_video_file)?;
+    let video_info = video_probe(input_video_file)?;
 
     if ! video_info.has_audio() {
         return Err(FixVideoFileAudioError::InputVideoDoesNotHaveAnAudioStream);
     }
 
-    let mut ffmpeg_command = Command::new("ffmpeg");
-    let ffmpeg_command_with_args = &mut ffmpeg_command;
+    let mut ffmpeg_command = crate::ffmpeg::CommandBuilder::default();
 
-    ffmpeg_command_with_args
-        .arg("-i").arg(input_video_file.as_ref().as_os_str())
-        .args(fix_type.ffmpeg_audio_args().iter().map(String::as_str).collect::<Vec<_>>())
-        .arg("-y").arg(output_video_file.as_os_str());
+    ffmpeg_command
+        .add_input_file(input_video_file)
+        .add_audio_filter(&fix_type.ffmpeg_audio_filter_string())
+        .set_output_file(output_video_file)
+        .set_overwrite_output_file(overwrite);
 
-    log::debug!("ffmpeg {}", ffmpeg_command_with_args.get_args().map(OsStr::to_string_lossy).collect::<Vec<_>>().join(" "));
-
-    let ffmpeg_child = ffmpeg_command_with_args
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(FixVideoFileAudioError::FailedSpawningFFMpegProcess)?;
-
-    let ffmpeg_result = monitor_ffmpeg_progress(video_info.frame_count(), ffmpeg_child).await;
-
-    if ! ffmpeg_result.success() {
-        return Err(FixVideoFileAudioError::FFMpegExitedWithError(ffmpeg_result.code().unwrap()))
+    if let Err(error) = ffmpeg_command.build().unwrap().spawn_with_progress(video_info.frame_count()).unwrap().wait().await {
+        return Err(FixVideoFileAudioError::FFMpegExitedWithError(error.exit_status().code().unwrap()))
     }
 
     log::info!("video file's audio stream fixed successfully");

@@ -19,6 +19,7 @@
 			"libvpx",
 			"libx",
 			"MSPOSD",
+			"pcommand",
 			"rawvideo",
 			"rposition",
 			"thiserror",
