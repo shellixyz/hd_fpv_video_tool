@@ -9,7 +9,7 @@ use thiserror::Error;
 use lazy_static::lazy_static;
 
 
-#[derive(CopyGetters, Setters, Constructor, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, CopyGetters, Setters, Constructor, Clone, Copy, Default, PartialEq, Eq)]
 #[getset(get_copy = "pub", set = "pub")]
 pub struct Timestamp {
     hours: u16,

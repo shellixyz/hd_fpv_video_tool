@@ -74,17 +74,11 @@ impl Filter {
     }
 }
 
-#[derive(Debug, Clone, Getters, Setters)]
+#[derive(Debug, Clone, Getters, Setters, Default)]
 #[getset(get = "pub", set = "pub(self)")]
 pub struct CommonOutputStreamSettings {
-    codec: String,
+    codec: Option<String>,
     bitrate: Option<String>,
-}
-
-impl Default for CommonOutputStreamSettings {
-    fn default() -> Self {
-        Self { codec: "copy".to_owned(), bitrate: Default::default() }
-    }
 }
 
 #[derive(Debug, Clone, Deref, DerefMut, Default)]
@@ -92,7 +86,11 @@ pub struct AudioOutputSettings(CommonOutputStreamSettings);
 
 impl AudioOutputSettings {
     pub fn to_args(&self) -> Vec<OsString> {
-        let mut args = vec!["-c:a".into(), self.codec().into()];
+        let mut args = vec![];
+        if let Some(codec) = self.codec() {
+            args.push("-c:a".into());
+            args.push(codec.into());
+        }
         if let Some(bitrate) = self.bitrate() {
             args.push("-b:a".into());
             args.push(bitrate.to_string().into());
@@ -111,7 +109,11 @@ pub struct VideoOutputSettings {
 
 impl VideoOutputSettings {
     pub fn to_args(&self) -> Vec<OsString> {
-        let mut args = vec!["-c:v".into(), self.codec().into()];
+        let mut args = vec![];
+        if let Some(codec) = self.codec() {
+            args.push("-c:v".into());
+            args.push(codec.into());
+        }
         if let Some(bitrate) = self.bitrate() {
             args.push("-b:v".into());
             args.push(bitrate.to_string().into());
@@ -142,75 +144,94 @@ pub struct CommandBuilder {
     video_output_settings: VideoOutputSettings,
     audio_output_settings: AudioOutputSettings,
     output: Option<PathBuf>,
-    overwrite_output: bool,
+    overwrite_output_file: bool,
 }
 
 impl CommandBuilder {
 
-    pub fn set_ffmpeg_binary_path<P: AsRef<Path>>(&mut self, binary_path: P) {
-        self.bin_path = Some(binary_path.as_ref().to_path_buf())
+    pub fn set_ffmpeg_binary_path<P: AsRef<Path>>(&mut self, binary_path: P) -> &mut Self {
+        self.bin_path = Some(binary_path.as_ref().to_path_buf());
+        self
     }
 
-    pub fn add_input_file_slice<P: AsRef<Path>>(&mut self, file_path: P, start: Option<Timestamp>, end: Option<Timestamp>) {
-        self.inputs.push(Input::File { path: file_path.as_ref().to_path_buf(), start, end })
+    pub fn add_input_file_slice<P: AsRef<Path>>(&mut self, file_path: P, start: Option<Timestamp>, end: Option<Timestamp>) -> &mut Self {
+        self.inputs.push(Input::File { path: file_path.as_ref().to_path_buf(), start, end });
+        self
     }
 
-    pub fn add_input_file<P: AsRef<Path>>(&mut self, file_path: P) {
-        self.add_input_file_slice(file_path, None, None)
+    pub fn add_input_file<P: AsRef<Path>>(&mut self, file_path: P) -> &mut Self {
+        self.add_input_file_slice(file_path, None, None);
+        self
     }
 
     pub fn has_stdin_input(&self) -> bool {
         self.inputs().iter().any(|input| matches!(input, Input::StdinPipedRaw {..}))
     }
 
-    pub fn add_stdin_input(&mut self, resolution: Resolution, frame_rate: u16) -> Result<(), CommandHasAlreadyOneStdinInput>  {
+    pub fn add_stdin_input(&mut self, resolution: Resolution, frame_rate: u16) -> Result<&mut Self, CommandHasAlreadyOneStdinInput>  {
         if self.has_stdin_input() { return Err(CommandHasAlreadyOneStdinInput) }
         self.inputs.push(Input::StdinPipedRaw { resolution, frame_rate });
-        Ok(())
+        Ok(self)
     }
 
-    pub fn add_audio_filter(&mut self, filter: &str) {
+    pub fn add_audio_filter(&mut self, filter: &str) -> &mut Self {
         self.filters.push(Filter::Audio(filter.to_string()));
+        self
     }
 
-    pub fn add_video_filter(&mut self, filter: &str) {
+    pub fn add_video_filter(&mut self, filter: &str) -> &mut Self {
         self.filters.push(Filter::Video(filter.to_string()));
+        self
     }
 
-    pub fn add_complex_filter(&mut self, filter: &str) {
+    pub fn add_complex_filter(&mut self, filter: &str) -> &mut Self {
         self.filters.push(Filter::Complex(filter.to_string()));
+        self
     }
 
-    pub fn add_mapping(&mut self, mapping: &str) {
+    pub fn add_mapping(&mut self, mapping: &str) -> &mut Self {
         self.mappings.push(mapping.to_string());
+        self
     }
 
-    pub fn add_mappings(&mut self, mappings: &[&str]) {
+    pub fn add_mappings(&mut self, mappings: &[&str]) -> &mut Self {
         self.mappings.append(&mut mappings.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        self
     }
 
-    pub fn set_output_video_codec(&mut self, codec: &str) {
-        self.video_output_settings.set_codec(codec.to_string());
+    pub fn set_output_video_codec(&mut self, codec: Option<&str>) -> &mut Self {
+        self.video_output_settings.set_codec(codec.map(str::to_string));
+        self
     }
 
-    pub fn set_output_video_bitrate(&mut self, bitrate: Option<&str>) {
+    pub fn set_output_video_bitrate(&mut self, bitrate: Option<&str>) -> &mut Self {
         self.video_output_settings.set_bitrate(bitrate.map(str::to_string));
+        self
     }
 
-    pub fn set_output_video_crf(&mut self, crf: Option<&str>) {
+    pub fn set_output_video_crf(&mut self, crf: Option<&str>) -> &mut Self {
         self.video_output_settings.set_crf(crf.map(str::to_string));
+        self
     }
 
-    pub fn set_output_audio_codec(&mut self, codec: &str) {
-        self.audio_output_settings.set_codec(codec.to_string());
+    pub fn set_output_audio_codec(&mut self, codec: Option<&str>) -> &mut Self {
+        self.audio_output_settings.set_codec(codec.map(str::to_string));
+        self
     }
 
-    pub fn set_output_audio_bitrate(&mut self, bitrate: Option<&str>) {
+    pub fn set_output_audio_bitrate(&mut self, bitrate: Option<&str>) -> &mut Self {
         self.audio_output_settings.set_bitrate(bitrate.map(str::to_string));
+        self
     }
 
-    pub fn set_output_file<P: AsRef<Path>>(&mut self, file_path: P) {
-        self.output = Some(file_path.as_ref().to_path_buf())
+    pub fn set_overwrite_output_file(&mut self, yes: bool) -> &mut Self {
+        self.overwrite_output_file = yes;
+        self
+    }
+
+    pub fn set_output_file<P: AsRef<Path>>(&mut self, file_path: P) -> &mut Self {
+        self.output = Some(file_path.as_ref().to_path_buf());
+        self
     }
 
     pub fn build(&self) -> Result<Command, BuildCommandError> {
@@ -234,7 +255,7 @@ impl CommandBuilder {
         pcommand.args(self.audio_output_settings.to_args());
         pcommand.args(self.video_output_settings.to_args());
 
-        if self.overwrite_output { pcommand.arg("-y"); }
+        if self.overwrite_output_file { pcommand.arg("-y"); }
 
         match &self.output {
             Some(output) => pcommand.arg(output),
@@ -267,7 +288,7 @@ impl Command {
         let (stdout_stdio, stderr_stdio) = if self.debug() {
             (process::Stdio::inherit(), process::Stdio::inherit())
         } else {
-            (process::Stdio::null(), process::Stdio::null())
+            (process::Stdio::null(), process::Stdio::piped())
         };
         let mut process_handle = self.command
             .stdin(stdin_stdio).stdout(stdout_stdio).stderr(stderr_stdio)
@@ -308,8 +329,9 @@ impl Display for Command {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Getters)]
 #[error("ffmpeg process exited with an error: {exit_status}")]
+#[getset(get = "pub")]
 pub struct ProcessError {
     exit_status: process::ExitStatus,
     stderr_content: Option<String>,
