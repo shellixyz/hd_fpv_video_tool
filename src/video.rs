@@ -121,7 +121,7 @@ pub async fn transcode_video(args: &TranscodeVideoArgs) -> Result<(), TranscodeV
     if ! args.input_video_file().exists() { return Err(TranscodeVideoError::InputVideoFileDoesNotExist); }
     if args.output_video_file().exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
     if args.input_video_file() == args.output_video_file() { return Err(TranscodeVideoError::InputAndOutputFileIsTheSame) }
-    if args.start_end().start().is_some() && matches!(args.video_audio_fix_type(), AudioFixType::Sync | AudioFixType::SyncAndVolume) {
+    if args.start_end().start().is_some() && matches!(args.video_audio_fix(), Some(fix) if fix.sync()) {
         return Err(TranscodeVideoError::IncompatibleArguments("incompatible arguments: cannot fix video audio sync while not starting at the beginning of the file".to_owned()));
     }
 
@@ -145,8 +145,10 @@ pub async fn transcode_video(args: &TranscodeVideoArgs) -> Result<(), TranscodeV
     ffmpeg_command_with_args.arg("-i").arg(args.input_video_file().as_os_str());
 
     // audio args
-    if video_info.has_audio() {
-        ffmpeg_command_with_args.args(args.video_audio_fix_type().ffmpeg_audio_args().iter().map(String::as_str).collect::<Vec<_>>());
+    if let Some(video_audio_fix) = args.video_audio_fix() {
+        if video_info.has_audio() {
+            ffmpeg_command_with_args.args(video_audio_fix.ffmpeg_audio_args().iter().map(String::as_str).collect::<Vec<_>>());
+        }
     }
 
     // video args
@@ -205,7 +207,6 @@ pub enum FixVideoFileAudioError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AudioFixType {
-    None,
     Sync,
     Volume,
     SyncAndVolume,
@@ -213,27 +214,44 @@ pub enum AudioFixType {
 
 impl AudioFixType {
 
-    fn ffmpeg_audio_filter_string(&self) -> Option<String> {
+    pub fn sync(&self) -> bool {
+        use AudioFixType::*;
+        matches!(self, Sync | SyncAndVolume)
+    }
+
+    pub fn volume(&self) -> bool {
+        use AudioFixType::*;
+        matches!(self, Volume | SyncAndVolume)
+    }
+
+    fn ffmpeg_audio_filter_string(&self) -> String {
         use AudioFixType::*;
         match self {
-            None => Option::None,
-            Sync => Some("atempo=1.001480".to_owned()),
-            Volume => Some("volume=20".to_owned()),
-            SyncAndVolume => Some([Sync.ffmpeg_audio_filter_string().unwrap(), Volume.ffmpeg_audio_filter_string().unwrap()].join(",")),
+            Sync => "atempo=1.001480".to_owned(),
+            Volume => "volume=20".to_owned(),
+            SyncAndVolume => [Sync.ffmpeg_audio_filter_string(), Volume.ffmpeg_audio_filter_string()].join(","),
         }
     }
 
     fn ffmpeg_audio_args(&self) -> Vec<String> {
-        use AudioFixType::*;
-        match self {
-            None => vec!["-c:a".to_owned(), "copy".to_owned()],
-            fix_type => vec![
-                "-filter:a".to_owned(), fix_type.ffmpeg_audio_filter_string().unwrap(),
-                "-c:a".to_owned(), "aac".to_owned(),
-                "-b:a".to_owned(), "93k".to_owned(),
-            ]
-        }
+        vec![
+            "-filter:a".to_owned(), self.ffmpeg_audio_filter_string(),
+            "-c:a".to_owned(), "aac".to_owned(),
+            "-b:a".to_owned(), "93k".to_owned(),
+        ]
     }
+
+    // fn ffmpeg_audio_args(&self) -> Vec<String> {
+    //     use AudioFixType::*;
+    //     match self {
+    //         None => vec!["-c:a".to_owned(), "copy".to_owned()],
+    //         fix_type => vec![
+    //             "-filter:a".to_owned(), fix_type.ffmpeg_audio_filter_string().unwrap(),
+    //             "-c:a".to_owned(), "aac".to_owned(),
+    //             "-b:a".to_owned(), "93k".to_owned(),
+    //         ]
+    //     }
+    // }
 
 }
 
@@ -297,7 +315,7 @@ pub async fn transcode_video_burn_osd(args: &TranscodeVideoArgs, osd_args: &Tran
     if ! args.input_video_file().exists() { return Err(TranscodeVideoError::InputVideoFileDoesNotExist); }
     if args.output_video_file().exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
     if args.input_video_file() == args.output_video_file() { return Err(TranscodeVideoError::InputAndOutputFileIsTheSame) }
-    if args.start_end().start().is_some() && matches!(args.video_audio_fix_type(), AudioFixType::Sync | AudioFixType::SyncAndVolume) {
+    if args.start_end().start().is_some() && matches!(args.video_audio_fix(), Some(fix) if fix.sync()) {
         return Err(TranscodeVideoError::IncompatibleArguments("incompatible arguments: cannot fix video audio sync while not starting at the beginning of the file".to_owned()));
     }
 
@@ -359,12 +377,14 @@ pub async fn transcode_video_burn_osd(args: &TranscodeVideoArgs, osd_args: &Tran
             "-map", "[vo]",
         ]);
 
-    if video_info.has_audio() {
-        ffmpeg_command_with_args
-            .args(["-map", "0:a"])
-            .args(args.video_audio_fix_type().ffmpeg_audio_args().iter().map(String::as_str).collect::<Vec<_>>());
-    } else if args.video_audio_fix_type() != AudioFixType::None {
-        return Err(TranscodeVideoError::RequestedAudioFixingButInputHasNoAudio)
+    if let Some(video_audio_fix) = args.video_audio_fix() {
+        if video_info.has_audio() {
+            ffmpeg_command_with_args
+                .args(["-map", "0:a"])
+                .args(video_audio_fix.ffmpeg_audio_args().iter().map(String::as_str).collect::<Vec<_>>());
+        } else {
+            return Err(TranscodeVideoError::RequestedAudioFixingButInputHasNoAudio)
+        }
     }
 
     // video args

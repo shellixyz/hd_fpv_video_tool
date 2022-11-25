@@ -92,12 +92,12 @@ pub struct TranscodeVideoArgs {
 }
 
 impl TranscodeVideoArgs {
-    pub fn video_audio_fix_type(&self) -> VideoAudioFixType {
+    pub fn video_audio_fix(&self) -> Option<VideoAudioFixType> {
         use VideoAudioFixType::*;
         match (self.fix_audio, self.fix_audio_sync, self.fix_audio_volume) {
-            (true, _, _) | (false, true, true) => SyncAndVolume,
-            (false, true, false) => Sync,
-            (false, false, true) => Volume,
+            (true, _, _) | (false, true, true) => Some(SyncAndVolume),
+            (false, true, false) => Some(Sync),
+            (false, false, true) => Some(Volume),
             (false, false, false) => None,
         }
     }
