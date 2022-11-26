@@ -47,7 +47,7 @@ enum Commands {
     /// with --target-video-file then the kind of tiles (HD/SD) to use and whether to use scaling or not
     /// will be decided to best match the target video resolution and to get the best OSD sharpness.
     /// If neither of these options are specified no scaling will be used and the kind of tiles used will be
-    /// the native kind of tiles corresponding to the kind of OSD layout read from the WTF.OSD file.
+    /// the native kind of tiles corresponding to the kind of OSD layout read from the FPV.WTF .osd file.
     ///
     /// Fonts are loaded either from the directory specified with the --font-dir option or
     /// from the directory found in the environment variable FONTS_DIR or
@@ -70,7 +70,7 @@ enum Commands {
     /// with --target-video-file then the kind of tiles (HD/SD) to use and whether to use scaling or not
     /// will be decided to best match the target video resolution and to get the best OSD sharpness.
     /// If neither of these options are specified no scaling will be used and the kind of tiles used will be
-    /// the native kind of tiles corresponding to the kind of OSD layout read from the WTF.OSD file.
+    /// the native kind of tiles corresponding to the kind of OSD layout read from the FPV.WTF .osd file.
     ///
     /// Fonts are loaded either from the directory specified with the --font-dir option or
     /// from the directory found in the environment variable FONTS_DIR or
