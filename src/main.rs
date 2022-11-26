@@ -200,9 +200,8 @@ async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
 
         transcode_args.start_end().check_valid()?;
 
-        // TODO: support --osd (without file)
-        match osd_args.osd_file() {
-            Some(_) => transcode_video_burn_osd(transcode_args, osd_args).await?,
+        match osd_args.osd_file_path(transcode_args.input_video_file())? {
+            Some(osd_file_path) => transcode_video_burn_osd(transcode_args, osd_file_path, osd_args).await?,
             None => transcode_video(transcode_args).await?,
         }
     }

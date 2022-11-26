@@ -1,10 +1,11 @@
 
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 
 use clap::Args;
 use getset::{Getters, CopyGetters};
+use thiserror::Error;
 
-use crate::{osd::overlay::scaling::OSDScalingArgs, prelude::VideoAudioFixType};
+use crate::{osd::{overlay::scaling::OSDScalingArgs, dji::file::find_associated_to_video_file}, prelude::VideoAudioFixType};
 
 use super::{font_options::OSDFontOptions, start_end_args::StartEndArgs};
 
@@ -32,8 +33,22 @@ pub struct TranscodeVideoOSDArgs {
 
     /// path to FPV.WTF .osd file to use to generate OSD frames to burn onto video
     #[clap(long, value_parser, value_name = "OSD file path")]
-    #[getset(get = "pub")]
     osd_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Error)]
+#[error("args error: requested OSD but no file provided nor found")]
+pub struct RequestedOSDButNoFileProvidedNorFound;
+
+impl TranscodeVideoOSDArgs {
+    pub fn osd_file_path<P: AsRef<Path>>(&self, video_file_path: P) -> Result<Option<PathBuf>, RequestedOSDButNoFileProvidedNorFound> {
+        let osd_file_path = match (self.osd, &self.osd_file) {
+            (true, None) => Some(find_associated_to_video_file(video_file_path).ok_or(RequestedOSDButNoFileProvidedNorFound)?),
+            (_, Some(osd_file_path)) => Some(osd_file_path.clone()),
+            (false, None) => None,
+        };
+        Ok(osd_file_path)
+    }
 }
 
 #[derive(Args, Getters, CopyGetters)]

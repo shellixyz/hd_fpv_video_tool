@@ -205,7 +205,7 @@ pub async fn transcode_video(args: &TranscodeVideoArgs) -> Result<(), TranscodeV
     Ok(())
 }
 
-pub async fn transcode_video_burn_osd(args: &TranscodeVideoArgs, osd_args: &TranscodeVideoOSDArgs) -> Result<(), TranscodeVideoError> {
+pub async fn transcode_video_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_file_path: P, osd_args: &TranscodeVideoOSDArgs) -> Result<(), TranscodeVideoError> {
 
     if ! args.input_video_file().exists() { return Err(TranscodeVideoError::InputVideoFileDoesNotExist); }
     if ! args.overwrite() && args.output_video_file().exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
@@ -223,7 +223,7 @@ pub async fn transcode_video_burn_osd(args: &TranscodeVideoArgs, osd_args: &Tran
     }
 
     let osd_scaling = Scaling::try_from_osd_args(osd_args.osd_scaling_args(), video_info.resolution())?;
-    let mut osd_file = OSDFileReader::open(osd_args.osd_file().clone().unwrap())?;
+    let mut osd_file = OSDFileReader::open(osd_file_path)?;
     let osd_font_dir = FontDir::new(&osd_args.osd_font_options().osd_font_dir());
     let osd_frames_generator = OverlayGenerator::new(
         osd_file.frames()?,

@@ -13,8 +13,10 @@ use byte_struct::*;
 use getset::{Getters, CopyGetters};
 use derive_more::From;
 use itertools::Itertools;
+use regex::Regex;
 use strum::Display;
 use thiserror::Error;
+use lazy_static::lazy_static;
 
 use hd_fpv_osd_font_tool::prelude::*;
 
@@ -335,4 +337,32 @@ impl<'a> IntoIterator for &'a mut Reader {
     fn into_iter(self) -> Self::IntoIter {
         Self::IntoIter { reader: self }
     }
+}
+
+pub fn find_associated_to_video_file<P: AsRef<Path>>(video_file_path: P) -> Option<PathBuf> {
+    let video_file_path = video_file_path.as_ref();
+    log::debug!("looking for OSD file associated to video file: {}", video_file_path.to_string_lossy());
+
+    let osd_file_path = video_file_path.with_extension("osd");
+    if osd_file_path.is_file() {
+        log::debug!("found: {}", osd_file_path.to_string_lossy());
+        return Some(osd_file_path);
+    } else {
+        log::debug!("not found: {}", osd_file_path.to_string_lossy());
+    }
+
+    let file_stem = video_file_path.file_stem()?.to_string_lossy();
+    lazy_static! { static ref DJI_VIDEO_FILE_RE: Regex = Regex::new(r"\A(DJI(?:G|U)\d{4})").unwrap(); }
+    if let Some(captures) = DJI_VIDEO_FILE_RE.captures(&file_stem) {
+        let dji_file_prefix = captures.get(1).unwrap().as_str();
+        let osd_file_path = video_file_path.with_file_name(dji_file_prefix).with_extension("osd");
+        if osd_file_path.is_file() {
+            log::debug!("found: {}", osd_file_path.to_string_lossy());
+            return Some(osd_file_path);
+        } else {
+            log::debug!("not found: {}", osd_file_path.to_string_lossy());
+        }
+    }
+
+    None
 }
