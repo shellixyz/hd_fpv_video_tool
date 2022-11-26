@@ -81,13 +81,15 @@ pub async fn transcode_video(args: &TranscodeVideoArgs) -> Result<(), TranscodeV
 
     ffmpeg_command
         .add_input_file_slice(args.input_video_file(), args.start_end().start(), args.start_end().end())
-        .set_output_video_settings(Some(args.encoder()), Some(args.bitrate()), Some(&args.crf().to_string()))
+        .set_output_video_settings(Some(args.video_encoder()), Some(args.video_bitrate()), Some(&args.video_crf().to_string()))
         .set_output_file(args.output_video_file())
         .set_overwrite_output_file(args.overwrite());
 
     if let Some(video_audio_fix) = args.video_audio_fix() {
         if video_info.has_audio() {
-            ffmpeg_command.add_audio_filter(&video_audio_fix.ffmpeg_audio_filter_string());
+            ffmpeg_command
+                .add_audio_filter(&video_audio_fix.ffmpeg_audio_filter_string())
+                .set_output_audio_settings(Some(args.audio_encoder()), Some(args.audio_bitrate()));
         }
     }
 
@@ -191,6 +193,7 @@ pub async fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(i
     ffmpeg_command
         .add_input_file(input_video_file)
         .add_audio_filter(&fix_type.ffmpeg_audio_filter_string())
+        .set_output_audio_settings(Some("aac"), Some("93k"))
         .set_output_file(output_video_file)
         .set_overwrite_output_file(overwrite);
 
@@ -246,14 +249,17 @@ pub async fn transcode_video_burn_osd(args: &TranscodeVideoArgs, osd_args: &Tran
         .add_stdin_input(osd_overlay_resolution, 60).unwrap()
         .add_complex_filter("[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]")
         .add_mapping("[vo]")
-        .set_output_video_settings(Some(args.encoder()), Some(args.bitrate()), Some(&args.crf().to_string()))
+        .set_output_video_settings(Some(args.video_encoder()), Some(args.video_bitrate()), Some(&args.video_crf().to_string()))
         .set_output_file(args.output_video_file())
         .set_overwrite_output_file(args.overwrite());
 
     match (video_info.has_audio(), args.video_audio_fix()) {
         (true, None) => { ffmpeg_command.add_mapping("0:a"); },
-        (true, Some(audio_fix_type)) =>
-            { ffmpeg_command.add_mapping_with_audio_filter("0:a", &audio_fix_type.ffmpeg_audio_filter_string()); },
+        (true, Some(audio_fix_type)) => {
+            ffmpeg_command
+                .add_mapping_with_audio_filter("0:a", &audio_fix_type.ffmpeg_audio_filter_string())
+                .set_output_audio_settings(Some(args.audio_encoder()), Some(args.audio_bitrate()));
+            },
         (false, None) => {},
         (false, Some(_)) => return Err(TranscodeVideoError::RequestedAudioFixingButInputHasNoAudio),
     }

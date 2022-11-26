@@ -28,6 +28,7 @@ impl Input {
     pub fn to_args(&self) -> Vec<OsString> {
         let mut args = vec![];
         match self {
+
             Input::File { path, start, end } => {
                 if let Some(start) = start {
                     args.push("-ss".into());
@@ -40,14 +41,15 @@ impl Input {
                 args.push("-i".into());
                 args.push(path.clone().into_os_string());
             },
-            Input::StdinPipedRaw { resolution, frame_rate } => {
 
+            Input::StdinPipedRaw { resolution, frame_rate } => {
                 args.append(&mut ["-f", "rawvideo", "-pix_fmt", "rgba", "-video_size" ].map(Into::into).into());
                 args.push(resolution.to_string().into());
                 args.push("-r".into());
                 args.push(frame_rate.to_string().into());
                 args.append(&mut ["-i", "pipe:0"].map(Into::into).into());
             },
+
         }
         args
     }
@@ -433,6 +435,7 @@ impl Process {
         Process { handle, stdin }
     }
 
+    // TODO: capture and return some of the last lines from stderr if the process exits with error
     async fn monitor(frame_count: u64, mut ffmpeg_child: process::Child) -> Result<(), ProcessError> {
         let mut ffmpeg_stderr = ffmpeg_child.stderr.take().unwrap();
         let mut output_buf = String::new();

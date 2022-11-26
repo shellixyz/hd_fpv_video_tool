@@ -55,17 +55,29 @@ pub struct TranscodeVideoArgs {
     #[clap(short, long, value_parser, default_value = "libx265")]
     #[getset(skip)]
     #[getset(get = "pub")]
-    encoder: String,
+    video_encoder: String,
 
     /// max bitrate
     #[clap(short, long, value_parser, default_value = "25M")]
     #[getset(skip)]
     #[getset(get = "pub")]
-    bitrate: String,
+    video_bitrate: String,
+
+    /// video encoder to use
+    #[clap(short, long, value_parser, default_value = "libx265")]
+    #[getset(skip)]
+    #[getset(get = "pub")]
+    audio_encoder: String,
+
+    /// max bitrate
+    #[clap(short, long, value_parser, default_value = "25M")]
+    #[getset(skip)]
+    #[getset(get = "pub")]
+    audio_bitrate: String,
 
     /// constant quality setting
     #[clap(short, long, value_parser, default_value_t = 30)]
-    crf: u8,
+    video_crf: u8,
 
     // /// start timestamp
     // #[clap(long, value_parser = timestamp_value_parser, value_name = "[HH:]MM:SS", conflicts_with("fix_audio"), conflicts_with("fix_audio_sync"))]
