@@ -13,7 +13,14 @@ use super::{font_options::OSDFontOptions, start_end_args::StartEndArgs};
 #[derive(Args, Getters, CopyGetters)]
 pub struct TranscodeVideoOSDArgs {
 
-    /// burn OSD onto video, try to find the OSD file automatically
+    /// burn OSD onto video, try to find the OSD file automatically.
+    ///
+    /// First tries finding a file with the name <basename of the video file>.osd then if it does not exist
+    /// tries finding a file with same DJI prefix as the video file with G instead of U if it is starting with DJIU. Examples:{n}
+    /// DJIG0000.mp4 => DJIG0000.osd{n}
+    /// DJIG0000_something.mp4 => DJIG0000.osd{n}
+    /// DJIU0000.mp4 => DJIG0000.osd{n}
+    /// DJIU0000_something.mp4 => DJIG0000.osd{n}
     #[clap(long, value_parser)]
     #[getset(get_copy = "pub")]
     osd: bool,
