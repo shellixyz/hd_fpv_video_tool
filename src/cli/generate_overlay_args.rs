@@ -21,6 +21,7 @@ pub struct GenerateOverlayArgs {
     #[clap(flatten)]
     font_options: FontOptions,
 
+    /// Shift the output by that number of frames. Use this option to sync the OSD to a particular video.
     #[clap(short = 'o', long, value_parser, value_name = "frames", allow_negative_numbers(true), default_value_t = 0)]
     #[getset(skip)]
     #[getset(get_copy = "pub")]
