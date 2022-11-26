@@ -201,8 +201,8 @@ async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
         transcode_args.start_end().check_valid()?;
 
         match osd_args.osd_file_path(transcode_args.input_video_file())? {
-            Some(osd_file_path) => transcode_video_burn_osd(transcode_args, osd_file_path, osd_args).await?,
-            None => transcode_video(transcode_args).await?,
+            Some(osd_file_path) => transcode_burn_osd(transcode_args, osd_file_path, osd_args).await?,
+            None => transcode(transcode_args).await?,
         }
     }
     Ok(())
@@ -214,7 +214,7 @@ async fn fix_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, 
         (true, false) => VideoAudioFixType::Sync,
         (false, true) => VideoAudioFixType::Volume,
     };
-    fix_dji_air_unit_video_file_audio(input_video_file, output_video_file, false, fix_type).await?;
+    fix_dji_air_unit_audio(input_video_file, output_video_file, false, fix_type).await?;
     Ok(())
 }
 

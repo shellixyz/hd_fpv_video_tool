@@ -76,7 +76,7 @@ impl AudioFixType {
 
 }
 
-pub async fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>,
+pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>,
         overwrite: bool, fix_type: AudioFixType) -> Result<(), FixVideoFileAudioError> {
 
     let input_video_file = input_video_file.as_ref();
@@ -167,7 +167,7 @@ pub enum TranscodeVideoError {
     FFMpegExitedWithError(i32),
 }
 
-pub async fn transcode_video(args: &TranscodeVideoArgs) -> Result<(), TranscodeVideoError> {
+pub async fn transcode(args: &TranscodeVideoArgs) -> Result<(), TranscodeVideoError> {
 
     if ! args.input_video_file().exists() { return Err(TranscodeVideoError::InputVideoFileDoesNotExist); }
     if ! args.overwrite() && args.output_video_file().exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
@@ -205,7 +205,7 @@ pub async fn transcode_video(args: &TranscodeVideoArgs) -> Result<(), TranscodeV
     Ok(())
 }
 
-pub async fn transcode_video_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_file_path: P, osd_args: &TranscodeVideoOSDArgs) -> Result<(), TranscodeVideoError> {
+pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_file_path: P, osd_args: &TranscodeVideoOSDArgs) -> Result<(), TranscodeVideoError> {
 
     if ! args.input_video_file().exists() { return Err(TranscodeVideoError::InputVideoFileDoesNotExist); }
     if ! args.overwrite() && args.output_video_file().exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }

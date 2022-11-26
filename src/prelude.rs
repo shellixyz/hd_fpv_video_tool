@@ -23,9 +23,9 @@ pub use crate::{
     },
     log_level::LogLevel,
     video::{
-        fix_dji_air_unit_video_file_audio,
-        transcode_video,
-        transcode_video_burn_osd,
+        fix_dji_air_unit_audio,
+        transcode,
+        transcode_burn_osd,
         AudioFixType as VideoAudioFixType,
         probe::{
             probe as video_probe,
