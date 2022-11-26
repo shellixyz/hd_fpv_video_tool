@@ -75,6 +75,9 @@ enum Commands {
     /// Fonts are loaded either from the directory specified with the --font-dir option or
     /// from the directory found in the environment variable FONTS_DIR or
     /// if neither of these are available it falls back to the `fonts` directory inside the current directory
+    ///
+    /// NOTE: unfortunately this is very slow right now because only a handful of video formats support transparency
+    /// and their encoders are very slow
     GenerateOverlayVideo {
 
         #[clap(flatten)]
