@@ -12,7 +12,7 @@ use derive_more::{From, Display, Error};
 
 use hd_fpv_osd_font_tool::prelude::*;
 
-use dji_fpv_video_tool::{prelude::*, cli::{transcode_video_args::TranscodeVideoOSDArgs, generate_overlay_args::GenerateOverlayArgs}};
+use dji_fpv_video_tool::{prelude::*, cli::{transcode_video_args::TranscodeVideoOSDArgs, generate_overlay_args::GenerateOverlayArgs}, osd::overlay::OverlayVideoCodec};
 
 
 #[derive(Parser)]
@@ -82,6 +82,9 @@ enum Commands {
 
         #[clap(flatten)]
         common_args: GenerateOverlayArgs,
+
+        #[clap(short, long, default_value = "vp8")]
+        codec: OverlayVideoCodec,
 
         /// path of the video file to generate
         video_file: PathBuf,
@@ -184,10 +187,10 @@ fn generate_overlay_frames_command(command: &Commands) -> anyhow::Result<()> {
 }
 
 async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()> {
-    if let Commands::GenerateOverlayVideo { common_args, video_file, overwrite } = command {
+    if let Commands::GenerateOverlayVideo { common_args, video_file, overwrite, codec } = command {
         common_args.start_end().check_valid()?;
         let mut overlay_generator = generate_overlay_prepare_generator(common_args)?;
-        overlay_generator.generate_overlay_video(common_args.start_end().start(), common_args.start_end().end(), video_file, common_args.frame_shift(), *overwrite).await?;
+        overlay_generator.generate_overlay_video(*codec, common_args.start_end().start(), common_args.start_end().end(), video_file, common_args.frame_shift(), *overwrite).await?;
     }
     Ok(())
 }

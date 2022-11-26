@@ -11,7 +11,7 @@ use std::{
 };
 
 use derive_more::{From, Deref};
-use getset::CopyGetters;
+use getset::{CopyGetters, Getters};
 use path_absolutize::Absolutize;
 use thiserror::Error;
 use image::{ImageBuffer, Rgba, GenericImage, ImageResult};
@@ -120,6 +120,46 @@ pub fn make_overlay_frame_file_path<P: AsRef<Path>>(dir_path: P, frame_index: Vi
     [dir_path.as_ref().to_str().unwrap(), &format_overlay_frame_file_index(frame_index)].iter().collect()
 }
 
+
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum OverlayVideoCodec {
+    Vp8,
+    Vp9
+}
+
+#[derive(Debug, Clone, Getters, CopyGetters)]
+#[getset(get_copy = "pub")]
+pub struct OverlayVideoCodecParams {
+    encoder: &'static str,
+    bitrate: Option<&'static str>,
+    crf: Option<u8>,
+
+    #[getset(skip)]
+    #[getset(get = "pub")]
+    additional_args: Vec<&'static str>,
+}
+
+impl OverlayVideoCodecParams {
+    pub fn new(encoder: &'static str, bitrate: Option<&'static str>, crf: Option<u8>, additional_args: &[&'static str]) -> Self {
+        Self {
+            encoder,
+            bitrate,
+            crf,
+            additional_args: additional_args.to_vec(),
+        }
+    }
+}
+
+impl OverlayVideoCodec {
+    pub fn params(&self) -> OverlayVideoCodecParams {
+        use OverlayVideoCodec::*;
+        match self {
+            Vp8 => OverlayVideoCodecParams::new("libvpx", Some("1M"), Some(40), &["-auto-alt-ref", "0"]),
+            Vp9 => OverlayVideoCodecParams::new("libvpx-vp9", Some("0"), Some(40), &[]),
+        }
+    }
+}
+
 #[derive(Debug, Error, From)]
 pub enum SaveFramesToDirError {
     #[error(transparent)]
@@ -146,6 +186,8 @@ pub enum GenerateOverlayVideoError {
     FrameReadError(ReadError),
     #[error("target video file exists")]
     TargetVideoFileExists,
+    #[error("output video file extension needs to be .webm")]
+    OutputFileExtensionNotWebm,
     #[error("failed spawning ffmpeg process: {0}")]
     #[from(ignore)]
     FailedSpawningFFMpegProcess(IOError),
@@ -314,10 +356,11 @@ impl Generator {
         Ok(())
     }
 
-    pub async fn generate_overlay_video<P: AsRef<Path>>(&mut self, start: Option<Timestamp>, end: Option<Timestamp>, output_video_path: P, frame_shift: i32, overwrite_output: bool) -> Result<(), GenerateOverlayVideoError> {
-        if output_video_path.as_ref().exists() {
-            return Err(GenerateOverlayVideoError::TargetVideoFileExists);
-        }
+    pub async fn generate_overlay_video<P: AsRef<Path>>(&mut self, codec: OverlayVideoCodec, start: Option<Timestamp>, end: Option<Timestamp>, output_video_path: P, frame_shift: i32, overwrite_output: bool) -> Result<(), GenerateOverlayVideoError> {
+
+        if ! matches!(output_video_path.as_ref().extension(), Some(extension) if extension == "webm") { return Err(GenerateOverlayVideoError::OutputFileExtensionNotWebm) }
+        if ! overwrite_output &&  output_video_path.as_ref().exists() { return Err(GenerateOverlayVideoError::TargetVideoFileExists); }
+
         log::info!("generating overlay video: {}", output_video_path.as_ref().to_string_lossy());
 
         let frames_iter = self.iter_advanced(start.start_overlay_frame_count(), end.end_overlay_frame_index(), frame_shift);
@@ -327,7 +370,8 @@ impl Generator {
 
         ffmpeg_command
             .add_stdin_input(self.frame_dimensions, 60).unwrap()
-            .set_output_video_settings(Some("libvpx-vp9"), Some("0"), Some(40))
+            .set_output_video_settings(Some(codec.params().encoder()), codec.params().bitrate(), codec.params().crf())
+            .add_args(codec.params().additional_args())
             .set_output_file(output_video_path)
             .set_overwrite_output_file(overwrite_output);
 
