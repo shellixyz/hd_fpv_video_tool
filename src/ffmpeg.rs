@@ -191,6 +191,7 @@ pub struct CommandBuilder {
     mappings: Vec<Mapping>,
     video_output_settings: VideoOutputSettings,
     audio_output_settings: AudioOutputSettings,
+    args: Vec<String>,
     output: Option<PathBuf>,
     overwrite_output_file: bool,
 }
@@ -303,6 +304,16 @@ impl CommandBuilder {
             .set_output_audio_bitrate(bitrate)
     }
 
+    pub fn add_arg(&mut self, arg: &str) -> &mut Self {
+        self.args.push(arg.to_string());
+        self
+    }
+
+    pub fn add_args(&mut self, args: &[&str]) -> &mut Self {
+        self.args.append(&mut args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>());
+        self
+    }
+
     pub fn set_overwrite_output_file(&mut self, yes: bool) -> &mut Self {
         self.overwrite_output_file = yes;
         self
@@ -332,6 +343,8 @@ impl CommandBuilder {
 
         pcommand.args(self.audio_output_settings.to_args());
         pcommand.args(self.video_output_settings.to_args());
+
+        pcommand.args(self.args.iter().map(OsString::from).collect::<Vec<_>>());
 
         if self.overwrite_output_file { pcommand.arg("-y"); }
 
