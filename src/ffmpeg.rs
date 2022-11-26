@@ -126,6 +126,52 @@ impl VideoOutputSettings {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum Mapping {
+    WithoutFilter(String),
+    WithFilter {
+        mapping: String,
+        filter: Filter,
+    },
+}
+
+impl Mapping {
+
+    pub fn to_args(&self) -> Vec<OsString> {
+        let mut args = vec!["-map".into()];
+        match self {
+            Mapping::WithoutFilter(mapping) => args.push(mapping.into()),
+            Mapping::WithFilter { mapping, filter } => {
+                args.push(mapping.into());
+                args.append(&mut filter.to_args())
+            },
+        }
+        args
+    }
+
+    pub fn new_with_audio_filter(mapping: &str, filter: &str) -> Self {
+        Self::WithFilter {
+            mapping: mapping.to_string(),
+            filter: Filter::Audio(filter.to_string())
+        }
+    }
+
+    pub fn new_with_video_filter(mapping: &str, filter: &str) -> Self {
+        Self::WithFilter {
+            mapping: mapping.to_string(),
+            filter: Filter::Video(filter.to_string())
+        }
+    }
+
+    pub fn new_with_complex_filter(mapping: &str, filter: &str) -> Self {
+        Self::WithFilter {
+            mapping: mapping.to_string(),
+            filter: Filter::Complex(filter.to_string())
+        }
+    }
+
+}
+
 #[derive(Debug, Error)]
 #[error("failed to build FFMpeg command: {0}")]
 pub struct BuildCommandError(&'static str);
@@ -140,7 +186,7 @@ pub struct CommandBuilder {
     bin_path: Option<PathBuf>,
     inputs: Vec<Input>,
     filters: Vec<Filter>,
-    mappings: Vec<String>,
+    mappings: Vec<Mapping>,
     video_output_settings: VideoOutputSettings,
     audio_output_settings: AudioOutputSettings,
     output: Option<PathBuf>,
@@ -190,12 +236,30 @@ impl CommandBuilder {
     }
 
     pub fn add_mapping(&mut self, mapping: &str) -> &mut Self {
-        self.mappings.push(mapping.to_string());
+        self.mappings.push(Mapping::WithoutFilter(mapping.to_string()));
+        self
+    }
+
+    pub fn add_mapping_with_audio_filter(&mut self, mapping: &str, filter: &str) -> &mut Self {
+        self.mappings.push(Mapping::new_with_audio_filter(mapping, filter));
+        self
+    }
+
+    pub fn add_mapping_with_video_filter(&mut self, mapping: &str, filter: &str) -> &mut Self {
+        self.mappings.push(Mapping::new_with_video_filter(mapping, filter));
+        self
+    }
+
+    // NOTE: note sure a complex filter after map is valid
+    pub fn add_mapping_with_complex_filter(&mut self, mapping: &str, filter: &str) -> &mut Self {
+        self.mappings.push(Mapping::new_with_complex_filter(mapping, filter));
         self
     }
 
     pub fn add_mappings(&mut self, mappings: &[&str]) -> &mut Self {
-        self.mappings.append(&mut mappings.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        self.mappings.append(&mut mappings.iter().map(|s|
+            Mapping::WithoutFilter(s.to_string())
+        ).collect::<Vec<_>>());
         self
     }
 
@@ -214,6 +278,13 @@ impl CommandBuilder {
         self
     }
 
+    pub fn set_output_video_settings(&mut self, codec: Option<&str>, bitrate: Option<&str>, crf: Option<&str>) -> &mut Self {
+        self
+            .set_output_video_codec(codec)
+            .set_output_video_bitrate(bitrate)
+            .set_output_video_crf(crf)
+    }
+
     pub fn set_output_audio_codec(&mut self, codec: Option<&str>) -> &mut Self {
         self.audio_output_settings.set_codec(codec.map(str::to_string));
         self
@@ -222,6 +293,12 @@ impl CommandBuilder {
     pub fn set_output_audio_bitrate(&mut self, bitrate: Option<&str>) -> &mut Self {
         self.audio_output_settings.set_bitrate(bitrate.map(str::to_string));
         self
+    }
+
+    pub fn set_output_audio_settings(&mut self, codec: Option<&str>, bitrate: Option<&str>) -> &mut Self {
+        self
+            .set_output_audio_codec(codec)
+            .set_output_audio_bitrate(bitrate)
     }
 
     pub fn set_overwrite_output_file(&mut self, yes: bool) -> &mut Self {
@@ -248,8 +325,7 @@ impl CommandBuilder {
         }
 
         for mapping in &self.mappings {
-            pcommand.arg("-map");
-            pcommand.arg(OsString::from(mapping));
+            pcommand.args(mapping.to_args());
         }
 
         pcommand.args(self.audio_output_settings.to_args());
