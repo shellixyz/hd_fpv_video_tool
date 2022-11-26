@@ -1,7 +1,9 @@
 
+use std::path::PathBuf;
+
 use clap::Args;
 use derive_more::From;
-use getset::CopyGetters;
+use getset::{CopyGetters, Getters};
 use thiserror::Error;
 
 use super::{
@@ -12,11 +14,17 @@ use super::{
     },
 };
 
-use crate::video::resolution::{
-    target_resolution_value_parser,
-    InvalidTargetResolutionError,
-    Resolution as VideoResolution,
-    TargetResolution,
+use crate::video::{
+    resolution::{
+        target_resolution_value_parser,
+        InvalidTargetResolutionError,
+        Resolution as VideoResolution,
+        TargetResolution,
+    },
+    probe::{
+        probe as video_probe,
+        Error as VideoProbeError,
+    }
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -46,16 +54,26 @@ pub enum ScalingArgsError {
     #[error("need target video resolution when scaling requested")]
     NeedTargetVideoResolution,
     #[error(transparent)]
-    InvalidResolutionFormat(InvalidTargetResolutionError)
+    InvalidResolutionFormat(InvalidTargetResolutionError),
+    #[error("both target video resolution and target video file provided")]
+    BothTargetVideoResolutionAndFileProvided,
+    #[error("failed to get video resolution from file: {0}")]
+    VideoProbeError(VideoProbeError),
 }
 
-#[derive(Args, CopyGetters)]
+#[derive(Args, Getters, CopyGetters)]
 #[getset(get_copy = "pub")]
 pub struct ScalingArgs {
 
     /// resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
-    #[clap(short = 'r', long, value_parser = target_resolution_value_parser, value_names = TargetResolution::valid_list())]
+    #[clap(short = 'r', long, group("target_resolution"), value_parser = target_resolution_value_parser, value_names = TargetResolution::valid_list())]
     target_resolution: Option<TargetResolution>,
+
+    /// use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
+    #[clap(short = 'v', long, group("target_resolution"), value_parser)]
+    #[getset(skip)]
+    #[getset(get = "pub")]
+    target_video_file: Option<PathBuf>,
 
     /// force using scaling, default is automatic
     #[clap(short, long, value_parser)]
@@ -103,23 +121,34 @@ impl TryFrom<&ScalingArgs> for Scaling {
     type Error = ScalingArgsError;
 
     fn try_from(args: &ScalingArgs) -> Result<Self, Self::Error> {
+        let target_resolution = match (args.target_resolution, &args.target_video_file) {
+            (Some(target_resolution), None) => Some(target_resolution),
+            (None, Some(video_file)) => {
+                let probe_result = video_probe(video_file)?;
+                Some(TargetResolution::from(probe_result.resolution()))
+            }
+            (None, None) => None,
+            (Some(_), Some(_)) => return Err(ScalingArgsError::BothTargetVideoResolutionAndFileProvided)
+        };
+
         Ok(match (args.scaling, args.no_scaling) {
             (true, true) => return Err(ScalingArgsError::IncompatibleArguments),
             (true, false) => {
-                let target_resolution = args.target_resolution.ok_or(ScalingArgsError::NeedTargetVideoResolution)?;
+                let target_resolution = target_resolution.ok_or(ScalingArgsError::NeedTargetVideoResolution)?;
                 Scaling::Yes { target_resolution, min_margins: args.min_margins }
             },
-            (false, true) => Scaling::No { target_resolution: args.target_resolution },
+            (false, true) => Scaling::No { target_resolution },
             (false, false) => {
-                if let Some(target_resolution) = args.target_resolution {
+                match target_resolution {
+                    Some(target_resolution) => {
                     let min_coverage = args.min_coverage as f64 / 100.0;
                     let min_resolution = VideoResolution::new(
                         (target_resolution.dimensions().width as f64 * min_coverage) as u32,
                         (target_resolution.dimensions().height as f64 * min_coverage) as u32
                     );
                     Scaling::Auto { target_resolution, min_margins: args.min_margins, min_resolution }
-                } else {
-                    Scaling::No { target_resolution: args.target_resolution }
+                    },
+                    None => Scaling::No { target_resolution }
                 }
             },
         })

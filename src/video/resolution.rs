@@ -114,3 +114,9 @@ impl TryFrom<&str> for TargetResolution {
         Ok(resolution)
     }
 }
+
+impl From<Resolution> for TargetResolution {
+    fn from(resolution: Resolution) -> Self {
+        Self::Custom(resolution)
+    }
+}

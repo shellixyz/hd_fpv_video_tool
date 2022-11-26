@@ -38,27 +38,39 @@ enum Commands {
     /// Generates OSD overlay frames
     ///
     /// This command generates numbered OSD frame images from the specified WTF.FPV OSD file and writes
-    /// them into the specified directory.
+    /// them into the specified output directory.
     ///
     /// Use this command when you want to generate OSD frame images to check what the OSD looks like
     /// or when you want to manually burn the OSD onto a video.
     ///
+    /// If you specify a target resolution with --target-resolution or a video file to read the resolution from
+    /// with --target-video-file then the kind of tiles (HD/SD) to use and whether to use scaling or not
+    /// will be decided to best match the target video resolution and to get the best OSD sharpness.
+    /// If neither of these options are specified no scaling will be used and the kind of tiles used will be
+    /// the native kind of tiles corresponding to the kind of OSD layout read from the WTF.OSD file.
+    ///
     /// Fonts are loaded either from the directory specified with the --font-dir option or
     /// from the directory found in the environment variable FONTS_DIR or
-    /// if neither of these are available it falls back to the `fonts` directory inside the current directory
+    /// if neither of these are available it falls back to the `fonts` directory inside the current directory.
     GenerateOverlayFrames {
 
         #[clap(flatten)]
         common_args: GenerateOverlayArgs,
 
         /// directory in which the OSD frames will be written
-        target_dir: PathBuf,
+        output_dir: PathBuf,
     },
 
     /// Generates OSD overlay video
     ///
     /// This command generates a transparent video with the OSD frames rendered from the specified WTF.FPV OSD file.
     /// The generated video can then be used to play an FPV video with OSD without having to burn the OSD into the video.
+    ///
+    /// If you specify a target resolution with --target-resolution or a video file to read the resolution from
+    /// with --target-video-file then the kind of tiles (HD/SD) to use and whether to use scaling or not
+    /// will be decided to best match the target video resolution and to get the best OSD sharpness.
+    /// If neither of these options are specified no scaling will be used and the kind of tiles used will be
+    /// the native kind of tiles corresponding to the kind of OSD layout read from the WTF.OSD file.
     ///
     /// Fonts are loaded either from the directory specified with the --font-dir option or
     /// from the directory found in the environment variable FONTS_DIR or
@@ -160,7 +172,7 @@ fn generate_overlay_prepare_generator(common_args: &GenerateOverlayArgs) -> anyh
 }
 
 fn generate_overlay_frames_command(command: &Commands) -> anyhow::Result<()> {
-    if let Commands::GenerateOverlayFrames { common_args, target_dir } = command {
+    if let Commands::GenerateOverlayFrames { common_args, output_dir: target_dir } = command {
         common_args.start_end().check_valid()?;
         let mut overlay_generator = generate_overlay_prepare_generator(common_args)?;
         overlay_generator.save_frames_to_dir(common_args.start_end().start(), common_args.start_end().end(), target_dir, common_args.frame_shift())?;
