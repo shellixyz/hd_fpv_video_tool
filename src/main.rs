@@ -230,7 +230,8 @@ async fn main() {
         command @ Commands::GenerateOverlayVideo {..} => generate_overlay_video_command(command).await,
         command @ Commands::TranscodeVideo {..} => transcode_video_command(command).await,
         Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info_command(osd_file),
-        Commands::FixVideoAudio { input_video_file, output_video_file, sync, volume } => fix_audio_command(input_video_file, output_video_file, *sync, *volume).await,
+        Commands::FixVideoAudio { input_video_file, output_video_file, sync, volume } =>
+            fix_audio_command(input_video_file, output_video_file, *sync, *volume).await,
     };
 
     if let Err(error) = command_result {
