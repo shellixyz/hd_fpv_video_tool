@@ -15,7 +15,7 @@ exclude = ["*.webm", "*.osd", "*.mp4", "*.bin"]
 publish = false
 
 [dependencies]
-clap = { version = "4.0.18", features = ["derive"] }
+clap = { version = "4.0.18", features = ["derive", "string"] }
 image = { version = "0.24.4", features = ["rgb"] }
 log = "0.4.17"
 pretty_env_logger = "0.4.0"

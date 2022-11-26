@@ -51,9 +51,8 @@ pub enum ScalingArgsError {
 #[getset(get_copy = "pub")]
 pub struct ScalingArgs {
 
-    // TODO: try to generate list of valid values at run time so that it is always in sync with the TargetResolution enum
-    /// valid values are 720p, 720p4:3, 1080p, 1080p4:3 or a custom resolution in the format <width>x<height>
-    #[clap(short = 'r', long, value_parser = target_resolution_value_parser)]
+    /// resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
+    #[clap(short = 'r', long, value_parser = target_resolution_value_parser, value_names = TargetResolution::valid_list())]
     target_resolution: Option<TargetResolution>,
 
     /// force using scaling, default is automatic

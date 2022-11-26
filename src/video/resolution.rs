@@ -33,10 +33,10 @@ impl Display for StandardResolution {
 }
 
 impl StandardResolution {
-    pub fn list() -> String {
+    pub fn list() -> Vec<String> {
         Self::iter().map(|std_res|
             std_res.to_string()
-        ).collect::<Vec<_>>().join(", ")
+        ).collect::<Vec<_>>()
     }
 
     pub fn dimensions(&self) -> Resolution {
@@ -57,6 +57,7 @@ pub enum TargetResolution {
 }
 
 impl TargetResolution {
+
     pub fn dimensions(&self) -> Resolution {
         use TargetResolution::*;
         match self {
@@ -65,9 +66,10 @@ impl TargetResolution {
         }
     }
 
-    pub fn valid_list() -> String {
-        [StandardResolution::list(), "<width>x<height>".to_owned()].join(", ")
+    pub fn valid_list() -> Vec<String> {
+        [StandardResolution::list(), vec!["<width>x<height>".to_owned()]].into_iter().flatten().collect()
     }
+
 }
 
 #[derive(Debug, Error)]
@@ -100,7 +102,7 @@ impl TryFrom<&str> for TargetResolution {
                     None =>
                         return Err(InvalidTargetResolutionError {
                             given: custom_res_str.to_owned(),
-                            valid: Self::valid_list()
+                            valid: Self::valid_list().join(", ")
                         }),
                 }
             }
