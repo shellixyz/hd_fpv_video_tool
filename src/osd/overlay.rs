@@ -8,10 +8,6 @@ use std::{
         Error as IOError,
         Write
     },
-    process::{
-        Command,
-        Stdio
-    },
 };
 
 use derive_more::{From, Deref};
@@ -19,7 +15,7 @@ use getset::CopyGetters;
 use path_absolutize::Absolutize;
 use thiserror::Error;
 use image::{ImageBuffer, Rgba, GenericImage, ImageResult};
-use indicatif::{ProgressStyle, ParallelProgressIterator, ProgressIterator, ProgressBar};
+use indicatif::{ProgressStyle, ParallelProgressIterator, ProgressBar};
 use rayon::prelude::{ParallelIterator, IndexedParallelIterator};
 
 pub mod scaling;
@@ -36,6 +32,7 @@ use crate::{
         CreatePathError,
         create_path,
     },
+    ffmpeg,
     file::{
         self,
         HardLinkError, SymlinkError,
@@ -317,49 +314,34 @@ impl Generator {
         Ok(())
     }
 
-    pub fn generate_overlay_video<P: AsRef<Path>>(&mut self, start: Option<Timestamp>, end: Option<Timestamp>, output_video_path: P, frame_shift: i32) -> Result<(), GenerateOverlayVideoError> {
+    pub async fn generate_overlay_video<P: AsRef<Path>>(&mut self, start: Option<Timestamp>, end: Option<Timestamp>, output_video_path: P, frame_shift: i32, overwrite_output: bool) -> Result<(), GenerateOverlayVideoError> {
         if output_video_path.as_ref().exists() {
             return Err(GenerateOverlayVideoError::TargetVideoFileExists);
         }
         log::info!("generating overlay video: {}", output_video_path.as_ref().to_string_lossy());
 
-        let mut ffmpeg_command = Command::new("ffmpeg");
-        let ffmpeg_command_with_args =
-            ffmpeg_command
-            .args([
-                "-f", "rawvideo",
-                "-pix_fmt", "rgba",
-                "-video_size", self.frame_dimensions.to_string().as_str(),
-                "-r", "60",
-                "-i", "pipe:0",
-                "-c:v", "libvpx-vp9",
-                "-crf", "40",
-                "-b:v", "0",
-                "-y",
-                "-pix_fmt", "yuva420p",
-            ])
-            .arg(output_video_path.as_ref().as_os_str());
-
-        let mut ffmpeg_child = ffmpeg_command_with_args
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(GenerateOverlayVideoError::FailedSpawningFFMpegProcess)?;
-        let mut ffmpeg_stdin = ffmpeg_child.stdin.take().expect("failed to open ffmpeg stdin");
-
-        let progress_style = ProgressStyle::with_template("{wide_bar} {percent:>3}% [ETA {eta:>3}]").unwrap();
         let frames_iter = self.iter_advanced(start.start_overlay_frame_count(), end.end_overlay_frame_index(), frame_shift);
         let frame_count = frames_iter.len();
-        for frame in frames_iter.progress_with_style(progress_style) {
-            ffmpeg_stdin.write_all(frame.as_raw())?;
+
+        let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
+
+        ffmpeg_command
+            .add_stdin_input(self.frame_dimensions, 60).unwrap()
+            .set_output_video_settings(Some("libvpx-vp9"), Some("0"), Some(40))
+            .set_output_file(output_video_path)
+            .set_overwrite_output_file(overwrite_output);
+
+        let mut ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count as u64).unwrap();
+        let mut ffmpeg_stdin = ffmpeg_process.take_stdin().unwrap();
+
+        for osd_frame_image in frames_iter {
+            ffmpeg_stdin.write_all(osd_frame_image.as_raw())?;
         }
 
         drop(ffmpeg_stdin);
 
-        let ffmpeg_result = ffmpeg_child.wait()?;
-        if !ffmpeg_result.success() {
-            return Err(GenerateOverlayVideoError::FFMpegExitedWithError(ffmpeg_result.code().unwrap()))
+        if let Err(error) = ffmpeg_process.wait().await {
+            return Err(GenerateOverlayVideoError::FFMpegExitedWithError(error.exit_status().code().unwrap()))
         }
 
         log::info!("overlay video generation completed: {} frames", frame_count);

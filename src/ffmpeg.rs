@@ -106,7 +106,7 @@ pub struct VideoOutputSettings {
     #[deref] #[deref_mut]
     common: CommonOutputStreamSettings,
     #[getset(get = "pub", set = "pub(self)")]
-    crf: Option<String>,
+    crf: Option<u8>,
 }
 
 impl VideoOutputSettings {
@@ -122,7 +122,7 @@ impl VideoOutputSettings {
         }
         if let Some(crf) = self.crf() {
             args.push("-crf".into());
-            args.push(crf.into());
+            args.push(crf.to_string().into());
         }
         args
     }
@@ -275,12 +275,12 @@ impl CommandBuilder {
         self
     }
 
-    pub fn set_output_video_crf(&mut self, crf: Option<&str>) -> &mut Self {
-        self.video_output_settings.set_crf(crf.map(str::to_string));
+    pub fn set_output_video_crf(&mut self, crf: Option<u8>) -> &mut Self {
+        self.video_output_settings.set_crf(crf);
         self
     }
 
-    pub fn set_output_video_settings(&mut self, codec: Option<&str>, bitrate: Option<&str>, crf: Option<&str>) -> &mut Self {
+    pub fn set_output_video_settings(&mut self, codec: Option<&str>, bitrate: Option<&str>, crf: Option<u8>) -> &mut Self {
         self
             .set_output_video_codec(codec)
             .set_output_video_bitrate(bitrate)

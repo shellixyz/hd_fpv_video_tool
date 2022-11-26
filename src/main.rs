@@ -70,6 +70,10 @@ enum Commands {
 
         /// path of the video file to generate
         video_file: PathBuf,
+
+        /// overwrite output file if it exists
+        #[clap(short = 'y', long, value_parser)]
+        overwrite: bool,
     },
 
     /// Transcodes video file optionally burning OSD onto it
@@ -164,11 +168,11 @@ fn generate_overlay_frames_command(command: &Commands) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()> {
-    if let Commands::GenerateOverlayVideo { common_args, video_file } = command {
+async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()> {
+    if let Commands::GenerateOverlayVideo { common_args, video_file, overwrite } = command {
         common_args.start_end().check_valid()?;
         let mut overlay_generator = generate_overlay_prepare_generator(common_args)?;
-        overlay_generator.generate_overlay_video(common_args.start_end().start(), common_args.start_end().end(), video_file, common_args.frame_shift())?;
+        overlay_generator.generate_overlay_video(common_args.start_end().start(), common_args.start_end().end(), video_file, common_args.frame_shift(), *overwrite).await?;
     }
     Ok(())
 }
@@ -205,7 +209,7 @@ async fn main() {
 
     let command_result = match &cli.command {
         command @ Commands::GenerateOverlayFrames {..} => generate_overlay_frames_command(command),
-        command @ Commands::GenerateOverlayVideo {..} => generate_overlay_video_command(command),
+        command @ Commands::GenerateOverlayVideo {..} => generate_overlay_video_command(command).await,
         command @ Commands::TranscodeVideo {..} => transcode_video_command(command).await,
         Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info_command(osd_file),
         Commands::FixVideoAudio { input_video_file, output_video_file, sync, volume } => fix_audio_command(input_video_file, output_video_file, *sync, *volume).await,

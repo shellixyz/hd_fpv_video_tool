@@ -185,7 +185,7 @@ pub async fn transcode_video(args: &TranscodeVideoArgs) -> Result<(), TranscodeV
 
     ffmpeg_command
         .add_input_file_slice(args.input_video_file(), args.start_end().start(), args.start_end().end())
-        .set_output_video_settings(Some(args.video_encoder()), Some(args.video_bitrate()), Some(&args.video_crf().to_string()))
+        .set_output_video_settings(Some(args.video_encoder()), Some(args.video_bitrate()), Some(args.video_crf()))
         .set_output_file(args.output_video_file())
         .set_overwrite_output_file(args.overwrite());
 
@@ -249,7 +249,7 @@ pub async fn transcode_video_burn_osd(args: &TranscodeVideoArgs, osd_args: &Tran
         .add_stdin_input(osd_overlay_resolution, 60).unwrap()
         .add_complex_filter("[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]")
         .add_mapping("[vo]")
-        .set_output_video_settings(Some(args.video_encoder()), Some(args.video_bitrate()), Some(&args.video_crf().to_string()))
+        .set_output_video_settings(Some(args.video_encoder()), Some(args.video_bitrate()), Some(args.video_crf()))
         .set_output_file(args.output_video_file())
         .set_overwrite_output_file(args.overwrite());
 
