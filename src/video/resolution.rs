@@ -72,6 +72,10 @@ impl TargetResolution {
 
 }
 
+pub(crate) fn target_resolution_value_parser(target_resolution_str: &str) -> Result<TargetResolution, InvalidTargetResolutionError> {
+    TargetResolution::try_from(target_resolution_str)
+}
+
 #[derive(Debug, Error)]
 #[error("invalid target resolution `{given}`, valid resolutions are: {valid}")]
 pub struct InvalidTargetResolutionError {

@@ -6,12 +6,14 @@ use thiserror::Error;
 
 use super::{
     margins::{
+        margin_value_parser,
         InvalidMarginsFormatError,
         Margins,
     },
 };
 
 use crate::video::resolution::{
+    target_resolution_value_parser,
     InvalidTargetResolutionError,
     Resolution as VideoResolution,
     TargetResolution,
@@ -93,13 +95,8 @@ pub struct OSDScalingArgs {
     min_osd_coverage: u8,
 }
 
-
 fn min_margins_value_parser(min_margins_str: &str) -> Result<Margins, InvalidMarginsFormatError> {
-    Margins::try_from(min_margins_str)
-}
-
-fn target_resolution_value_parser(target_resolution_str: &str) -> Result<TargetResolution, InvalidTargetResolutionError> {
-    TargetResolution::try_from(target_resolution_str)
+    margin_value_parser(min_margins_str)
 }
 
 impl TryFrom<&ScalingArgs> for Scaling {

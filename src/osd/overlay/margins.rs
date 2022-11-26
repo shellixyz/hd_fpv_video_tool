@@ -33,3 +33,7 @@ impl TryFrom<&str> for Margins {
         }
     }
 }
+
+pub fn margin_value_parser(min_margins_str: &str) -> Result<Margins, InvalidMarginsFormatError> {
+    Margins::try_from(min_margins_str)
+}
