@@ -1,18 +1,15 @@
 
-use std::{path::Path, process::{Command, Stdio, ExitStatus, Child}, io::{Read, Write}, ffi::OsStr};
+use std::{path::Path, io::Write};
 
 use derive_more::From;
-use indicatif::{ProgressBar, ProgressStyle};
-use regex::Regex;
 use thiserror::Error;
 use std::io::Error as IOError;
-use ffmpeg_next as ffmpeg;
-use ffmpeg::Rational;
-use lazy_static::lazy_static;
+use ffmpeg_next::Rational;
 
 use crate::{prelude::*, osd::overlay::scaling::ScalingArgsError};
 use crate::{prelude::{TranscodeVideoArgs, Scaling}, cli::transcode_video_args::TranscodeVideoOSDArgs};
 use crate::osd::dji::file::ReadError as OSDFileReadError;
+use crate::ffmpeg;
 
 use self::timestamp::Timestamp;
 
@@ -44,7 +41,7 @@ pub enum TranscodeVideoError {
     OutputVideoFileExists,
     #[error("input file and output file are the same file")]
     InputAndOutputFileIsTheSame,
-    #[error("incompatible arguments")]
+    #[error("incompatible arguments: {0}")]
     IncompatibleArguments(String),
     #[error("OSD file read error: {0}")]
     OSDFileReadError(OSDFileReadError),
@@ -55,56 +52,6 @@ pub enum TranscodeVideoError {
     FailedSendingOSDImagesToFFMpeg(IOError),
     #[error("ffmpeg process exited with error: {0}")]
     FFMpegExitedWithError(i32),
-}
-
-async fn monitor_ffmpeg_progress(frame_count: u64, mut ffmpeg_child: Child) -> ExitStatus {
-    let mut ffmpeg_stderr = ffmpeg_child.stderr.take().unwrap();
-    let mut output_buf = String::new();
-    let mut read_buf = [0; 1024];
-    let progress_style = ProgressStyle::with_template("{wide_bar} {percent:>3}% [ETA {eta:>3}]").unwrap();
-    let progress_bar = ProgressBar::new(frame_count).with_style(progress_style);
-    progress_bar.set_position(0);
-
-    let ffmpeg_result = loop {
-
-        // read new data from stderr and push it into output_buf
-        let read_count = ffmpeg_stderr.read(&mut read_buf).unwrap();
-        output_buf.push_str(String::from_utf8_lossy(&read_buf[0..read_count]).to_string().as_str());
-
-        // try to find a line which is containing progress data
-        let lines = output_buf.split_inclusive('\r').collect::<Vec<_>>();
-        let progress_frame = lines.iter().find_map(|line| {
-            lazy_static! {
-                static ref PROGRESS_RE: Regex = Regex::new(r"\Aframe=\s+(\d+)").unwrap();
-            }
-            let captures = PROGRESS_RE.captures(line)?;
-            let frame: u64 = captures.get(1).unwrap().as_str().parse().unwrap();
-            Some(frame)
-        });
-
-        // update the progress bar since we just got a progress update
-        if let Some(progress_frame) = progress_frame {
-            progress_bar.set_position(progress_frame);
-        }
-
-        // if last line was incomplete put it back into output_buf otherwise just clear output_buf
-        if let Some(last_line) = lines.last() {
-            match last_line.chars().last() {
-                Some('\r') | None => output_buf.clear(),
-                Some(_) => output_buf = last_line.to_string(),
-            };
-        }
-
-        // check if the ffmpeg process exited and if it did break the loop with the exit status
-        if let Some(result) = ffmpeg_child.try_wait().unwrap() {
-            break result;
-        }
-
-    };
-
-    progress_bar.finish_and_clear();
-
-    ffmpeg_result
 }
 
 fn frame_count_for_interval(total_frames: u64, frame_rate: Rational, start: &Option<Timestamp>, end: &Option<Timestamp>) -> u64 {
@@ -119,10 +66,10 @@ fn frame_count_for_interval(total_frames: u64, frame_rate: Rational, start: &Opt
 pub async fn transcode_video(args: &TranscodeVideoArgs) -> Result<(), TranscodeVideoError> {
 
     if ! args.input_video_file().exists() { return Err(TranscodeVideoError::InputVideoFileDoesNotExist); }
-    if args.output_video_file().exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
+    if ! args.overwrite() && args.output_video_file().exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
     if args.input_video_file() == args.output_video_file() { return Err(TranscodeVideoError::InputAndOutputFileIsTheSame) }
     if args.start_end().start().is_some() && matches!(args.video_audio_fix(), Some(fix) if fix.sync()) {
-        return Err(TranscodeVideoError::IncompatibleArguments("incompatible arguments: cannot fix video audio sync while not starting at the beginning of the file".to_owned()));
+        return Err(TranscodeVideoError::IncompatibleArguments("cannot fix video audio sync while not starting at the beginning of the file".to_owned()));
     }
 
     log::info!("transcoding video: {} -> {}", args.input_video_file().to_string_lossy(), args.output_video_file().to_string_lossy());
@@ -130,50 +77,22 @@ pub async fn transcode_video(args: &TranscodeVideoArgs) -> Result<(), TranscodeV
     let video_info = video_probe(args.input_video_file())?;
     let frame_count = frame_count_for_interval(video_info.frame_count(), video_info.frame_rate(), &args.start_end().start(), &args.start_end().end());
 
-    let mut ffmpeg_command = Command::new("ffmpeg");
-    let ffmpeg_command_with_args = &mut ffmpeg_command;
+    let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
 
-    if let Some(start) = args.start_end().start() {
-        ffmpeg_command_with_args.args(["-ss", start.to_ffmpeg_position().as_str()]);
-    }
+    ffmpeg_command
+        .add_input_file_slice(args.input_video_file(), args.start_end().start(), args.start_end().end())
+        .set_output_video_settings(Some(args.encoder()), Some(args.bitrate()), Some(&args.crf().to_string()))
+        .set_output_file(args.output_video_file())
+        .set_overwrite_output_file(args.overwrite());
 
-    if let Some(end) = args.start_end().end() {
-        ffmpeg_command_with_args.args(["-to", end.to_ffmpeg_position().as_str()]);
-    }
-
-    // input args
-    ffmpeg_command_with_args.arg("-i").arg(args.input_video_file().as_os_str());
-
-    // audio args
     if let Some(video_audio_fix) = args.video_audio_fix() {
         if video_info.has_audio() {
-            ffmpeg_command_with_args.args(video_audio_fix.ffmpeg_audio_args().iter().map(String::as_str).collect::<Vec<_>>());
+            ffmpeg_command.add_audio_filter(&video_audio_fix.ffmpeg_audio_filter_string());
         }
     }
 
-    // video args
-    ffmpeg_command_with_args.args([
-        "-c:v", args.encoder().as_str(),
-        "-crf", args.crf().to_string().as_str(),
-        "-b:v", args.bitrate().as_str(),
-    ]);
-
-    // output args
-    ffmpeg_command_with_args.arg("-y").arg(args.output_video_file().as_os_str());
-
-    log::debug!("ffmpeg {}", ffmpeg_command_with_args.get_args().map(OsStr::to_string_lossy).collect::<Vec<_>>().join(" "));
-
-    let ffmpeg_child = ffmpeg_command_with_args
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(TranscodeVideoError::FailedSpawningFFMpegProcess)?;
-
-    let ffmpeg_result = monitor_ffmpeg_progress(frame_count, ffmpeg_child).await;
-
-    if ! ffmpeg_result.success() {
-        return Err(TranscodeVideoError::FFMpegExitedWithError(ffmpeg_result.code().unwrap()))
+    if let Err(error) = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count).unwrap().wait().await {
+        return Err(TranscodeVideoError::FFMpegExitedWithError(error.exit_status().code().unwrap()))
     }
 
     log::info!("{frame_count} frames transcoded successfully");
@@ -233,17 +152,10 @@ impl AudioFixType {
         }
     }
 
-    fn ffmpeg_audio_args(&self) -> Vec<String> {
-        vec![
-            "-filter:a".to_owned(), self.ffmpeg_audio_filter_string(),
-            "-c:a".to_owned(), "aac".to_owned(),
-            "-b:a".to_owned(), "93k".to_owned(),
-        ]
-    }
-
 }
 
-pub async fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>, overwrite: bool, fix_type: AudioFixType) -> Result<(), FixVideoFileAudioError> {
+pub async fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>,
+        overwrite: bool, fix_type: AudioFixType) -> Result<(), FixVideoFileAudioError> {
 
     let input_video_file = input_video_file.as_ref();
 
@@ -274,7 +186,7 @@ pub async fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(i
         return Err(FixVideoFileAudioError::InputVideoDoesNotHaveAnAudioStream);
     }
 
-    let mut ffmpeg_command = crate::ffmpeg::CommandBuilder::default();
+    let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
 
     ffmpeg_command
         .add_input_file(input_video_file)
@@ -293,10 +205,10 @@ pub async fn fix_dji_air_unit_video_file_audio<P: AsRef<Path>, Q: AsRef<Path>>(i
 pub async fn transcode_video_burn_osd(args: &TranscodeVideoArgs, osd_args: &TranscodeVideoOSDArgs) -> Result<(), TranscodeVideoError> {
 
     if ! args.input_video_file().exists() { return Err(TranscodeVideoError::InputVideoFileDoesNotExist); }
-    if args.output_video_file().exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
+    if ! args.overwrite() && args.output_video_file().exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
     if args.input_video_file() == args.output_video_file() { return Err(TranscodeVideoError::InputAndOutputFileIsTheSame) }
     if args.start_end().start().is_some() && matches!(args.video_audio_fix(), Some(fix) if fix.sync()) {
-        return Err(TranscodeVideoError::IncompatibleArguments("incompatible arguments: cannot fix video audio sync while not starting at the beginning of the file".to_owned()));
+        return Err(TranscodeVideoError::IncompatibleArguments("cannot fix video audio sync while not starting at the beginning of the file".to_owned()));
     }
 
     log::info!("transcoding video: {} -> {}", args.input_video_file().to_string_lossy(), args.output_video_file().to_string_lossy());
@@ -327,68 +239,27 @@ pub async fn transcode_video_burn_osd(args: &TranscodeVideoArgs, osd_args: &Tran
     let osd_overlay_resolution = osd_frames_generator.frame_dimensions();
     let osd_frames_iter = osd_frames_generator.iter_advanced(first_frame_index, Some(last_frame_index), osd_args.osd_frame_shift());
 
-    let mut ffmpeg_command = Command::new("ffmpeg");
-    let ffmpeg_command_with_args = &mut ffmpeg_command;
+    let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
 
-    if let Some(start) = args.start_end().start() {
-        ffmpeg_command_with_args.args(["-ss", start.to_ffmpeg_position().as_str()]);
+    ffmpeg_command
+        .add_input_file_slice(args.input_video_file(), args.start_end().start(), args.start_end().end())
+        .add_stdin_input(osd_overlay_resolution, 60).unwrap()
+        .add_complex_filter("[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]")
+        .add_mapping("[vo]")
+        .set_output_video_settings(Some(args.encoder()), Some(args.bitrate()), Some(&args.crf().to_string()))
+        .set_output_file(args.output_video_file())
+        .set_overwrite_output_file(args.overwrite());
+
+    match (video_info.has_audio(), args.video_audio_fix()) {
+        (true, None) => { ffmpeg_command.add_mapping("0:a"); },
+        (true, Some(audio_fix_type)) =>
+            { ffmpeg_command.add_mapping_with_audio_filter("0:a", &audio_fix_type.ffmpeg_audio_filter_string()); },
+        (false, None) => {},
+        (false, Some(_)) => return Err(TranscodeVideoError::RequestedAudioFixingButInputHasNoAudio),
     }
 
-    if let Some(end) = args.start_end().end() {
-        ffmpeg_command_with_args.args(["-to", end.to_ffmpeg_position().as_str()]);
-    }
-
-    // video input args
-    ffmpeg_command_with_args.arg("-i").arg(args.input_video_file().as_os_str());
-
-    // overlay input args
-    ffmpeg_command_with_args.args([
-        "-f", "rawvideo",
-        "-pix_fmt", "rgba",
-        "-video_size", osd_overlay_resolution.to_string().as_str(),
-        "-r", "60",
-        "-i", "pipe:0",
-    ]);
-
-    // filter args
-    ffmpeg_command_with_args
-        .args([
-            "-filter_complex", "[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]",
-            "-map", "[vo]",
-        ]);
-
-    if let Some(video_audio_fix) = args.video_audio_fix() {
-        if video_info.has_audio() {
-            ffmpeg_command_with_args
-                .args(["-map", "0:a"])
-                .args(video_audio_fix.ffmpeg_audio_args().iter().map(String::as_str).collect::<Vec<_>>());
-        } else {
-            return Err(TranscodeVideoError::RequestedAudioFixingButInputHasNoAudio)
-        }
-    }
-
-    // video args
-    ffmpeg_command_with_args.args([
-        "-c:v", args.encoder().as_str(),
-        "-crf", args.crf().to_string().as_str(),
-        "-b:v", args.bitrate().as_str(),
-    ]);
-
-    // output args
-    ffmpeg_command_with_args.arg("-y").arg(args.output_video_file().as_os_str());
-
-    log::debug!("ffmpeg {}", ffmpeg_command_with_args.get_args().map(OsStr::to_string_lossy).collect::<Vec<_>>().join(" "));
-
-    let mut ffmpeg_child = ffmpeg_command_with_args
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(TranscodeVideoError::FailedSpawningFFMpegProcess)?;
-
-    let mut ffmpeg_stdin = ffmpeg_child.stdin.take().expect("failed to open ffmpeg stdin");
-
-    let ffmpeg_monitor = tokio::spawn(monitor_ffmpeg_progress(frame_count, ffmpeg_child));
+    let mut ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_progress(video_info.frame_count()).unwrap();
+    let mut ffmpeg_stdin = ffmpeg_process.take_stdin().unwrap();
 
     for osd_frame_image in osd_frames_iter {
         ffmpeg_stdin.write_all(osd_frame_image.as_raw()).map_err(TranscodeVideoError::FailedSendingOSDImagesToFFMpeg)?;
@@ -396,11 +267,8 @@ pub async fn transcode_video_burn_osd(args: &TranscodeVideoArgs, osd_args: &Tran
 
     drop(ffmpeg_stdin);
 
-    // let ffmpeg_result = ffmpeg_child.wait().unwrap();
-    let ffmpeg_result = ffmpeg_monitor.await.unwrap();
-
-    if ! ffmpeg_result.success() {
-        return Err(TranscodeVideoError::FFMpegExitedWithError(ffmpeg_result.code().unwrap()))
+    if let Err(error) = ffmpeg_process.wait().await {
+        return Err(TranscodeVideoError::FFMpegExitedWithError(error.exit_status().code().unwrap()))
     }
 
     log::info!("{frame_count} frames transcoded successfully");

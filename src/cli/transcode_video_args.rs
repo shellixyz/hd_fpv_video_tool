@@ -89,6 +89,10 @@ pub struct TranscodeVideoArgs {
     #[getset(skip)]
     #[getset(get = "pub")]
     output_video_file: PathBuf,
+
+    /// overwrite output file if it exists
+    #[clap(short = 'y', long, value_parser)]
+    overwrite: bool,
 }
 
 impl TranscodeVideoArgs {
