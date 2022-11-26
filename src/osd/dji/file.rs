@@ -255,7 +255,6 @@ impl Reader {
                 Err(error) => return Err(error),
             }
         }
-        // let frames = frames.into_iter().unique_by(Frame::index).sorted_unstable_by(|a, b| a.index().cmp(&b.index())).collect();
         let frames = frames.into_iter().sorted_unstable_by_key(Frame::index).unique_by(Frame::index).collect();
         Ok(SortedUniqFrames::new(osd_kind, font_variant, frames))
     }
@@ -291,34 +290,6 @@ impl Reader {
     pub fn iter(&mut self) -> Iter {
         self.into_iter()
     }
-
-    // pub fn into_frame_overlay_generator(self, font_dir: &FontDir, font_ident: &Option<Option<&str>>, scale: Scaling) -> Result<FrameOverlayGenerator, DrawFrameOverlayError> {
-    //     FrameOverlayGenerator::new(self, font_dir, font_ident, scale)
-    // }
-
-    // pub fn into_video_frames_iter(mut self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> Result<VideoFramesIntoIter, ReadError> {
-
-    //     let frames = self.frames()?;
-
-    //     let first_video_frame_index = first_frame as i32 - frame_shift;
-    //     let first_frame_index = frames.iter().position(|frame| (frame.index() as i32) >= first_video_frame_index);
-    //     let osd_file_frames = match first_frame_index {
-    //         Some(index) => frames[index..].to_vec(),
-    //         None => vec![],
-    //     };
-
-    //     Ok(VideoFramesIntoIter {
-    //         frames: osd_file_frames,
-    //         frame_index: 0,
-    //         video_frame_index: first_frame,
-    //         last_video_frame_index: last_frame,
-    //         video_frame_shift: frame_shift,
-    //     })
-    // }
-
-    // pub fn into_video_frames_iter(self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> Result<VideoFramesIter, ReadError> {
-    //     Ok(self.frames()?.video_frames_iter(first_frame, last_frame, frame_shift))
-    // }
 
 }
 
@@ -365,49 +336,3 @@ impl<'a> IntoIterator for &'a mut Reader {
         Self::IntoIter { reader: self }
     }
 }
-
-// pub struct VideoFramesIntoIter {
-//     frames: Vec<Frame>,
-//     frame_index: usize,
-//     video_frame_index: u32,
-//     last_video_frame_index: Option<u32>,
-//     video_frame_shift: i32,
-// }
-
-// impl Iterator for VideoFramesIntoIter {
-//     type Item = Option<Frame>;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         match self.last_video_frame_index {
-//             Some(last_frame) => {
-//                 if self.video_frame_index > last_frame {
-//                     return None;
-//                 } else if self.frame_index >= self.frames.len() {
-//                     self.video_frame_index += 1;
-//                     return Some(None);
-//                 }
-//             },
-//             None => {
-//                 if self.frame_index >= self.frames.len() {
-//                     return None;
-//                 }
-//             }
-//         }
-
-//         let current_frame = &self.frames[self.frame_index];
-//         let actual_frame_video_frame_index = current_frame.index() as i32 + self.video_frame_shift;
-
-//         let frame =
-//             if (self.video_frame_index as i32) < actual_frame_video_frame_index {
-//                 None
-//             } else {
-//                 self.frame_index += 1;
-//                 Some(current_frame.clone())
-//             };
-
-//         self.video_frame_index += 1;
-
-//         Some(frame)
-//     }
-
-// }
