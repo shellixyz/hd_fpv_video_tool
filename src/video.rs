@@ -6,10 +6,12 @@ use thiserror::Error;
 use std::io::Error as IOError;
 use ffmpeg_next::Rational;
 
+use crate::cli::start_end_args::StartEndArgs;
 use crate::{prelude::*, osd::overlay::scaling::ScalingArgsError};
 use crate::{prelude::{TranscodeVideoArgs, Scaling}, cli::transcode_video_args::TranscodeVideoOSDArgs};
 use crate::osd::dji::file::ReadError as OSDFileReadError;
 use crate::ffmpeg;
+use self::probe::probe;
 
 use self::timestamp::Timestamp;
 
@@ -20,6 +22,78 @@ pub mod probe;
 
 
 pub type FrameIndex = u32;
+
+#[derive(Debug, Error, From)]
+pub enum CutVideoError {
+    #[error("failed to get input video details")]
+    FailedToGetInputVideoDetails(VideoProbingError),
+    #[error("input video file does not exist")]
+    InputVideoFileDoesNotExist,
+    #[error("output video file exists")]
+    OutputVideoFileExists,
+    #[error("input file and output file are the same file")]
+    InputAndOutputFileIsTheSame,
+    #[error("input has no file name")]
+    InputHasNoFileName,
+    #[error("input has no extension")]
+    InputHasNoExtension,
+    #[error("output file has a different extension than input")]
+    OutputHasADifferentExtensionThanInput,
+    #[error("failed spawning ffmpeg process: {0}")]
+    #[from(ignore)]
+    FailedSpawningFFMpegProcess(IOError),
+    #[error("ffmpeg process exited with error: {0}")]
+    FFMpegExitedWithError(i32),
+}
+
+pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>,
+        overwrite: bool, start_end: &StartEndArgs) -> Result<(), CutVideoError> {
+
+    let input_video_file = input_video_file.as_ref();
+
+    if ! input_video_file.exists() { return Err(CutVideoError::InputVideoFileDoesNotExist); }
+
+    let output_video_file = match output_video_file {
+        Some(output_video_file) => {
+            let output_video_file = output_video_file.as_ref();
+            if input_video_file == output_video_file { return Err(CutVideoError::InputAndOutputFileIsTheSame) }
+            if input_video_file.extension() != output_video_file.extension() { return Err(CutVideoError::OutputHasADifferentExtensionThanInput) }
+            output_video_file.to_path_buf()
+        },
+        None => {
+            let mut output_file_stem = Path::new(input_video_file.file_stem().ok_or(CutVideoError::InputHasNoFileName)?).as_os_str().to_os_string();
+            output_file_stem.push("_cut");
+            let input_file_extension = input_video_file.extension().ok_or(CutVideoError::InputHasNoExtension)?;
+            input_video_file.with_file_name(output_file_stem).with_extension(input_file_extension)
+        },
+    };
+
+    if ! overwrite && output_video_file.exists() { return Err(CutVideoError::OutputVideoFileExists); }
+
+    log::info!("cutting video: {} -> {}", input_video_file.to_string_lossy(), output_video_file.to_string_lossy());
+
+    let video_info = probe(input_video_file)?;
+    let frame_count = frame_count_for_interval(video_info.frame_count(), video_info.frame_rate(), &start_end.start(), &start_end.end());
+
+    let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
+
+    ffmpeg_command
+        .add_input_file_slice(input_video_file, start_end.start(), start_end.end())
+        .set_output_video_codec(Some("copy"))
+        .set_output_file(output_video_file)
+        .set_overwrite_output_file(overwrite);
+
+    if video_info.has_audio() {
+        ffmpeg_command.set_output_audio_codec(Some("copy"));
+    }
+
+    if let Err(error) = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count).unwrap().wait().await {
+        return Err(CutVideoError::FFMpegExitedWithError(error.exit_status().code().unwrap()))
+    }
+
+    log::info!("video file cut successfully");
+    Ok(())
+}
 
 #[derive(Debug, Error, From)]
 pub enum FixVideoFileAudioError {
@@ -102,7 +176,7 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_
 
     log::info!("fixing video file audio: {} -> {}", input_video_file.to_string_lossy(), output_video_file.to_string_lossy());
 
-    let video_info = video_probe(input_video_file)?;
+    let video_info = probe(input_video_file)?;
 
     if ! video_info.has_audio() {
         return Err(FixVideoFileAudioError::InputVideoDoesNotHaveAnAudioStream);
@@ -179,7 +253,7 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<(), TranscodeVideoEr
 
     log::info!("transcoding video: {} -> {}", args.input_video_file().to_string_lossy(), args.output_video_file().to_string_lossy());
 
-    let video_info = video_probe(args.input_video_file())?;
+    let video_info = probe(args.input_video_file())?;
     let frame_count = frame_count_for_interval(video_info.frame_count(), video_info.frame_rate(), &args.start_end().start(), &args.start_end().end());
 
     let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
@@ -217,7 +291,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
 
     log::info!("transcoding video: {} -> {}", args.input_video_file().to_string_lossy(), args.output_video_file().to_string_lossy());
 
-    let video_info = video_probe(args.input_video_file())?;
+    let video_info = probe(args.input_video_file())?;
 
     if video_info.frame_rate().numerator() != 60 || video_info.frame_rate().denominator() != 1 {
         return Err(TranscodeVideoError::CanOnlyBurnOSDOn60FPSVideo(video_info.frame_rate().numerator() as f64 / video_info.frame_rate().denominator() as f64))

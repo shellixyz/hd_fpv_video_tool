@@ -12,7 +12,7 @@ use derive_more::{From, Display, Error};
 
 use hd_fpv_osd_font_tool::prelude::*;
 
-use dji_fpv_video_tool::{prelude::*, cli::{transcode_video_args::TranscodeVideoOSDArgs, generate_overlay_args::GenerateOverlayArgs}, osd::overlay::OverlayVideoCodec};
+use dji_fpv_video_tool::{prelude::*, cli::{transcode_video_args::TranscodeVideoOSDArgs, generate_overlay_args::GenerateOverlayArgs, start_end_args::StartEndArgs}, osd::overlay::OverlayVideoCodec};
 
 
 #[derive(Parser)]
@@ -91,6 +91,23 @@ enum Commands {
 
         /// path of the video file to generate
         video_file: PathBuf,
+
+        /// overwrite output file if it exists
+        #[clap(short = 'y', long, value_parser)]
+        overwrite: bool,
+    },
+
+    /// Cut video file
+    CutVideo {
+
+        #[clap(flatten)]
+        start_end: StartEndArgs,
+
+        /// input video file path
+        input_video_file: PathBuf,
+
+        /// output video file path
+        output_video_file: Option<PathBuf>,
 
         /// overwrite output file if it exists
         #[clap(short = 'y', long, value_parser)]
@@ -208,8 +225,8 @@ async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
         transcode_args.start_end().check_valid()?;
 
         match osd_args.osd_file_path(transcode_args.input_video_file())? {
-            Some(osd_file_path) => transcode_burn_osd(transcode_args, osd_file_path, osd_args).await?,
-            None => transcode(transcode_args).await?,
+            Some(osd_file_path) => video::transcode_burn_osd(transcode_args, osd_file_path, osd_args).await?,
+            None => video::transcode(transcode_args).await?,
         }
     }
     Ok(())
@@ -221,9 +238,11 @@ async fn fix_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, 
         (true, false) => VideoAudioFixType::Sync,
         (false, true) => VideoAudioFixType::Volume,
     };
-    fix_dji_air_unit_audio(input_video_file, output_video_file, overwrite, fix_type).await?;
+    video::fix_dji_air_unit_audio(input_video_file, output_video_file, overwrite, fix_type).await?;
     Ok(())
 }
+
+
 
 #[tokio::main]
 async fn main() {
@@ -232,10 +251,15 @@ async fn main() {
     pretty_env_logger::formatted_builder().parse_filters(cli.log_level.to_string().as_str()).init();
 
     let command_result = match &cli.command {
+
         command @ Commands::GenerateOverlayFrames {..} => generate_overlay_frames_command(command),
         command @ Commands::GenerateOverlayVideo {..} => generate_overlay_video_command(command).await,
         command @ Commands::TranscodeVideo {..} => transcode_video_command(command).await,
         Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info_command(osd_file),
+
+        Commands::CutVideo { start_end, input_video_file, output_video_file, overwrite } =>
+            video::cut(input_video_file, output_video_file, *overwrite, start_end).await.map_err(anyhow::Error::new),
+
         Commands::FixVideoAudio { input_video_file, output_video_file, overwrite, sync, volume } =>
             fix_audio_command(input_video_file, output_video_file, *overwrite, *sync, *volume).await,
     };
