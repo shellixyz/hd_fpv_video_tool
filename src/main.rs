@@ -72,9 +72,12 @@ enum Commands {
     /// If neither of these options are specified no scaling will be used and the kind of tiles used will be
     /// the native kind of tiles corresponding to the kind of OSD layout read from the FPV.WTF .osd file.
     ///
+    /// VP8 or VP9 codecs can be selected with the --codec option. Files generated with the VP9 codec are smaller
+    /// but also it is roughly twice as slow as encoding with the VP8 codec which is already unfortunately pretty slow.
+    ///
     /// Fonts are loaded either from the directory specified with the --font-dir option or
     /// from the directory found in the environment variable FONTS_DIR or
-    /// if neither of these are available it falls back to the `fonts` directory inside the current directory
+    /// if neither of these are available it falls back to the `fonts` directory inside the current directory.
     ///
     /// NOTE: unfortunately this is very slow right now because only a handful of video formats support transparency
     /// and their encoders are very slow
