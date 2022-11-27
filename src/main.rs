@@ -97,20 +97,6 @@ enum Commands {
         overwrite: bool,
     },
 
-    /// Transcodes video file optionally burning OSD onto it
-    ///
-    /// Fonts are loaded either from the directory specified with the --font-dir option or
-    /// from the directory found in the environment variable FONTS_DIR or
-    /// if neither of these are available it falls back to the `fonts` directory inside the current directory
-    TranscodeVideo {
-
-        #[clap(flatten)]
-        osd_args: TranscodeVideoOSDArgs,
-
-        #[clap(flatten)]
-        transcode_args: TranscodeVideoArgs,
-    },
-
     /// Fixes DJI Air Unit video audio sync and/or volume
     ///
     /// If the output video file is not provided the output video will be written in the same directory
@@ -134,6 +120,20 @@ enum Commands {
         /// overwrite output file if it exists
         #[clap(short = 'y', long, value_parser)]
         overwrite: bool,
+    },
+
+    /// Transcodes video file optionally burning OSD onto it
+    ///
+    /// Fonts are loaded either from the directory specified with the --font-dir option or
+    /// from the directory found in the environment variable FONTS_DIR or
+    /// if neither of these are available it falls back to the `fonts` directory inside the current directory
+    TranscodeVideo {
+
+        #[clap(flatten)]
+        osd_args: TranscodeVideoOSDArgs,
+
+        #[clap(flatten)]
+        transcode_args: TranscodeVideoArgs,
     },
 
 }
