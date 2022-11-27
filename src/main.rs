@@ -127,6 +127,10 @@ enum Commands {
 
         /// output video file path
         output_video_file: Option<PathBuf>,
+
+        /// overwrite output file if it exists
+        #[clap(short = 'y', long, value_parser)]
+        overwrite: bool,
     },
 
 }
@@ -208,13 +212,13 @@ async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn fix_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>, sync: bool, volume: bool) -> anyhow::Result<()> {
+async fn fix_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>, overwrite: bool, sync: bool, volume: bool) -> anyhow::Result<()> {
     let fix_type = match (sync, volume) {
         (true, true) | (false, false) => VideoAudioFixType::SyncAndVolume,
         (true, false) => VideoAudioFixType::Sync,
         (false, true) => VideoAudioFixType::Volume,
     };
-    fix_dji_air_unit_audio(input_video_file, output_video_file, false, fix_type).await?;
+    fix_dji_air_unit_audio(input_video_file, output_video_file, overwrite, fix_type).await?;
     Ok(())
 }
 
@@ -229,8 +233,8 @@ async fn main() {
         command @ Commands::GenerateOverlayVideo {..} => generate_overlay_video_command(command).await,
         command @ Commands::TranscodeVideo {..} => transcode_video_command(command).await,
         Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info_command(osd_file),
-        Commands::FixVideoAudio { input_video_file, output_video_file, sync, volume } =>
-            fix_audio_command(input_video_file, output_video_file, *sync, *volume).await,
+        Commands::FixVideoAudio { input_video_file, output_video_file, overwrite, sync, volume } =>
+            fix_audio_command(input_video_file, output_video_file, *overwrite, *sync, *volume).await,
     };
 
     if let Err(error) = command_result {

@@ -98,7 +98,7 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_
         },
     };
 
-    if output_video_file.exists() { return Err(FixVideoFileAudioError::OutputVideoFileExists); }
+    if ! overwrite && output_video_file.exists() { return Err(FixVideoFileAudioError::OutputVideoFileExists); }
 
     log::info!("fixing video file audio: {} -> {}", input_video_file.to_string_lossy(), output_video_file.to_string_lossy());
 
