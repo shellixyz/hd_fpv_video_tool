@@ -113,6 +113,7 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_
     ffmpeg_command
         .add_input_file(input_video_file)
         .add_audio_filter(&fix_type.ffmpeg_audio_filter_string())
+        .set_output_video_codec(Some("copy"))
         .set_output_audio_settings(Some("aac"), Some("93k"))
         .set_output_file(output_video_file)
         .set_overwrite_output_file(overwrite);
