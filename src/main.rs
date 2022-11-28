@@ -271,7 +271,7 @@ async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn fix_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>, overwrite: bool, sync: bool, volume: bool) -> anyhow::Result<()> {
+async fn fix_video_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>, overwrite: bool, sync: bool, volume: bool) -> anyhow::Result<()> {
     let fix_type = match (sync, volume) {
         (true, true) | (false, false) => VideoAudioFixType::SyncAndVolume,
         (true, false) => VideoAudioFixType::Sync,
@@ -399,7 +399,7 @@ async fn main() {
             video::cut(input_video_file, output_video_file, *overwrite, start_end).await.map_err(anyhow::Error::new),
 
         Commands::FixVideoAudio { input_video_file, output_video_file, overwrite, sync, volume } =>
-            fix_audio_command(input_video_file, output_video_file, *overwrite, *sync, *volume).await,
+            fix_video_audio_command(input_video_file, output_video_file, *overwrite, *sync, *volume).await,
 
         Commands::PlayVideoWithOSD { video_file, osd_video_file } =>
             video::play_with_osd(video_file, osd_video_file).map_err(anyhow::Error::new),
