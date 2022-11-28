@@ -8,6 +8,10 @@ use getset::CopyGetters;
 use crate::shell_autocompletion::*;
 
 
+/// A tool to manipulate DJI video files and generate OSD frames from FPV.WTF .osd files
+///
+/// Each command is aliased to the concatenation of the first letter of each word of the command{n}
+/// Example: the `generate-overlay-frames` command is aliased to `gof`
 #[derive(Parser, CopyGetters)]
 #[clap(author, version, about, long_about = None)]
 pub struct Cli {
