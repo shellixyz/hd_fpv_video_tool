@@ -68,38 +68,38 @@ pub struct TranscodeVideoArgs {
     fix_audio: bool,
 
     /// fix DJI AU audio volume
-    #[clap(short, long, value_parser, conflicts_with("fix_audio"))]
+    #[clap(short = 'v', long, value_parser, conflicts_with("fix_audio"))]
     #[getset(skip)]
     #[getset(get_copy = "pub")]
     fix_audio_volume: bool,
 
     /// fix DJI AU audio sync
-    #[clap(short, long, value_parser, conflicts_with("fix_audio"))]
+    #[clap(short = 'u', long, value_parser, conflicts_with("fix_audio"))]
     #[getset(skip)]
     #[getset(get_copy = "pub")]
     fix_audio_sync: bool,
 
     /// video encoder to use
-    #[clap(short, long, value_parser, default_value = "libx265")]
+    #[clap(long, value_parser, default_value = "libx265")]
     video_encoder: String,
 
-    /// max bitrate
-    #[clap(short, long, value_parser, default_value = "25M")]
+    /// video max bitrate
+    #[clap(long, value_parser, default_value = "25M")]
     video_bitrate: String,
 
-    /// video encoder to use
-    #[clap(short, long, value_parser, default_value = "libx265")]
-    audio_encoder: String,
-
-    /// max bitrate
-    #[clap(short, long, value_parser, default_value = "25M")]
-    audio_bitrate: String,
-
-    /// constant quality setting
-    #[clap(short, long, value_parser, default_value_t = 30)]
+    /// video constant quality setting
+    #[clap(long, value_parser, default_value_t = 30)]
     #[getset(skip)]
     #[getset(get_copy = "pub")]
     video_crf: u8,
+
+    /// video encoder to use
+    #[clap(long, value_parser, default_value = "libx265")]
+    audio_encoder: String,
+
+    /// max bitrate
+    #[clap(long, value_parser, default_value = "25M")]
+    audio_bitrate: String,
 
     #[clap(flatten)]
     start_end: StartEndArgs,

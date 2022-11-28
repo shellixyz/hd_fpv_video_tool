@@ -20,7 +20,7 @@ pub struct FontOptions {
 #[derive(Args)]
 pub struct OSDFontOptions {
     /// path to the directory containing font sets
-    #[clap(short, long, value_parser, value_name = "dirpath")]
+    #[clap(short = 'd', long, value_parser, value_name = "dirpath")]
     osd_font_dir: Option<PathBuf>,
 
     /// force using this font identifier when loading fonts, default is automatic

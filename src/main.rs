@@ -185,7 +185,7 @@ enum Commands {
 
     #[clap(hide(true))]
     GenerateShellAutocompletionFiles {
-        #[clap(group("shell"), value_parser = generate_shell_autocompletion_files_arg_parser)]
+        #[clap(value_parser = generate_shell_autocompletion_files_arg_parser)]
         shell: GenerateShellAutoCompletionFilesArg,
     },
 

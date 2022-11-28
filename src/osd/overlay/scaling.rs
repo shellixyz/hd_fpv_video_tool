@@ -66,11 +66,11 @@ pub enum ScalingArgsError {
 pub struct ScalingArgs {
 
     /// resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
-    #[clap(short = 'r', long, group("target_resolution"), value_parser = target_resolution_value_parser, value_names = TargetResolution::valid_list())]
+    #[clap(short = 'r', long, group("target_resolution_group"), value_parser = target_resolution_value_parser, value_names = TargetResolution::valid_list())]
     target_resolution: Option<TargetResolution>,
 
     /// use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
-    #[clap(short = 'v', long, group("target_resolution"), value_parser)]
+    #[clap(short = 'v', long, group("target_resolution_group"), value_parser)]
     #[getset(skip)]
     #[getset(get = "pub")]
     target_video_file: Option<PathBuf>,
@@ -97,7 +97,7 @@ pub struct ScalingArgs {
 pub struct OSDScalingArgs {
 
     /// force using scaling, default is automatic
-    #[clap(short, long, value_parser)]
+    #[clap(short = 's', long, value_parser)]
     osd_scaling: bool,
 
     /// force disable scaling, default is automatic
