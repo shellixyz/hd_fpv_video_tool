@@ -2,7 +2,6 @@
 #![forbid(unsafe_code)]
 
 use std::{
-    io,
     path::PathBuf,
     process::exit,
     path::Path, env::current_exe
@@ -20,6 +19,7 @@ use dji_fpv_video_tool::{prelude::*, cli::{transcode_video_args::TranscodeVideoO
 use dji_fpv_video_tool::file;
 
 const SHELL_COMPLETION_FILES_DIR: &str = "shell_completions";
+const MAN_PAGES_DIR: &str = "man_pages";
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -187,7 +187,10 @@ enum Commands {
     GenerateShellAutocompletionFiles {
         #[clap(group("shell"), value_parser = generate_shell_autocompletion_files_arg_parser)]
         shell: GenerateShellAutoCompletionFilesArg,
-    }
+    },
+
+    #[clap(hide(true))]
+    GenerateManPages,
 
 }
 
@@ -302,13 +305,12 @@ macro_rules! shell_enum_and_impl {
         impl Shell {
             fn generate_completion_file(&self, current_exe_name: &str) -> Result<(), file::Error> {
                 use Shell::*;
-                let mut file = file::open(self.completion_file_path(current_exe_name))?;
-                let mut buf = io::BufWriter::new(vec![]);
+                let mut file = file::create(self.completion_file_path(current_exe_name))?;
+                let mut buffer: Vec<u8> = Default::default();
                 match self {
-                    // $($shell => clap_complete_generate(clap_complete::shells::$shell, &mut Cli::command(), current_exe_name, &mut std::io::stdout()),)+
-                    $($shell => clap_complete_generate(clap_complete::shells::$shell, &mut Cli::command(), current_exe_name, &mut buf),)+
+                    $($shell => clap_complete_generate(clap_complete::shells::$shell, &mut Cli::command(), current_exe_name, &mut buffer),)+
                 }
-                file.write_all(buf.into_inner().unwrap().as_slice())?;
+                file.write_all(&buffer)?;
                 Ok(())
             }
 
@@ -322,17 +324,61 @@ macro_rules! shell_enum_and_impl {
 
 shell_enum_and_impl!(Bash, Elvish, Fish, PowerShell, Zsh);
 
-fn generate_shell_autocompletion_files_command(arg: &GenerateShellAutoCompletionFilesArg) -> anyhow::Result<()> {
+fn current_exe_name() -> anyhow::Result<String> {
     let current_exe = current_exe().map_err(|error| anyhow!("failed to get exe name: {error}"))?;
-    let current_exe_name = current_exe.file_name().unwrap().to_str().ok_or_else(|| anyhow!("exe file name contains invalid UTF-8 characters"))?;
+    Ok(current_exe.file_name().unwrap().to_str().ok_or_else(|| anyhow!("exe file name contains invalid UTF-8 characters"))?.to_string())
+}
+
+fn generate_shell_autocompletion_files_command(arg: &GenerateShellAutoCompletionFilesArg) -> anyhow::Result<()> {
+    let current_exe_name = current_exe_name()?;
     match arg {
         GenerateShellAutoCompletionFilesArg::All =>
             for shell in Shell::iter() {
-                shell.generate_completion_file(current_exe_name)?;
+                shell.generate_completion_file(&current_exe_name)?;
             },
         GenerateShellAutoCompletionFilesArg::Shell(shell) =>
-            shell.generate_completion_file(current_exe_name)?,
+            shell.generate_completion_file(&current_exe_name)?,
     }
+    Ok(())
+}
+
+fn command_man_page_path(exe_name: &str, subcommand: Option<&clap::Command>) -> PathBuf {
+    let extension = "1";
+    let file_name = match subcommand {
+        Some(command) => PathBuf::from(format!("{exe_name}-{}", command.get_name())),
+        None => PathBuf::from(exe_name),
+    };
+    [PathBuf::from(MAN_PAGES_DIR), file_name.with_extension(extension)].iter().collect()
+}
+
+fn generate_exe_man_page(exe_name: &str) -> anyhow::Result<()> {
+    let mut file = file::create(command_man_page_path(exe_name, None))?;
+    let man = clap_mangen::Man::new(Cli::command());
+    let mut buffer: Vec<u8> = Default::default();
+    man.render(&mut buffer)?;
+    file.write_all(&buffer)?;
+    Ok(())
+}
+
+fn generate_man_page_for_subcommands(exe_name: &str) -> anyhow::Result<()> {
+    let command = Cli::command();
+    let exclusions = ["generate-shell-autocompletion-files", "generate-man-pages"];
+    for subcommand in command.get_subcommands() {
+        if ! exclusions.contains(&subcommand.get_name()) {
+            let mut file = file::create(command_man_page_path(exe_name, Some(subcommand)))?;
+            let mut buffer: Vec<u8> = Default::default();
+            let man = clap_mangen::Man::new(subcommand.to_owned());
+            man.render(&mut buffer)?;
+            file.write_all(&buffer)?;
+        }
+    }
+    Ok(())
+}
+
+fn generate_man_pages_command() -> anyhow::Result<()> {
+    let current_exe_name = current_exe_name()?;
+    generate_exe_man_page(&current_exe_name)?;
+    generate_man_page_for_subcommands(&current_exe_name)?;
     Ok(())
 }
 
@@ -359,6 +405,8 @@ async fn main() {
             video::play_with_osd(video_file, osd_video_file).map_err(anyhow::Error::new),
 
         Commands::GenerateShellAutocompletionFiles { shell } => generate_shell_autocompletion_files_command(shell),
+
+        Commands::GenerateManPages => generate_man_pages_command(),
     };
 
     if let Err(error) = command_result {

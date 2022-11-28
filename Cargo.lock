@@ -201,6 +201,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_mangen"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e503c3058af0a0854668ea01db55c622482a080092fede9dd2e00a00a9436504"
+dependencies = [
+ "clap",
+ "roff",
+]
+
+[[package]]
 name = "close-err"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -316,6 +326,7 @@ dependencies = [
  "byte_struct",
  "clap",
  "clap_complete",
+ "clap_mangen",
  "derive_more",
  "ffmpeg-next",
  "getset",
@@ -1000,6 +1011,12 @@ checksum = "3603b7d71ca82644f79b5a06d1220e9a58ede60bd32255f698cb1af8838b8db3"
 dependencies = [
  "bytemuck",
 ]
+
+[[package]]
+name = "roff"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b833d8d034ea094b1ea68aa6d5c740e0d04bad9d16568d08ba6f76823a114316"
 
 [[package]]
 name = "rustc-hash"
