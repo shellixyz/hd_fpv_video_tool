@@ -31,6 +31,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Displays information about the specified OSD file
+    #[clap(alias = "dofi")]
     DisplayOSDFileInfo {
         osd_file: PathBuf,
     },
@@ -52,6 +53,7 @@ enum Commands {
     /// Fonts are loaded either from the directory specified with the --font-dir option or
     /// from the directory found in the environment variable FONTS_DIR or
     /// if neither of these are available it falls back to the `fonts` directory inside the current directory.
+    #[clap(alias = "gof")]
     GenerateOverlayFrames {
 
         #[clap(flatten)]
@@ -81,6 +83,7 @@ enum Commands {
     ///
     /// NOTE: unfortunately this is very slow right now because only a handful of video formats support transparency
     /// and their encoders are very slow
+    #[clap(alias = "gov")]
     GenerateOverlayVideo {
 
         #[clap(flatten)]
@@ -98,6 +101,7 @@ enum Commands {
     },
 
     /// Cut video file
+    #[clap(alias = "cv")]
     CutVideo {
 
         #[clap(flatten)]
@@ -121,6 +125,7 @@ enum Commands {
     ///
     /// Note that fixing the audio/video sync will only work if the start of the original video from
     /// the DJI FPV air unit has NOT been cut off.
+    #[clap(alias = "fva")]
     FixVideoAudio {
 
         /// fix audio sync only
@@ -147,6 +152,7 @@ enum Commands {
     /// Fonts are loaded either from the directory specified with the --font-dir option or
     /// from the directory found in the environment variable FONTS_DIR or
     /// if neither of these are available it falls back to the `fonts` directory inside the current directory
+    #[clap(alias = "tv")]
     TranscodeVideo {
 
         #[clap(flatten)]
@@ -162,6 +168,7 @@ enum Commands {
     ///
     /// If the <OSD_VIDEO_FILE> argument is not provided it will try to use the file with the same base name
     /// as the <VIDEO_FILE> argument with suffix `_osd` and with `webm` extension.
+    #[clap(alias = "pvwo")]
     PlayVideoWithOSD {
 
         video_file: PathBuf,
