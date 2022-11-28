@@ -16,7 +16,7 @@ publish = false
 
 [dependencies]
 clap = { version = "4.0.18", features = ["derive", "string"] }
-image = { version = "0.24.4", features = ["rgb"] }
+image = { version = "0.24.4", features = ["rgb", "png", "scoped_threadpool"], default-features = false }
 log = "0.4.17"
 pretty_env_logger = "0.4.0"
 strum = { version = "0.24.1", features = ["derive"] }
