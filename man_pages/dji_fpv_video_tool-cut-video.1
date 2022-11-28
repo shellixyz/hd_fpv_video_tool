@@ -1,0 +1,28 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH cut-video 1  "cut-video " 
+.SH NAME
+cut\-video \- Cut video file
+.SH SYNOPSIS
+\fBcut\-video\fR [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT_VIDEO_FILE\fR> [\fIOUTPUT_VIDEO_FILE\fR] 
+.SH DESCRIPTION
+Cut video file
+.SH OPTIONS
+.TP
+\fB\-\-start\fR=\fI[HH:]MM:SS\fR
+start timestamp
+.TP
+\fB\-\-end\fR=\fI[HH:]MM:SS\fR
+end timestamp
+.TP
+\fB\-y\fR, \fB\-\-overwrite\fR=\fIOVERWRITE\fR
+overwrite output file if it exists
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information
+.TP
+<\fIINPUT_VIDEO_FILE\fR>
+input video file path
+.TP
+[\fIOUTPUT_VIDEO_FILE\fR]
+output video file path

@@ -1,0 +1,23 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH play-video-with-osd 1  "play-video-with-osd " 
+.SH NAME
+play\-video\-with\-osd \- Play video using MPV video player with OSD by overlaying transparent OSD video in real time
+.SH SYNOPSIS
+\fBplay\-video\-with\-osd\fR [\fB\-h\fR|\fB\-\-help\fR] <\fIVIDEO_FILE\fR> [\fIOSD_VIDEO_FILE\fR] 
+.SH DESCRIPTION
+Play video using MPV video player with OSD by overlaying transparent OSD video in real time
+.PP
+You can generate a compatible OSD overlay video file with the `generate\-overlay\-video` command.
+.PP
+If the <OSD_VIDEO_FILE> argument is not provided it will try to use the file with the same base name as the <VIDEO_FILE> argument with suffix `_osd` and with `webm` extension.
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information (use `\-h` for a summary)
+.TP
+<\fIVIDEO_FILE\fR>
+
+.TP
+[\fIOSD_VIDEO_FILE\fR]
+

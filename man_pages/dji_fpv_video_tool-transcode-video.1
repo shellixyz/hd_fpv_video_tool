@@ -1,0 +1,83 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH transcode-video 1  "transcode-video " 
+.SH NAME
+transcode\-video \- Transcodes video file optionally burning OSD onto it
+.SH SYNOPSIS
+\fBtranscode\-video\fR [\fB\-\-osd\fR] [\fB\-o\fR|\fB\-\-osd\-scaling\fR] [\fB\-n\fR|\fB\-\-no\-osd\-scaling\fR] [\fB\-\-min\-osd\-margins\fR] [\fB\-\-min\-osd\-coverage\fR] [\fB\-o\fR|\fB\-\-osd\-font\-dir\fR] [\fB\-i\fR|\fB\-\-osd\-font\-ident\fR] [\fB\-o\fR|\fB\-\-osd\-frame\-shift\fR] [\fB\-\-osd\-file\fR] [\fB\-f\fR|\fB\-\-fix\-audio\fR] [\fB\-f\fR|\fB\-\-fix\-audio\-volume\fR] [\fB\-f\fR|\fB\-\-fix\-audio\-sync\fR] [\fB\-v\fR|\fB\-\-video\-encoder\fR] [\fB\-v\fR|\fB\-\-video\-bitrate\fR] [\fB\-a\fR|\fB\-\-audio\-encoder\fR] [\fB\-a\fR|\fB\-\-audio\-bitrate\fR] [\fB\-v\fR|\fB\-\-video\-crf\fR] [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT_VIDEO_FILE\fR> <\fIOUTPUT_VIDEO_FILE\fR> 
+.SH DESCRIPTION
+Transcodes video file optionally burning OSD onto it
+.PP
+Fonts are loaded either from the directory specified with the \-\-font\-dir option or from the directory found in the environment variable FONTS_DIR or if neither of these are available it falls back to the `fonts` directory inside the current directory
+.SH OPTIONS
+.TP
+\fB\-\-osd\fR=\fIOSD\fR
+burn OSD onto video, try to find the OSD file automatically.
+
+First tries finding a file with the name <basename of the video file>.osd then if it does not exist tries finding a file with same DJI prefix as the video file with G instead of U if it is starting with DJIU. Examples:{n} DJIG0000.mp4 => DJIG0000.osd{n} DJIG0000_something.mp4 => DJIG0000.osd{n} DJIU0000.mp4 => DJIG0000.osd{n} DJIU0000_something.mp4 => DJIG0000.osd{n}
+.TP
+\fB\-o\fR, \fB\-\-osd\-scaling\fR=\fIOSD_SCALING\fR
+force using scaling, default is automatic
+.TP
+\fB\-n\fR, \fB\-\-no\-osd\-scaling\fR=\fINO_OSD_SCALING\fR
+force disable scaling, default is automatic
+.TP
+\fB\-\-min\-osd\-margins\fR=\fIhorizontal:vertical\fR [default: 20:20]
+minimum margins to decide whether scaling should be used and how much to scale
+.TP
+\fB\-\-min\-osd\-coverage\fR=\fIpercent\fR [default: 90]
+minimum percentage of OSD coverage under which scaling will be used if \-\-scaling/\-\-no\-scaling options are not provided
+.TP
+\fB\-o\fR, \fB\-\-osd\-font\-dir\fR=\fIdirpath\fR
+path to the directory containing font sets
+.TP
+\fB\-i\fR, \fB\-\-osd\-font\-ident\fR=\fIident\fR
+force using this font identifier when loading fonts, default is automatic
+.TP
+\fB\-o\fR, \fB\-\-osd\-frame\-shift\fR=\fIframes\fR [default: 0]
+shift frames to sync OSD with video
+.TP
+\fB\-\-osd\-file\fR=\fIOSD file path\fR
+path to FPV.WTF .osd file to use to generate OSD frames to burn onto video
+.TP
+\fB\-f\fR, \fB\-\-fix\-audio\fR=\fIFIX_AUDIO\fR
+fix DJI AU audio: fix sync + volume
+.TP
+\fB\-f\fR, \fB\-\-fix\-audio\-volume\fR=\fIFIX_AUDIO_VOLUME\fR
+fix DJI AU audio volume
+.TP
+\fB\-f\fR, \fB\-\-fix\-audio\-sync\fR=\fIFIX_AUDIO_SYNC\fR
+fix DJI AU audio sync
+.TP
+\fB\-v\fR, \fB\-\-video\-encoder\fR=\fIVIDEO_ENCODER\fR [default: libx265]
+video encoder to use
+.TP
+\fB\-v\fR, \fB\-\-video\-bitrate\fR=\fIVIDEO_BITRATE\fR [default: 25M]
+max bitrate
+.TP
+\fB\-a\fR, \fB\-\-audio\-encoder\fR=\fIAUDIO_ENCODER\fR [default: libx265]
+video encoder to use
+.TP
+\fB\-a\fR, \fB\-\-audio\-bitrate\fR=\fIAUDIO_BITRATE\fR [default: 25M]
+max bitrate
+.TP
+\fB\-v\fR, \fB\-\-video\-crf\fR=\fIVIDEO_CRF\fR [default: 30]
+constant quality setting
+.TP
+\fB\-\-start\fR=\fI[HH:]MM:SS\fR
+start timestamp
+.TP
+\fB\-\-end\fR=\fI[HH:]MM:SS\fR
+end timestamp
+.TP
+\fB\-y\fR, \fB\-\-overwrite\fR=\fIOVERWRITE\fR
+overwrite output file if it exists
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information (use `\-h` for a summary)
+.TP
+<\fIINPUT_VIDEO_FILE\fR>
+input video file path
+.TP
+<\fIOUTPUT_VIDEO_FILE\fR>
+output video file path

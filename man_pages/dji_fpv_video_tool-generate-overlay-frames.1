@@ -1,0 +1,60 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH generate-overlay-frames 1  "generate-overlay-frames " 
+.SH NAME
+generate\-overlay\-frames \- Generates OSD overlay frames
+.SH SYNOPSIS
+\fBgenerate\-overlay\-frames\fR [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-r\fR|\fB\-\-target\-resolution\fR] [\fB\-v\fR|\fB\-\-target\-video\-file\fR] [\fB\-s\fR|\fB\-\-scaling\fR] [\fB\-n\fR|\fB\-\-no\-scaling\fR] [\fB\-\-min\-margins\fR] [\fB\-\-min\-coverage\fR] [\fB\-f\fR|\fB\-\-font\-dir\fR] [\fB\-i\fR|\fB\-\-font\-ident\fR] [\fB\-o\fR|\fB\-\-frame\-shift\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIOSD_FILE\fR> <\fIOUTPUT_DIR\fR> 
+.SH DESCRIPTION
+Generates OSD overlay frames
+.PP
+This command generates numbered OSD frame images from the specified WTF.FPV OSD file and writes them into the specified output directory.
+.PP
+Use this command when you want to generate OSD frame images to check what the OSD looks like or when you want to manually burn the OSD onto a video.
+.PP
+If you specify a target resolution with \-\-target\-resolution or a video file to read the resolution from with \-\-target\-video\-file then the kind of tiles (HD/SD) to use and whether to use scaling or not will be decided to best match the target video resolution and to get the best OSD sharpness. If neither of these options are specified no scaling will be used and the kind of tiles used will be the native kind of tiles corresponding to the kind of OSD layout read from the FPV.WTF .osd file.
+.PP
+Fonts are loaded either from the directory specified with the \-\-font\-dir option or from the directory found in the environment variable FONTS_DIR or if neither of these are available it falls back to the `fonts` directory inside the current directory.
+.SH OPTIONS
+.TP
+\fB\-\-start\fR=\fI[HH:]MM:SS\fR
+start timestamp
+.TP
+\fB\-\-end\fR=\fI[HH:]MM:SS\fR
+end timestamp
+.TP
+\fB\-r\fR, \fB\-\-target\-resolution\fR=\fI720p 720p4:3 1080p 1080p4:3 <width>x<height>\fR
+resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
+.TP
+\fB\-v\fR, \fB\-\-target\-video\-file\fR=\fITARGET_VIDEO_FILE\fR
+use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
+.TP
+\fB\-s\fR, \fB\-\-scaling\fR=\fISCALING\fR
+force using scaling, default is automatic
+.TP
+\fB\-n\fR, \fB\-\-no\-scaling\fR=\fINO_SCALING\fR
+force disable scaling, default is automatic
+.TP
+\fB\-\-min\-margins\fR=\fIhorizontal:vertical\fR [default: 20:20]
+minimum margins to decide whether scaling should be used and how much to scale
+.TP
+\fB\-\-min\-coverage\fR=\fIpercent\fR [default: 90]
+minimum percentage of OSD coverage under which scaling will be used if \-\-scaling/\-\-no\-scaling options are not provided
+.TP
+\fB\-f\fR, \fB\-\-font\-dir\fR=\fIdirpath\fR
+path to the directory containing font sets
+.TP
+\fB\-i\fR, \fB\-\-font\-ident\fR=\fIident\fR
+force using this font identifier when loading fonts, default is automatic
+.TP
+\fB\-o\fR, \fB\-\-frame\-shift\fR=\fIframes\fR [default: 0]
+Shift the output by that number of frames. Use this option to sync the OSD to a particular video
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help information (use `\-h` for a summary)
+.TP
+<\fIOSD_FILE\fR>
+path to FPV.WTF .osd file
+.TP
+<\fIOUTPUT_DIR\fR>
+directory in which the OSD frames will be written
