@@ -4,7 +4,7 @@ use std::{
         Error as IOError,
         SeekFrom,
         Seek,
-        Read
+        Read, Write
     },
     path::{
         PathBuf,
@@ -99,8 +99,19 @@ impl FileWithPath {
         self.file.seek(SeekFrom::Current(0)).unwrap()
     }
 
+    pub fn write_all(&mut self, buf: &[u8]) -> Result<(), Error> {
+        self.file.write_all(buf).map_err(|error| Error::new(Action::Write, &self.path, error))
+    }
+
 }
 
+pub fn open<P: AsRef<Path>>(path: P) -> Result<FileWithPath, Error> {
+    FileWithPath::open(path)
+}
+
+pub fn create<P: AsRef<Path>>(path: P) -> Result<FileWithPath, Error> {
+    FileWithPath::create(path)
+}
 #[derive(Debug, Error, Getters)]
 #[getset(get = "pub")]
 #[error("error hard linking {original_path} -> {link_path}: {error}")]

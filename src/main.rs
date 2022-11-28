@@ -2,18 +2,24 @@
 #![forbid(unsafe_code)]
 
 use std::{
+    io,
     path::PathBuf,
     process::exit,
-    path::Path
+    path::Path, env::current_exe
 };
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, CommandFactory, ValueEnum};
+use clap_complete::generate as clap_complete_generate;
 use derive_more::{From, Display, Error};
+use anyhow::anyhow;
+use strum::{EnumIter, IntoEnumIterator};
 
 use hd_fpv_osd_font_tool::prelude::*;
 
 use dji_fpv_video_tool::{prelude::*, cli::{transcode_video_args::TranscodeVideoOSDArgs, generate_overlay_args::GenerateOverlayArgs, start_end_args::StartEndArgs}, osd::overlay::OverlayVideoCodec};
+use dji_fpv_video_tool::file;
 
+const SHELL_COMPLETION_FILES_DIR: &str = "shell_completions";
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -175,6 +181,12 @@ enum Commands {
 
         osd_video_file: Option<PathBuf>,
 
+    },
+
+    #[clap(hide(true))]
+    GenerateShellAutocompletionFiles {
+        #[clap(group("shell"), value_parser = generate_shell_autocompletion_files_arg_parser)]
+        shell: GenerateShellAutoCompletionFilesArg,
     }
 
 }
@@ -266,7 +278,63 @@ async fn fix_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, 
     Ok(())
 }
 
+#[derive(Debug, Clone)]
+enum GenerateShellAutoCompletionFilesArg {
+    All,
+    Shell(Shell)
+}
 
+fn generate_shell_autocompletion_files_arg_parser(value: &str) -> Result<GenerateShellAutoCompletionFilesArg, String> {
+    match value {
+        "all" => Ok(GenerateShellAutoCompletionFilesArg::All),
+        _ => Ok(GenerateShellAutoCompletionFilesArg::Shell(Shell::from_str(value, true)?))
+    }
+}
+
+macro_rules! shell_enum_and_impl {
+    ($($shell:ident),+) => {
+
+        #[derive(Debug, Clone, ValueEnum, EnumIter, strum::Display)]
+        enum Shell {
+            $($shell),+
+        }
+
+        impl Shell {
+            fn generate_completion_file(&self, current_exe_name: &str) -> Result<(), file::Error> {
+                use Shell::*;
+                let mut file = file::open(self.completion_file_path(current_exe_name))?;
+                let mut buf = io::BufWriter::new(vec![]);
+                match self {
+                    // $($shell => clap_complete_generate(clap_complete::shells::$shell, &mut Cli::command(), current_exe_name, &mut std::io::stdout()),)+
+                    $($shell => clap_complete_generate(clap_complete::shells::$shell, &mut Cli::command(), current_exe_name, &mut buf),)+
+                }
+                file.write_all(buf.into_inner().unwrap().as_slice())?;
+                Ok(())
+            }
+
+            fn completion_file_path(&self, current_exe_name: &str) -> PathBuf {
+                [PathBuf::from(SHELL_COMPLETION_FILES_DIR), PathBuf::from(current_exe_name).with_extension(self.to_string())].iter().collect()
+            }
+        }
+
+    };
+}
+
+shell_enum_and_impl!(Bash, Elvish, Fish, PowerShell, Zsh);
+
+fn generate_shell_autocompletion_files_command(arg: &GenerateShellAutoCompletionFilesArg) -> anyhow::Result<()> {
+    let current_exe = current_exe().map_err(|error| anyhow!("failed to get exe name: {error}"))?;
+    let current_exe_name = current_exe.file_name().unwrap().to_str().ok_or_else(|| anyhow!("exe file name contains invalid UTF-8 characters"))?;
+    match arg {
+        GenerateShellAutoCompletionFilesArg::All =>
+            for shell in Shell::iter() {
+                shell.generate_completion_file(current_exe_name)?;
+            },
+        GenerateShellAutoCompletionFilesArg::Shell(shell) =>
+            shell.generate_completion_file(current_exe_name)?,
+    }
+    Ok(())
+}
 
 #[tokio::main]
 async fn main() {
@@ -289,6 +357,8 @@ async fn main() {
 
         Commands::PlayVideoWithOSD { video_file, osd_video_file } =>
             video::play_with_osd(video_file, osd_video_file).map_err(anyhow::Error::new),
+
+        Commands::GenerateShellAutocompletionFiles { shell } => generate_shell_autocompletion_files_command(shell),
     };
 
     if let Err(error) = command_result {
