@@ -59,7 +59,7 @@ impl Error {
     }
 }
 
-#[derive(Deref, Getters)]
+#[derive(Debug, Deref, Getters)]
 pub struct FileWithPath {
     #[getset(get = "pub")]
     path: PathBuf,
