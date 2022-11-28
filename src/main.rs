@@ -153,6 +153,20 @@ enum Commands {
         transcode_args: TranscodeVideoArgs,
     },
 
+    /// Play video using MPV video player with OSD by overlaying transparent OSD video in real time
+    ///
+    /// You can generate a compatible OSD overlay video file with the `generate-overlay-video` command.
+    ///
+    /// If the <OSD_VIDEO_FILE> argument is not provided it will try to use the file with the same base name
+    /// as the <VIDEO_FILE> argument with suffix `_osd` and with `webm` extension.
+    PlayVideoWithOSD {
+
+        video_file: PathBuf,
+
+        osd_video_file: Option<PathBuf>,
+
+    }
+
 }
 
 #[derive(Debug, Error, From, Display)]
@@ -262,6 +276,9 @@ async fn main() {
 
         Commands::FixVideoAudio { input_video_file, output_video_file, overwrite, sync, volume } =>
             fix_audio_command(input_video_file, output_video_file, *overwrite, *sync, *volume).await,
+
+        Commands::PlayVideoWithOSD { video_file, osd_video_file } =>
+            video::play_with_osd(video_file, osd_video_file).map_err(anyhow::Error::new),
     };
 
     if let Err(error) = command_result {

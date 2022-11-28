@@ -1,4 +1,7 @@
 
+use std::ffi::OsString;
+use std::path::PathBuf;
+use std::process::ExitStatus;
 use std::{path::Path, io::Write};
 
 use derive_more::From;
@@ -12,6 +15,7 @@ use crate::{prelude::{TranscodeVideoArgs, Scaling}, cli::transcode_video_args::T
 use crate::osd::dji::file::ReadError as OSDFileReadError;
 use crate::ffmpeg;
 use self::probe::probe;
+use crate::process::Command as ProcessCommand;
 
 use self::timestamp::Timestamp;
 
@@ -354,4 +358,67 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
 
     log::info!("{frame_count} frames transcoded successfully");
     Ok(())
+}
+
+#[derive(Debug, Error)]
+pub enum PlayWithOSDError {
+    #[error("invalid video file path: {0}")]
+    InvalidVideoFilePath(PathBuf),
+    #[error("OSD file not found: {0}")]
+    OSDVideoFileNotFound(PathBuf),
+    #[error(transparent)]
+    VideoProbingError(#[from] VideoProbingError),
+    #[error("can only use OSD video files encoded with VP8 or VP9")]
+    CanOnlyUseVP8OrVP9OSDVideoFiles,
+    #[error("failed to start MPV")]
+    FailedToStartMPV(IOError),
+    #[error("MPV exited with an error: {0}")]
+    MPVExitedWithAnError(ExitStatus),
+}
+
+pub fn play_with_osd<P: AsRef<Path>, Q: AsRef<Path>>(video_file: P, osd_video_file: &Option<Q>) -> Result<(), PlayWithOSDError> {
+
+    let video_file = video_file.as_ref();
+
+    let osd_video_file = match osd_video_file {
+        Some(osd_video_file) => osd_video_file.as_ref().to_path_buf(),
+        None => {
+            let video_file_stem = video_file.file_stem()
+                .ok_or_else(|| PlayWithOSDError::InvalidVideoFilePath(video_file.to_path_buf()))?;
+            let mut osd_video_file_name = video_file_stem.to_os_string();
+            osd_video_file_name.push("_osd");
+            let osd_video_file = video_file.with_file_name(osd_video_file_name).with_extension("webm");
+            if ! osd_video_file.exists() { return Err(PlayWithOSDError::OSDVideoFileNotFound(osd_video_file)); }
+            osd_video_file
+        },
+    };
+
+    let probe_result = probe(&osd_video_file)?;
+    let osd_video_codec = probe_result.video_codec().as_deref().ok_or(PlayWithOSDError::CanOnlyUseVP8OrVP9OSDVideoFiles)?;
+
+    let decode_lib = match osd_video_codec {
+        "vp8" => "libvpx",
+        "vp9" => "libvpx-vp9",
+        _ => return Err(PlayWithOSDError::CanOnlyUseVP8OrVP9OSDVideoFiles),
+    };
+
+    let mut external_file_arg = OsString::from("--external-file=");
+    external_file_arg.push(osd_video_file.as_os_str());
+
+    let mut mpv_command = ProcessCommand::new("mpv");
+
+    mpv_command
+        .arg(format!("--vd={decode_lib}"))
+        .arg(external_file_arg)
+        .arg(video_file)
+        .arg("--lavfi-complex=[vid1][vid2]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2[vo]");
+
+    log::debug!("spawning process: {}", mpv_command);
+
+    let mut mpv_child_proc = mpv_command.spawn().map_err(PlayWithOSDError::FailedToStartMPV)?;
+
+    match mpv_child_proc.wait().unwrap() {
+        exit_result if ! exit_result.success() => Err(PlayWithOSDError::MPVExitedWithAnError(exit_result)),
+        _ => Ok(())
+    }
 }

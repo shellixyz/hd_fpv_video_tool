@@ -1,5 +1,5 @@
 
-use std::{process, path::{Path, PathBuf}, ffi::{OsString, OsStr}, fmt::Display, io::{Error as IOError, Read}};
+use std::{process, path::{Path, PathBuf}, ffi::OsString, fmt::Display, io::{Error as IOError, Read}};
 
 use derive_more::{Deref, DerefMut};
 use getset::{Getters, Setters, CopyGetters};
@@ -10,6 +10,7 @@ use lazy_static::lazy_static;
 use tokio::task::JoinHandle;
 
 use crate::video::{resolution::Resolution, timestamp::Timestamp};
+use crate::process::Command as ProcessCommand;
 
 #[derive(Debug, Clone)]
 pub enum Input {
@@ -326,7 +327,7 @@ impl CommandBuilder {
 
     pub fn build(&self) -> Result<Command, BuildCommandError> {
         let binary_path = self.bin_path.clone().unwrap_or_else(|| PathBuf::from("ffmpeg"));
-        let mut pcommand = process::Command::new(binary_path);
+        let mut pcommand = ProcessCommand::new(binary_path);
 
         if self.inputs.is_empty() { return Err(BuildCommandError("no input"))}
         for input in &self.inputs {
@@ -360,7 +361,7 @@ impl CommandBuilder {
 
 #[derive(CopyGetters, Setters)]
 pub struct Command {
-    command: process::Command,
+    command: ProcessCommand,
     #[getset(get_copy = "pub", set = "pub")]
     debug: bool,
     #[getset(get_copy = "pub")]
@@ -402,21 +403,7 @@ impl Command {
 
 impl Display for Command {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let components = [
-                vec![self.command.get_program().to_string_lossy()],
-                self.command.get_args().map(OsStr::to_string_lossy).collect::<Vec<_>>()
-            ]
-            .iter()
-            .flatten()
-            .map(|comp| {
-                if comp.contains(' ') {
-                    format!("\"{comp}\"")
-                } else {
-                    comp.to_string()
-                }
-            })
-            .collect::<Vec<_>>();
-        f.write_str(components.join(" ").as_str())
+        self.command.fmt(f)
     }
 }
 
