@@ -88,7 +88,7 @@ pub struct TranscodeVideoArgs {
     video_bitrate: String,
 
     /// video constant quality setting
-    #[clap(long, value_parser, default_value_t = 30)]
+    #[clap(long, value_parser, default_value_t = 25)]
     #[getset(skip)]
     #[getset(get_copy = "pub")]
     video_crf: u8,
