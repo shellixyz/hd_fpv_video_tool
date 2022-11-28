@@ -18,7 +18,6 @@ publish = false
 clap = { version = "4.0.18", features = ["derive", "string"] }
 image = { version = "0.24.4", features = ["rgb", "png", "scoped_threadpool"], default-features = false }
 log = "0.4.17"
-pretty_env_logger = "0.4.0"
 strum = { version = "0.24.1", features = ["derive"] }
 derive_more = "0.99.17"
 byte_struct = "0.8.0"
@@ -36,6 +35,7 @@ itertools = "0.10.5"
 path-absolutize = "3.0.14"
 clap_complete = "4.0.6"
 clap_mangen = "0.2.5"
+env_logger = "0.10.0"
 
 [profile.release]
 panic = 'abort'

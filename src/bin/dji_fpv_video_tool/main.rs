@@ -2,11 +2,13 @@
 #![forbid(unsafe_code)]
 
 use std::{
+    io::Write,
     process::exit,
     path::Path, env::current_exe
 };
 
 use clap::Parser;
+use env_logger::fmt::Color;
 use strum::IntoEnumIterator;
 
 use anyhow::anyhow;
@@ -128,7 +130,17 @@ fn generate_man_pages_command() -> anyhow::Result<()> {
 async fn main() {
     let cli = Cli::parse();
 
-    pretty_env_logger::formatted_builder().parse_filters(cli.log_level().to_string().as_str()).init();
+    env_logger::builder()
+        .format(|buf, record| {
+            let level_style = buf.default_level_style(record.level());
+            write!(buf, "{:<5}", level_style.value(record.level()))?;
+            let mut style = buf.style();
+            style.set_color(Color::White).set_bold(true);
+            write!(buf, "{}", style.value(" > "))?;
+            writeln!(buf, "{}", record.args())
+        })
+        .parse_filters(cli.log_level().to_string().as_str())
+        .init();
 
     let command_result = match &cli.command {
 
