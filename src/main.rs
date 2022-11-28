@@ -118,6 +118,9 @@ enum Commands {
     ///
     /// If the output video file is not provided the output video will be written in the same directory
     /// as the input video with the same file name with suffix `_fixed_audio`
+    ///
+    /// Note that fixing the audio/video sync will only work if the start of the original video from
+    /// the DJI FPV air unit has NOT been cut off.
     FixVideoAudio {
 
         /// fix audio sync only
