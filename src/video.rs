@@ -9,6 +9,7 @@ use thiserror::Error;
 use std::io::Error as IOError;
 use ffmpeg_next::Rational;
 
+use crate::cli::font_options::OSDFontDirError;
 use crate::cli::start_end_args::StartEndArgs;
 use crate::cli::transcode_video_args::OutputVideoFileError;
 use crate::{prelude::*, osd::overlay::scaling::ScalingArgsError};
@@ -217,6 +218,8 @@ fn frame_count_for_interval(total_frames: u64, frame_rate: Rational, start: &Opt
 #[derive(Debug, Error, From)]
 pub enum TranscodeVideoError {
     #[error(transparent)]
+    OSDFontDirError(OSDFontDirError),
+    #[error(transparent)]
     OutputVideoFileError(OutputVideoFileError),
     #[error(transparent)]
     OSDFileOpenError(OSDFileOpenError),
@@ -322,7 +325,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
 
     let osd_scaling = Scaling::try_from_osd_args(osd_args.osd_scaling_args(), video_info.resolution())?;
     let mut osd_file = OSDFileReader::open(osd_file_path)?;
-    let osd_font_dir = FontDir::new(&osd_args.osd_font_options().osd_font_dir());
+    let osd_font_dir = FontDir::new(&osd_args.osd_font_options().osd_font_dir()?);
     let osd_frames_generator = OverlayGenerator::new(
         osd_file.frames()?,
         &osd_font_dir,

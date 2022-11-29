@@ -36,6 +36,7 @@ path-absolutize = "3.0.14"
 clap_complete = "4.0.6"
 clap_mangen = "0.2.5"
 env_logger = "0.10.0"
+home = "0.5.4"
 
 [profile.release]
 panic = 'abort'
