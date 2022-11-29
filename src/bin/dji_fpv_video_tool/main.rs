@@ -61,10 +61,19 @@ fn generate_overlay_prepare_generator(common_args: &GenerateOverlayArgs) -> anyh
 }
 
 fn generate_overlay_frames_command(command: &Commands) -> anyhow::Result<()> {
-    if let Commands::GenerateOverlayFrames { common_args, output_dir: target_dir } = command {
+    if let Commands::GenerateOverlayFrames { common_args, output_dir } = command {
         common_args.start_end().check_valid()?;
+        let output_dir = match output_dir {
+            Some(output_dir) => output_dir.clone(),
+            None => {
+                let osd_file = common_args.osd_file();
+                let mut output_dir_name = Path::new(osd_file.file_stem().ok_or_else(|| anyhow!("OSD file has no file name"))?).as_os_str().to_os_string();
+                output_dir_name.push("_osd_frames");
+                osd_file.with_file_name(output_dir_name)
+            }
+        };
         let mut overlay_generator = generate_overlay_prepare_generator(common_args)?;
-        overlay_generator.save_frames_to_dir(common_args.start_end().start(), common_args.start_end().end(), target_dir, common_args.frame_shift()?)?;
+        overlay_generator.save_frames_to_dir(common_args.start_end().start(), common_args.start_end().end(), output_dir, common_args.frame_shift()?)?;
     }
     Ok(())
 }

@@ -58,7 +58,7 @@ pub enum Commands {
         common_args: GenerateOverlayArgs,
 
         /// directory in which the OSD frames will be written
-        output_dir: PathBuf,
+        output_dir: Option<PathBuf>,
     },
 
     /// Generates OSD overlay video
