@@ -5,7 +5,7 @@ use clap::Args;
 use getset::{Getters, CopyGetters};
 use thiserror::Error;
 
-use crate::{osd::{overlay::scaling::OSDScalingArgs, dji::file::find_associated_to_video_file}, prelude::VideoAudioFixType};
+use crate::{osd::{self, overlay::scaling::OSDScalingArgs, dji::file::find_associated_to_video_file}, prelude::VideoAudioFixType};
 
 use super::{font_options::OSDFontOptions, start_end_args::StartEndArgs};
 
@@ -37,6 +37,15 @@ pub struct TranscodeVideoOSDArgs {
     #[clap(short = 'o', long, value_parser, allow_negative_numbers(true), value_name = "frames")]
     #[getset(get_copy = "pub")]
     osd_frame_shift: Option<i32>,
+
+    /// hide rectangular regions from the OSD
+    ///
+    /// The parameter is a `;` separated list of regions.{n}
+    /// The format for a region is: <left_x>,<top_y>[:<width>x<height>]{n}
+    /// If the size is not specified it will default to 1x1
+    #[clap(long, value_parser, value_delimiter = ';', value_name = "REGIONS")]
+    #[getset(get = "pub")]
+    osd_hide_regions: Vec<osd::Region>,
 
     /// path to FPV.WTF .osd file to use to generate OSD frames to burn onto video
     #[clap(long, value_parser, value_name = "OSD file path")]

@@ -55,7 +55,8 @@ fn generate_overlay_prepare_generator(common_args: &GenerateOverlayArgs) -> anyh
         osd_file.frames()?,
         &font_dir,
         &common_args.font_options().font_ident(),
-        scaling
+        scaling,
+        common_args.hide_regions(),
     )?;
     Ok(overlay_generator)
 }

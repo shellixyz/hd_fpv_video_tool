@@ -60,6 +60,7 @@ use super::{
             sorted_frames::{SortedUniqFrames as OSDFileSortedFrames, VideoFramesIter},
         },
     },
+    Region,
     tile_resize::ResizeTiles,
 };
 
@@ -88,11 +89,17 @@ impl Frame {
 
 impl OSDFileFrame {
 
-    fn draw_overlay_frame(&self, dimensions: Dimensions, tile_images: &[tile::Image]) -> Frame {
+    fn draw_overlay_frame(&self, dimensions: Dimensions, tile_images: &[tile::Image], hidden_regions: &[Region]) -> Frame {
         let (tiles_width, tiles_height) = tile_images.first().unwrap().dimensions();
         let mut frame = Frame::new(dimensions);
-        for (screen_x, screen_y, tile_index) in self.enumerate_tile_indices() {
-            frame.copy_from(&tile_images[tile_index as usize], screen_x as u32 * tiles_width, screen_y as u32 * tiles_height).unwrap();
+        let mut tile_indices = self.tile_indices().clone();
+        tile_indices.erase_regions(hidden_regions);
+        for (osd_coordinates, tile_index) in tile_indices.enumerate() {
+            frame.copy_from(
+                &tile_images[tile_index as usize],
+                osd_coordinates.x as u32 * tiles_width,
+                osd_coordinates.y as u32 * tiles_height
+            ).unwrap();
         }
         frame
     }
@@ -263,17 +270,18 @@ fn best_settings_for_requested_scaling(osd_kind: DJIOSDKind, scaling: &Scaling) 
 }
 
 #[derive(CopyGetters)]
-pub struct Generator {
+pub struct Generator<'a> {
     osd_file_frames: OSDFileSortedFrames,
     tile_images: Vec<tile::Image>,
+    hidden_regions: &'a [Region],
 
     #[getset(get_copy = "pub")]
     frame_dimensions: Dimensions,
 }
 
-impl Generator {
+impl<'a> Generator<'a> {
 
-    pub fn new(osd_file_frames: OSDFileSortedFrames, font_dir: &FontDir, font_ident: &Option<Option<&str>>, scaling: Scaling) -> Result<Self, DrawFrameOverlayError> {
+    pub fn new(osd_file_frames: OSDFileSortedFrames, font_dir: &FontDir, font_ident: &Option<Option<&str>>, scaling: Scaling, hidden_regions: &'a [Region]) -> Result<Self, DrawFrameOverlayError> {
         if osd_file_frames.is_empty() { return Err(DrawFrameOverlayError::OSDFileIsEmpty) }
 
         let (overlay_resolution, tile_kind, tile_scaling) = best_settings_for_requested_scaling(osd_file_frames.kind(), &scaling)?;
@@ -301,11 +309,11 @@ impl Generator {
             }
         }
 
-        Ok(Self { osd_file_frames, tile_images, frame_dimensions: overlay_resolution })
+        Ok(Self { osd_file_frames, tile_images, frame_dimensions: overlay_resolution, hidden_regions })
     }
 
     fn draw_frame(&self, osd_file_frame: &OSDFileFrame) -> Frame {
-        osd_file_frame.draw_overlay_frame(self.frame_dimensions, &self.tile_images)
+        osd_file_frame.draw_overlay_frame(self.frame_dimensions, &self.tile_images, self.hidden_regions)
     }
 
     pub fn save_frames_to_dir<P: AsRef<Path> + std::marker::Sync>(&mut self, start: Option<Timestamp>, end: Option<Timestamp>, path: P, frame_shift: i32) -> Result<(), SaveFramesToDirError> {
@@ -397,24 +405,24 @@ impl Generator {
     }
 
     pub fn iter_advanced(&self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> FramesIter {
-        self.osd_file_frames.overlay_frames_iter(self.frame_dimensions, first_frame, last_frame, frame_shift, &self.tile_images)
+        self.osd_file_frames.overlay_frames_iter(self.frame_dimensions, first_frame, last_frame, frame_shift, &self.tile_images, self.hidden_regions)
     }
 
 }
 
-impl<'a> IntoIterator for &'a Generator {
+impl<'a> IntoIterator for &'a Generator<'a> {
     type Item = Frame;
 
     type IntoIter = FramesIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.osd_file_frames.overlay_frames_iter(self.frame_dimensions, 0, None, 0, &self.tile_images)
+        self.osd_file_frames.overlay_frames_iter(self.frame_dimensions, 0, None, 0, &self.tile_images, self.hidden_regions)
     }
 }
 
 impl OSDFileSortedFrames {
-    pub fn overlay_frames_iter<'a>(&'a self, frame_dimensions: Dimensions, first_frame: u32, last_frame: Option<u32>, frame_shift: i32, tile_images: &'a [tile::Image]) -> FramesIter {
-        FramesIter::new(self.video_frames_iter(first_frame, last_frame, frame_shift), frame_dimensions, tile_images)
+    pub fn overlay_frames_iter<'a>(&'a self, frame_dimensions: Dimensions, first_frame: u32, last_frame: Option<u32>, frame_shift: i32, tile_images: &'a [tile::Image], hidden_regions: &'a [Region]) -> FramesIter {
+        FramesIter::new(self.video_frames_iter(first_frame, last_frame, frame_shift), frame_dimensions, tile_images, hidden_regions)
     }
 }
 
@@ -424,15 +432,17 @@ pub struct FramesIter<'a> {
     frame_dimensions: Dimensions,
     tile_images: &'a [tile::Image],
     vframes_iter: VideoFramesIter<'a>,
+    hidden_regions: &'a [Region],
     prev_frame: Frame
 }
 
 impl<'a> FramesIter<'a> {
-    pub fn new(video_frames_iter: VideoFramesIter<'a>, frame_dimensions: Dimensions, tile_images: &'a [tile::Image]) -> Self {
+    pub fn new(video_frames_iter: VideoFramesIter<'a>, frame_dimensions: Dimensions, tile_images: &'a [tile::Image], hidden_regions: &'a [Region]) -> Self {
         Self {
             frame_dimensions,
             tile_images,
             vframes_iter: video_frames_iter,
+            hidden_regions,
             prev_frame: Frame::new(frame_dimensions)
         }
     }
@@ -444,7 +454,7 @@ impl<'a> Iterator for FramesIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         match self.vframes_iter.next()? {
             Some(osd_file_frame) => {
-                let frame = osd_file_frame.draw_overlay_frame(self.frame_dimensions, self.tile_images);
+                let frame = osd_file_frame.draw_overlay_frame(self.frame_dimensions, self.tile_images, self.hidden_regions);
                 self.prev_frame = frame.clone();
                 Some(frame)
             },

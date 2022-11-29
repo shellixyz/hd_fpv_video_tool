@@ -8,6 +8,7 @@ use super::tile_indices::{
 };
 
 use crate::video::FrameIndex as VideoFrameIndex;
+use crate::osd;
 
 
 #[derive(ByteStruct, Debug, CopyGetters)]
@@ -35,6 +36,12 @@ impl Frame {
 
     pub fn enumerate_tile_indices(&self) -> TileIndicesEnumeratorIter {
         self.tile_indices().enumerate()
+    }
+
+    pub fn with_erased_regions(&self, regions: &[osd::Region]) -> Self {
+        let mut tile_indices = self.tile_indices.clone();
+        tile_indices.erase_regions(regions);
+        Self::new(self.index, tile_indices)
     }
 
 }

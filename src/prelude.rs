@@ -8,6 +8,7 @@ pub use crate::{
     },
     file,
     osd::{
+        Dimensions as OSDDimensions,
         dji::{
             font_dir::FontDir,
             file::{
@@ -25,11 +26,26 @@ pub use crate::{
             },
             OverlayVideoCodec,
         },
+        region::{
+            Region as OSDRegion,
+        },
+        coordinates::{
+            Coordinate as OSDCoordinate,
+            Coordinates as OSDCoordinates,
+            FormatError as OSDCoordinatesFormatError,
+        }
     },
     log_level::LogLevel,
     video::{
         self,
         AudioFixType as VideoAudioFixType,
         probe::Error as VideoProbingError,
+    },
+};
+
+pub use hd_fpv_osd_font_tool::{
+    dimensions::{
+        Dimensions as GenericDimensions,
+        FormatError as GenericDimensionsFormatError,
     },
 };

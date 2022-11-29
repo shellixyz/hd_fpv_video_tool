@@ -330,7 +330,8 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
         osd_file.frames()?,
         &osd_font_dir,
         &osd_args.osd_font_options().osd_font_ident(),
-        osd_scaling
+        osd_scaling,
+        osd_args.osd_hide_regions()
     )?;
 
     let frame_count = frame_count_for_interval(video_info.frame_count(), video_info.frame_rate(), &args.start_end().start(), &args.start_end().end());

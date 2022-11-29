@@ -4,7 +4,7 @@
 .SH NAME
 generate\-overlay\-video \- Generates OSD overlay video
 .SH SYNOPSIS
-\fBgenerate\-overlay\-video\fR [\fB\-v\fR|\fB\-\-target\-video\-file\fR] [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-r\fR|\fB\-\-target\-resolution\fR] [\fB\-s\fR|\fB\-\-scaling\fR] [\fB\-n\fR|\fB\-\-no\-scaling\fR] [\fB\-\-min\-margins\fR] [\fB\-\-min\-coverage\fR] [\fB\-f\fR|\fB\-\-font\-dir\fR] [\fB\-i\fR|\fB\-\-font\-ident\fR] [\fB\-o\fR|\fB\-\-frame\-shift\fR] [\fB\-c\fR|\fB\-\-codec\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIOSD_FILE\fR> [\fIVIDEO_FILE\fR] 
+\fBgenerate\-overlay\-video\fR [\fB\-v\fR|\fB\-\-target\-video\-file\fR] [\fB\-\-hide\-regions\fR] [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-r\fR|\fB\-\-target\-resolution\fR] [\fB\-s\fR|\fB\-\-scaling\fR] [\fB\-n\fR|\fB\-\-no\-scaling\fR] [\fB\-\-min\-margins\fR] [\fB\-\-min\-coverage\fR] [\fB\-f\fR|\fB\-\-font\-dir\fR] [\fB\-i\fR|\fB\-\-font\-ident\fR] [\fB\-o\fR|\fB\-\-frame\-shift\fR] [\fB\-c\fR|\fB\-\-codec\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIOSD_FILE\fR> [\fIVIDEO_FILE\fR] 
 .SH DESCRIPTION
 Generates OSD overlay video
 .PP
@@ -21,6 +21,11 @@ NOTE: unfortunately this is very slow right now because only a handful of video 
 .TP
 \fB\-v\fR, \fB\-\-target\-video\-file\fR=\fITARGET_VIDEO_FILE\fR
 use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
+.TP
+\fB\-\-hide\-regions\fR=\fIREGIONS\fR
+hide rectangular regions from the OSD
+
+The parameter is a `;` separated list of regions.{n} The format for a region is: <left_x>,<top_y>[:<width>x<height>]{n} If the size is not specified it will default to 1x1
 .TP
 \fB\-\-start\fR=\fI[HH:]MM:SS\fR
 start timestamp

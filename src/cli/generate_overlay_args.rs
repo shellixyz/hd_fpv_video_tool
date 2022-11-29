@@ -7,6 +7,7 @@ use anyhow::anyhow;
 use crate::{prelude::ScalingArgs, video};
 
 use super::{font_options::FontOptions, start_end_args::StartEndArgs};
+use crate::osd;
 
 
 #[derive(Args, Getters, CopyGetters)]
@@ -18,6 +19,14 @@ pub struct GenerateOverlayArgs {
     #[getset(skip)]
     #[getset(get = "pub")]
     target_video_file: Option<PathBuf>,
+
+    /// hide rectangular regions from the OSD
+    ///
+    /// The parameter is a `;` separated list of regions.{n}
+    /// The format for a region is: <left_x>,<top_y>[:<width>x<height>]{n}
+    /// If the size is not specified it will default to 1x1
+    #[clap(long, value_parser, value_delimiter = ';', value_name = "REGIONS")]
+    hide_regions: Vec<osd::Region>,
 
     #[clap(flatten)]
     start_end: StartEndArgs,
