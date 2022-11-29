@@ -10,6 +10,7 @@ use std::io::Error as IOError;
 use ffmpeg_next::Rational;
 
 use crate::cli::start_end_args::StartEndArgs;
+use crate::cli::transcode_video_args::OutputVideoFileError;
 use crate::{prelude::*, osd::overlay::scaling::ScalingArgsError};
 use crate::{prelude::{TranscodeVideoArgs, Scaling}, cli::transcode_video_args::TranscodeVideoOSDArgs};
 use crate::osd::dji::file::ReadError as OSDFileReadError;
@@ -216,6 +217,8 @@ fn frame_count_for_interval(total_frames: u64, frame_rate: Rational, start: &Opt
 #[derive(Debug, Error, From)]
 pub enum TranscodeVideoError {
     #[error(transparent)]
+    OutputVideoFileError(OutputVideoFileError),
+    #[error(transparent)]
     OSDFileOpenError(OSDFileOpenError),
     #[error(transparent)]
     ScalingArgsError(ScalingArgsError),
@@ -248,14 +251,15 @@ pub enum TranscodeVideoError {
 
 pub async fn transcode(args: &TranscodeVideoArgs) -> Result<(), TranscodeVideoError> {
 
+    let output_video_file = args.output_video_file(false)?;
     if ! args.input_video_file().exists() { return Err(TranscodeVideoError::InputVideoFileDoesNotExist); }
-    if ! args.overwrite() && args.output_video_file().exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
-    if args.input_video_file() == args.output_video_file() { return Err(TranscodeVideoError::InputAndOutputFileIsTheSame) }
+    if ! args.overwrite() && output_video_file.exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
+    if *args.input_video_file() == output_video_file { return Err(TranscodeVideoError::InputAndOutputFileIsTheSame) }
     if args.start_end().start().is_some() && matches!(args.video_audio_fix(), Some(fix) if fix.sync()) {
         return Err(TranscodeVideoError::IncompatibleArguments("cannot fix video audio sync while not starting at the beginning of the file".to_owned()));
     }
 
-    log::info!("transcoding video: {} -> {}", args.input_video_file().to_string_lossy(), args.output_video_file().to_string_lossy());
+    log::info!("transcoding video: {} -> {}", args.input_video_file().to_string_lossy(), output_video_file.to_string_lossy());
 
     let video_info = probe(args.input_video_file())?;
     let frame_count = frame_count_for_interval(video_info.frame_count(), video_info.frame_rate(), &args.start_end().start(), &args.start_end().end());
@@ -265,7 +269,7 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<(), TranscodeVideoEr
     ffmpeg_command
         .add_input_file_slice(args.input_video_file(), args.start_end().start(), args.start_end().end())
         .set_output_video_settings(Some(args.video_encoder()), Some(args.video_bitrate()), Some(args.video_crf()))
-        .set_output_file(args.output_video_file())
+        .set_output_file(output_video_file)
         .set_overwrite_output_file(args.overwrite());
 
     if let Some(video_audio_fix) = args.video_audio_fix() {
@@ -286,14 +290,16 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<(), TranscodeVideoEr
 
 pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_file_path: P, osd_args: &TranscodeVideoOSDArgs) -> Result<(), TranscodeVideoError> {
 
+    let output_video_file = args.output_video_file(true)?;
+
     if ! args.input_video_file().exists() { return Err(TranscodeVideoError::InputVideoFileDoesNotExist); }
-    if ! args.overwrite() && args.output_video_file().exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
-    if args.input_video_file() == args.output_video_file() { return Err(TranscodeVideoError::InputAndOutputFileIsTheSame) }
+    if ! args.overwrite() && output_video_file.exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
+    if *args.input_video_file() == output_video_file { return Err(TranscodeVideoError::InputAndOutputFileIsTheSame) }
     if args.start_end().start().is_some() && matches!(args.video_audio_fix(), Some(fix) if fix.sync()) {
         return Err(TranscodeVideoError::IncompatibleArguments("cannot fix video audio sync while not starting at the beginning of the file".to_owned()));
     }
 
-    log::info!("transcoding video: {} -> {}", args.input_video_file().to_string_lossy(), args.output_video_file().to_string_lossy());
+    log::info!("transcoding video: {} -> {}", args.input_video_file().to_string_lossy(), output_video_file.to_string_lossy());
 
     let video_info = probe(args.input_video_file())?;
 
@@ -327,7 +333,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
         .add_complex_filter("[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]")
         .add_mapping("[vo]")
         .set_output_video_settings(Some(args.video_encoder()), Some(args.video_bitrate()), Some(args.video_crf()))
-        .set_output_file(args.output_video_file())
+        .set_output_file(output_video_file)
         .set_overwrite_output_file(args.overwrite());
 
     match (video_info.has_audio(), args.video_audio_fix()) {

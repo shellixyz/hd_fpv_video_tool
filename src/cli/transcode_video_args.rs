@@ -108,7 +108,8 @@ pub struct TranscodeVideoArgs {
     input_video_file: PathBuf,
 
     /// output video file path
-    output_video_file: PathBuf,
+    #[getset(skip)]
+    output_video_file: Option<PathBuf>,
 
     /// overwrite output file if it exists
     #[clap(short = 'y', long, value_parser)]
@@ -117,7 +118,16 @@ pub struct TranscodeVideoArgs {
     overwrite: bool,
 }
 
+#[derive(Debug, Error)]
+pub enum OutputVideoFileError {
+    #[error("input has no file name")]
+    InputHasNoFileName,
+    #[error("input has no extension")]
+    InputHasNoExtension,
+}
+
 impl TranscodeVideoArgs {
+
     pub fn video_audio_fix(&self) -> Option<VideoAudioFixType> {
         use VideoAudioFixType::*;
         match (self.fix_audio, self.fix_audio_sync, self.fix_audio_volume) {
@@ -127,4 +137,22 @@ impl TranscodeVideoArgs {
             (false, false, false) => None,
         }
     }
+
+    pub fn output_video_file_provided(&self) -> bool {
+        self.output_video_file.is_some()
+    }
+
+    pub fn output_video_file(&self, with_osd: bool) -> Result<PathBuf, OutputVideoFileError> {
+        Ok(match &self.output_video_file {
+            Some(output_video_file) => output_video_file.clone(),
+            None => {
+                let mut output_file_stem = Path::new(self.input_video_file.file_stem().ok_or(OutputVideoFileError::InputHasNoFileName)?).as_os_str().to_os_string();
+                let suffix = if with_osd { "_with_osd" } else { "_transcoded" };
+                output_file_stem.push(suffix);
+                let input_file_extension = self.input_video_file.extension().ok_or(OutputVideoFileError::InputHasNoExtension)?;
+                self.input_video_file.with_file_name(output_file_stem).with_extension(input_file_extension)
+            }
+        })
+    }
+
 }
