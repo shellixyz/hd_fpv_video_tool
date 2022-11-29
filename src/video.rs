@@ -15,7 +15,7 @@ use crate::{prelude::*, osd::overlay::scaling::ScalingArgsError};
 use crate::{prelude::{TranscodeVideoArgs, Scaling}, cli::transcode_video_args::TranscodeVideoOSDArgs};
 use crate::osd::dji::file::ReadError as OSDFileReadError;
 use crate::ffmpeg;
-use self::probe::probe;
+pub use self::probe::probe;
 use crate::process::Command as ProcessCommand;
 
 use self::timestamp::Timestamp;
@@ -299,9 +299,22 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
         return Err(TranscodeVideoError::IncompatibleArguments("cannot fix video audio sync while not starting at the beginning of the file".to_owned()));
     }
 
-    log::info!("transcoding video: {} -> {}", args.input_video_file().to_string_lossy(), output_video_file.to_string_lossy());
-
     let video_info = probe(args.input_video_file())?;
+
+    let osd_frame_shift = match osd_args.osd_frame_shift() {
+        Some(frame_shift) => frame_shift,
+        None => {
+            if video_info.has_audio() {
+                let frame_shift = crate::osd::dji::AU_OSD_FRAME_SHIFT;
+                log::info!("input video file contains audio, assuming DJI AU origin, applying {frame_shift} OSD frames shift");
+                frame_shift
+            } else {
+                0
+            }
+        },
+    };
+
+    log::info!("transcoding video: {} -> {}", args.input_video_file().to_string_lossy(), output_video_file.to_string_lossy());
 
     if video_info.frame_rate().numerator() != 60 || video_info.frame_rate().denominator() != 1 {
         return Err(TranscodeVideoError::CanOnlyBurnOSDOn60FPSVideo(video_info.frame_rate().numerator() as f64 / video_info.frame_rate().denominator() as f64))
@@ -323,7 +336,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
     let first_frame_index = args.start_end().start().map(|tstamp| tstamp.frame_count(video_info.frame_rate()) as u32).unwrap_or(0);
     let last_frame_index = args.start_end().end().map(|end| end.frame_count(video_info.frame_rate()) as u32).unwrap_or(frame_count as u32);
     let osd_overlay_resolution = osd_frames_generator.frame_dimensions();
-    let osd_frames_iter = osd_frames_generator.iter_advanced(first_frame_index, Some(last_frame_index), osd_args.osd_frame_shift());
+    let osd_frames_iter = osd_frames_generator.iter_advanced(first_frame_index, Some(last_frame_index), osd_frame_shift);
 
     let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
 

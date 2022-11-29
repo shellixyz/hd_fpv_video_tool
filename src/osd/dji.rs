@@ -9,6 +9,8 @@ pub mod file;
 pub mod font_dir;
 
 
+pub const AU_OSD_FRAME_SHIFT: i32 = -36;
+
 #[derive(Debug, Error)]
 #[error("video resolution {video_resolution} too small to fit {osd_kind} kind OSD")]
 pub struct VideoResolutionTooSmallError {

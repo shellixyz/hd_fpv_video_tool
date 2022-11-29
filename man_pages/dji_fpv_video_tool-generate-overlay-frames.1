@@ -4,7 +4,7 @@
 .SH NAME
 generate\-overlay\-frames \- Generates OSD overlay frames
 .SH SYNOPSIS
-\fBgenerate\-overlay\-frames\fR [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-r\fR|\fB\-\-target\-resolution\fR] [\fB\-v\fR|\fB\-\-target\-video\-file\fR] [\fB\-s\fR|\fB\-\-scaling\fR] [\fB\-n\fR|\fB\-\-no\-scaling\fR] [\fB\-\-min\-margins\fR] [\fB\-\-min\-coverage\fR] [\fB\-f\fR|\fB\-\-font\-dir\fR] [\fB\-i\fR|\fB\-\-font\-ident\fR] [\fB\-o\fR|\fB\-\-frame\-shift\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIOSD_FILE\fR> <\fIOUTPUT_DIR\fR> 
+\fBgenerate\-overlay\-frames\fR [\fB\-v\fR|\fB\-\-target\-video\-file\fR] [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-r\fR|\fB\-\-target\-resolution\fR] [\fB\-s\fR|\fB\-\-scaling\fR] [\fB\-n\fR|\fB\-\-no\-scaling\fR] [\fB\-\-min\-margins\fR] [\fB\-\-min\-coverage\fR] [\fB\-f\fR|\fB\-\-font\-dir\fR] [\fB\-i\fR|\fB\-\-font\-ident\fR] [\fB\-o\fR|\fB\-\-frame\-shift\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIOSD_FILE\fR> <\fIOUTPUT_DIR\fR> 
 .SH DESCRIPTION
 Generates OSD overlay frames
 .PP
@@ -17,6 +17,9 @@ If you specify a target resolution with \-\-target\-resolution or a video file t
 Fonts are loaded either from the directory specified with the \-\-font\-dir option or from the directory found in the environment variable FONTS_DIR or if neither of these are available it falls back to the `fonts` directory inside the current directory.
 .SH OPTIONS
 .TP
+\fB\-v\fR, \fB\-\-target\-video\-file\fR=\fITARGET_VIDEO_FILE\fR
+use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
+.TP
 \fB\-\-start\fR=\fI[HH:]MM:SS\fR
 start timestamp
 .TP
@@ -25,9 +28,6 @@ end timestamp
 .TP
 \fB\-r\fR, \fB\-\-target\-resolution\fR=\fI720p 720p4:3 1080p 1080p4:3 <width>x<height>\fR
 resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
-.TP
-\fB\-v\fR, \fB\-\-target\-video\-file\fR=\fITARGET_VIDEO_FILE\fR
-use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
 .TP
 \fB\-s\fR, \fB\-\-scaling\fR=\fISCALING\fR
 force using scaling, default is automatic
@@ -47,7 +47,7 @@ path to the directory containing font sets
 \fB\-i\fR, \fB\-\-font\-ident\fR=\fIident\fR
 force using this font identifier when loading fonts, default is automatic
 .TP
-\fB\-o\fR, \fB\-\-frame\-shift\fR=\fIframes\fR [default: 0]
+\fB\-o\fR, \fB\-\-frame\-shift\fR=\fIframes\fR
 Shift the output by that number of frames. Use this option to sync the OSD to a particular video
 .TP
 \fB\-h\fR, \fB\-\-help\fR

@@ -1,5 +1,5 @@
 
-use std::path::PathBuf;
+use std::path::Path;
 
 use clap::Args;
 use derive_more::From;
@@ -69,12 +69,6 @@ pub struct ScalingArgs {
     #[clap(short = 'r', long, group("target_resolution_group"), value_parser = target_resolution_value_parser, value_names = TargetResolution::valid_list())]
     target_resolution: Option<TargetResolution>,
 
-    /// use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
-    #[clap(short = 'v', long, group("target_resolution_group"), value_parser)]
-    #[getset(skip)]
-    #[getset(get = "pub")]
-    target_video_file: Option<PathBuf>,
-
     /// force using scaling, default is automatic
     #[clap(short, long, value_parser)]
     scaling: bool,
@@ -117,11 +111,10 @@ fn min_margins_value_parser(min_margins_str: &str) -> Result<Margins, InvalidMar
     margin_value_parser(min_margins_str)
 }
 
-impl TryFrom<&ScalingArgs> for Scaling {
-    type Error = ScalingArgsError;
+impl Scaling {
 
-    fn try_from(args: &ScalingArgs) -> Result<Self, Self::Error> {
-        let target_resolution = match (args.target_resolution, &args.target_video_file) {
+    pub fn try_from_scaling_args<P: AsRef<Path>>(args: &ScalingArgs, target_video_file: &Option<P>) -> Result<Self, ScalingArgsError> {
+        let target_resolution = match (args.target_resolution, target_video_file) {
             (Some(target_resolution), None) => Some(target_resolution),
             (None, Some(video_file)) => {
                 let probe_result = video_probe(video_file)?;
@@ -153,9 +146,7 @@ impl TryFrom<&ScalingArgs> for Scaling {
             },
         })
     }
-}
 
-impl Scaling {
     pub fn try_from_osd_args(args: &OSDScalingArgs, video_resolution: VideoResolution) -> Result<Self, ScalingArgsError> {
         Ok(match (args.osd_scaling, args.no_osd_scaling) {
             (true, true) => return Err(ScalingArgsError::IncompatibleArguments),
@@ -172,4 +163,5 @@ impl Scaling {
             },
         })
     }
+
 }

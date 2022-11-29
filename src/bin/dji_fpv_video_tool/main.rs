@@ -48,7 +48,7 @@ fn display_osd_file_info_command<P: AsRef<Path>>(path: P) -> anyhow::Result<()> 
 }
 
 fn generate_overlay_prepare_generator(common_args: &GenerateOverlayArgs) -> anyhow::Result<OverlayGenerator> {
-    let scaling = Scaling::try_from(common_args.scaling_args())?;
+    let scaling = Scaling::try_from_scaling_args(common_args.scaling_args(), common_args.target_video_file())?;
     let mut osd_file = OSDFileReader::open(common_args.osd_file())?;
     let font_dir = FontDir::new(&common_args.font_options().font_dir());
     let overlay_generator = OverlayGenerator::new(
@@ -64,7 +64,7 @@ fn generate_overlay_frames_command(command: &Commands) -> anyhow::Result<()> {
     if let Commands::GenerateOverlayFrames { common_args, output_dir: target_dir } = command {
         common_args.start_end().check_valid()?;
         let mut overlay_generator = generate_overlay_prepare_generator(common_args)?;
-        overlay_generator.save_frames_to_dir(common_args.start_end().start(), common_args.start_end().end(), target_dir, common_args.frame_shift())?;
+        overlay_generator.save_frames_to_dir(common_args.start_end().start(), common_args.start_end().end(), target_dir, common_args.frame_shift()?)?;
     }
     Ok(())
 }
@@ -82,7 +82,7 @@ async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()
             }
         };
         let mut overlay_generator = generate_overlay_prepare_generator(common_args)?;
-        overlay_generator.generate_overlay_video(*codec, common_args.start_end().start(), common_args.start_end().end(), output_video_path, common_args.frame_shift(), *overwrite).await?;
+        overlay_generator.generate_overlay_video(*codec, common_args.start_end().start(), common_args.start_end().end(), output_video_path, common_args.frame_shift()?, *overwrite).await?;
     }
     Ok(())
 }
