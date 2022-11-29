@@ -62,7 +62,7 @@ fn generate_overlay_prepare_generator(common_args: &GenerateOverlayArgs) -> anyh
 
 fn generate_overlay_frames_command(command: &Commands) -> anyhow::Result<()> {
     if let Commands::GenerateOverlayFrames { common_args, output_dir } = command {
-        common_args.start_end().check_valid()?;
+        common_args.check_valid()?;
         let output_dir = match output_dir {
             Some(output_dir) => output_dir.clone(),
             None => {
