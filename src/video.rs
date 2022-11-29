@@ -312,12 +312,10 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
     )?;
 
     let frame_count = frame_count_for_interval(video_info.frame_count(), video_info.frame_rate(), &args.start_end().start(), &args.start_end().end());
+    log::debug!("frame count: video={}, transcode={}", video_info.frame_count(), frame_count);
 
     let first_frame_index = args.start_end().start().map(|tstamp| tstamp.frame_count(video_info.frame_rate()) as u32).unwrap_or(0);
-    let last_frame_index = match args.start_end().end() {
-        Some(end) => frame_count.min(end.frame_count(video_info.frame_rate())) as u32,
-        None => frame_count as u32,
-    } - 1;
+    let last_frame_index = args.start_end().end().map(|end| end.frame_count(video_info.frame_rate()) as u32).unwrap_or(frame_count as u32);
     let osd_overlay_resolution = osd_frames_generator.frame_dimensions();
     let osd_frames_iter = osd_frames_generator.iter_advanced(first_frame_index, Some(last_frame_index), osd_args.osd_frame_shift());
 
@@ -343,7 +341,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
         (false, Some(_)) => return Err(TranscodeVideoError::RequestedAudioFixingButInputHasNoAudio),
     }
 
-    let mut ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_progress(video_info.frame_count()).unwrap();
+    let mut ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count).unwrap();
     let mut ffmpeg_stdin = ffmpeg_process.take_stdin().unwrap();
 
     for osd_frame_image in osd_frames_iter {
