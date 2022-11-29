@@ -255,7 +255,7 @@ fn best_settings_for_requested_scaling(osd_kind: DJIOSDKind, scaling: &Scaling) 
                 };
 
             let tile_scaling_yes_no = match tile_scaling { Some(_) => "yes", None => "no" };
-            log::info!("calculated best approach: tile kind: {tile_kind} - scaling {tile_scaling_yes_no} - overlay resolution {overlay_resolution}");
+            log::info!("calculated best approach: tile kind: {tile_kind} - scaling: {tile_scaling_yes_no} - overlay resolution: {overlay_resolution}");
 
             (overlay_resolution, tile_kind, tile_scaling)
         },
