@@ -91,7 +91,7 @@ pub enum Commands {
         codec: OverlayVideoCodec,
 
         /// path of the video file to generate
-        video_file: PathBuf,
+        video_file: Option<PathBuf>,
 
         /// overwrite output file if it exists
         #[clap(short = 'y', long, value_parser)]

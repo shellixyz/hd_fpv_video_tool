@@ -71,9 +71,18 @@ fn generate_overlay_frames_command(command: &Commands) -> anyhow::Result<()> {
 
 async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()> {
     if let Commands::GenerateOverlayVideo { common_args, video_file, overwrite, codec } = command {
-        common_args.start_end().check_valid()?;
+        common_args.check_valid()?;
+        let output_video_path = match video_file {
+            Some(output_video_file) => output_video_file.clone(),
+            None => {
+                let osd_file = common_args.osd_file();
+                let mut output_file_stem = Path::new(osd_file.file_stem().ok_or_else(|| anyhow!("OSD file has no file name"))?).as_os_str().to_os_string();
+                output_file_stem.push("_osd");
+                osd_file.with_file_name(output_file_stem).with_extension("webm")
+            }
+        };
         let mut overlay_generator = generate_overlay_prepare_generator(common_args)?;
-        overlay_generator.generate_overlay_video(*codec, common_args.start_end().start(), common_args.start_end().end(), video_file, common_args.frame_shift(), *overwrite).await?;
+        overlay_generator.generate_overlay_video(*codec, common_args.start_end().start(), common_args.start_end().end(), output_video_path, common_args.frame_shift(), *overwrite).await?;
     }
     Ok(())
 }
