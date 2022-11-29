@@ -99,6 +99,9 @@ pub enum Commands {
     },
 
     /// Cut video file
+    ///
+    /// Note that without transcoding videos can only be cut at the nearest P-frame so the cuts may not
+    /// be at exactly the start/end points. If you need precise slicing use the `transcode` command instead.
     #[clap(alias = "cv")]
     CutVideo {
 
