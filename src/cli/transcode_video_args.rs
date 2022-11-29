@@ -34,7 +34,7 @@ pub struct TranscodeVideoOSDArgs {
     osd_font_options: OSDFontOptions,
 
     /// shift frames to sync OSD with video
-    #[clap(short = 'o', long, value_parser, value_name = "frames", default_value_t = 0)]
+    #[clap(short = 'o', long, value_parser, allow_negative_numbers(true), value_name = "frames", default_value_t = 0)]
     #[getset(get_copy = "pub")]
     osd_frame_shift: i32,
 
