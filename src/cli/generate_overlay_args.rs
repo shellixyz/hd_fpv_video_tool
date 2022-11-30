@@ -1,10 +1,12 @@
 use std::{path::PathBuf, ffi::OsStr};
 
-use clap::Args;
+use clap::{Args, builder::StyledStr};
 use getset::{Getters, CopyGetters};
 use anyhow::anyhow;
+use itertools::Itertools;
+use strum::IntoEnumIterator;
 
-use crate::{prelude::ScalingArgs, video};
+use crate::{prelude::ScalingArgs, video, osd::{dji::file::FontVariant, item::LocationData}};
 
 use super::{font_options::FontOptions, start_end_args::StartEndArgs};
 use crate::osd;
@@ -29,7 +31,7 @@ pub struct GenerateOverlayArgs {
     hide_regions: Vec<osd::Region>,
 
     /// hide items from the OSD
-    #[clap(long, value_parser, value_delimiter = ',', value_name = "ITEM_NAMES")]
+    #[clap(long, value_parser, value_delimiter = ',', value_name = "ITEM_NAMES", help = osd_hide_items_arg_help())]
     hide_items: Vec<String>,
 
     #[clap(flatten)]
@@ -49,6 +51,21 @@ pub struct GenerateOverlayArgs {
     /// path to FPV.WTF .osd file
     osd_file: PathBuf,
 
+}
+
+pub(crate) fn osd_hide_items_arg_help() -> StyledStr {
+    let mut help = indoc::indoc! {"
+        hide items from the OSD
+
+        Available items (font variant: name list):
+    "}.to_string();
+    for font_variant in FontVariant::iter() {
+        if ! font_variant.osd_items_location_data().is_empty() {
+            let item_names_list = font_variant.osd_items_location_data().iter().map(LocationData::name).join(", ");
+            help.push_str(&format!("  - {font_variant}: {item_names_list}"));
+        }
+    }
+    help.into()
 }
 
 impl GenerateOverlayArgs {

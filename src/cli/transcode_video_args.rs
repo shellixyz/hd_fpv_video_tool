@@ -7,7 +7,7 @@ use thiserror::Error;
 
 use crate::{osd::{self, overlay::scaling::OSDScalingArgs, dji::file::find_associated_to_video_file}, prelude::VideoAudioFixType};
 
-use super::{font_options::OSDFontOptions, start_end_args::StartEndArgs};
+use super::{font_options::OSDFontOptions, start_end_args::StartEndArgs, generate_overlay_args};
 
 
 #[derive(Args, Getters, CopyGetters)]
@@ -48,7 +48,7 @@ pub struct TranscodeVideoOSDArgs {
     osd_hide_regions: Vec<osd::Region>,
 
     /// hide items from the OSD
-    #[clap(long, value_parser, value_delimiter = ',', value_name = "OSD_ITEM_NAMES")]
+    #[clap(long, value_parser, value_delimiter = ',', value_name = "OSD_ITEM_NAMES", help = generate_overlay_args::osd_hide_items_arg_help())]
     #[getset(get = "pub")]
     osd_hide_items: Vec<String>,
 
