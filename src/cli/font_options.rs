@@ -6,7 +6,7 @@ use clap::Args;
 use derive_more::From;
 use thiserror::Error;
 
-const DEFAULT_HOME_RELATIVE_FONT_DIR: &str = ".local/share/applications/dji_fpv_video_tool/fonts";
+const DEFAULT_HOME_RELATIVE_FONT_DIR: &str = ".local/share/dji_fpv_video_tool/fonts";
 const FONT_DIR_ENV_VAR_NAME: &str = "DJI_OSD_FONTS_DIR";
 
 #[derive(Args)]
