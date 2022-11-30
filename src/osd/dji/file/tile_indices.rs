@@ -69,9 +69,9 @@ impl TileIndices {
         }
     }
 
-    pub fn erase_osd_item(&mut self, font_variant: FontVariant, item_name: &str) -> Result<(), UnknownOSDItem> {
-        let oild = font_variant.find_osd_item_location_data(item_name)
-            .ok_or_else(|| UnknownOSDItem::new(font_variant, item_name))?;
+    pub fn erase_osd_item(&mut self, font_variant: FontVariant, item_name: impl AsRef<str>) -> Result<(), UnknownOSDItem> {
+        let oild = font_variant.find_osd_item_location_data(item_name.as_ref())
+            .ok_or_else(|| UnknownOSDItem::new(font_variant, item_name.as_ref()))?;
 
         let regions: Vec<osd::Region> = oild.marker_tile_indices().iter().flat_map(|marker_tile_index| {
             self.enumerate().filter_map(|(coordinates, tile_index)| {
@@ -83,7 +83,7 @@ impl TileIndices {
         Ok(())
     }
 
-    pub fn erase_osd_items(&mut self, font_variant: FontVariant, item_names: &Vec<String>) -> Result<(), UnknownOSDItem> {
+    pub fn erase_osd_items(&mut self, font_variant: FontVariant, item_names: &[impl AsRef<str>]) -> Result<(), UnknownOSDItem> {
         for item_name in item_names {
             self.erase_osd_item(font_variant, item_name)?;
         }
