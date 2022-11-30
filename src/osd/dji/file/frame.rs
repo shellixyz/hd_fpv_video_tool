@@ -2,9 +2,10 @@ use byte_struct::*;
 use derive_more::Deref;
 use getset::{CopyGetters, Getters};
 
+use super::FontVariant;
 use super::tile_indices::{
     TileIndices,
-    TileIndicesEnumeratorIter,
+    TileIndicesEnumeratorIter, UnknownOSDItem,
 };
 
 use crate::video::FrameIndex as VideoFrameIndex;
@@ -42,6 +43,12 @@ impl Frame {
         let mut tile_indices = self.tile_indices.clone();
         tile_indices.erase_regions(regions);
         Self::new(self.index, tile_indices)
+    }
+
+    pub fn with_erased_osd_items(&self, font_variant: FontVariant, item_names: &Vec<String>) -> Result<Self, UnknownOSDItem> {
+        let mut tile_indices = self.tile_indices.clone();
+        tile_indices.erase_osd_items(font_variant, item_names)?;
+        Ok(Self::new(self.index, tile_indices))
     }
 
 }

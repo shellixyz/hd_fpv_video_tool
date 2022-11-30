@@ -12,6 +12,7 @@ use ffmpeg_next::Rational;
 use crate::cli::font_options::OSDFontDirError;
 use crate::cli::start_end_args::StartEndArgs;
 use crate::cli::transcode_video_args::OutputVideoFileError;
+use crate::osd::dji::file::tile_indices::UnknownOSDItem;
 use crate::{prelude::*, osd::overlay::scaling::ScalingArgsError};
 use crate::{prelude::{TranscodeVideoArgs, Scaling}, cli::transcode_video_args::TranscodeVideoOSDArgs};
 use crate::osd::dji::file::ReadError as OSDFileReadError;
@@ -250,6 +251,8 @@ pub enum TranscodeVideoError {
     FailedSendingOSDImagesToFFMpeg(IOError),
     #[error("ffmpeg process exited with error: {0}")]
     FFMpegExitedWithError(i32),
+    #[error(transparent)]
+    UnknownOSDItem(UnknownOSDItem),
 }
 
 pub async fn transcode(args: &TranscodeVideoArgs) -> Result<(), TranscodeVideoError> {
@@ -328,10 +331,12 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
     let osd_font_dir = FontDir::new(&osd_args.osd_font_options().osd_font_dir()?);
     let osd_frames_generator = OverlayGenerator::new(
         osd_file.frames()?,
+        osd_file.header().font_variant(),
         &osd_font_dir,
         &osd_args.osd_font_options().osd_font_ident(),
         osd_scaling,
-        osd_args.osd_hide_regions()
+        osd_args.osd_hide_regions(),
+        osd_args.osd_hide_items()
     )?;
 
     let frame_count = frame_count_for_interval(video_info.frame_count(), video_info.frame_rate(), &args.start_end().start(), &args.start_end().end());
@@ -368,7 +373,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
     let mut ffmpeg_stdin = ffmpeg_process.take_stdin().unwrap();
 
     for osd_frame_image in osd_frames_iter {
-        ffmpeg_stdin.write_all(osd_frame_image.as_raw()).map_err(TranscodeVideoError::FailedSendingOSDImagesToFFMpeg)?;
+        ffmpeg_stdin.write_all(osd_frame_image?.as_raw()).map_err(TranscodeVideoError::FailedSendingOSDImagesToFFMpeg)?;
     }
 
     drop(ffmpeg_stdin);

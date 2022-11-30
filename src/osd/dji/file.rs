@@ -14,7 +14,7 @@ use getset::{Getters, CopyGetters};
 use derive_more::From;
 use itertools::Itertools;
 use regex::Regex;
-use strum::Display;
+use strum::{Display, EnumIter};
 use thiserror::Error;
 use lazy_static::lazy_static;
 
@@ -119,7 +119,7 @@ impl Display for Offset {
 #[error("unknown font variant ID: {0}")]
 pub struct UnknownFontVariantID(pub u8);
 
-#[derive(Debug, Display, Clone, Copy)]
+#[derive(Debug, Display, Clone, Copy, EnumIter, PartialEq, Eq, Hash)]
 pub enum FontVariant {
     Generic,
     Ardupilot,

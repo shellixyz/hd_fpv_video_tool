@@ -6,26 +6,31 @@ use getset::Getters;
 use crate::prelude::*;
 use thiserror::Error;
 
-use super::coordinates::Range as CoordinatesRange;
+use crate::osd;
+
 
 #[derive(Debug, Clone, Getters)]
 #[getset(get = "pub")]
 pub struct Region {
-    top_left_corner: OSDCoordinates,
-    dimensions: OSDDimensions,
+    top_left_corner: osd::Coordinates,
+    dimensions: osd::Dimensions,
 }
 
 impl Region {
 
-    pub fn bottom_right_corner(&self) -> OSDCoordinates {
-        OSDCoordinates {
+    pub fn new(top_left_corner: osd::Coordinates, dimensions: osd::Dimensions) -> Self {
+        Self { top_left_corner, dimensions }
+    }
+
+    pub fn bottom_right_corner(&self) -> osd::Coordinates {
+        osd::Coordinates {
             x: self.top_left_corner.x() + self.dimensions.width - 1,
             y: self.top_left_corner.y() + self.dimensions.height - 1,
         }
     }
 
-    pub fn to_coordinates_range(&self) -> CoordinatesRange {
-        CoordinatesRange::from(self)
+    pub fn to_coordinates_range(&self) -> osd::CoordinatesRange {
+        osd::CoordinatesRange::from(self)
     }
 
 }
@@ -58,9 +63,9 @@ impl FromStr for Region {
         Ok(match s.split_once(':') {
 
             Some((origin_s, dimensions_s)) => {
-                let origin = OSDCoordinates::from_str(origin_s)
+                let origin = osd::Coordinates::from_str(origin_s)
                     .map_err(|error| FormatError::Origin { value: origin_s.to_owned(), error })?;
-                let dimensions = OSDDimensions::from_str(dimensions_s)
+                let dimensions = osd::Dimensions::from_str(dimensions_s)
                     .map_err(|error| FormatError::Dimensions { value: dimensions_s.to_owned(), error })?;
                 if dimensions.width == 0 || dimensions.height == 0 {
                     return Err(InvalidRegionString::InvalidDimensionValue(dimensions_s.to_owned()));
@@ -72,11 +77,11 @@ impl FromStr for Region {
             },
 
             None => {
-                let origin = OSDCoordinates::from_str(s)
+                let origin = osd::Coordinates::from_str(s)
                     .map_err(|error| FormatError::Origin { value: s.to_owned(), error })?;
                 Region {
                     top_left_corner: origin,
-                    dimensions: OSDDimensions::new(1, 1),
+                    dimensions: osd::Dimensions::new(1, 1),
                 }
             },
 

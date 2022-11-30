@@ -47,6 +47,11 @@ pub struct TranscodeVideoOSDArgs {
     #[getset(get = "pub")]
     osd_hide_regions: Vec<osd::Region>,
 
+    /// hide items from the OSD
+    #[clap(long, value_parser, value_delimiter = ',', value_name = "OSD_ITEM_NAMES")]
+    #[getset(get = "pub")]
+    osd_hide_items: Vec<String>,
+
     /// path to FPV.WTF .osd file to use to generate OSD frames to burn onto video
     #[clap(long, value_parser, value_name = "OSD file path")]
     osd_file: Option<PathBuf>,
@@ -57,6 +62,7 @@ pub struct TranscodeVideoOSDArgs {
 pub struct RequestedOSDButNoFileProvidedNorFound;
 
 impl TranscodeVideoOSDArgs {
+
     pub fn osd_file_path<P: AsRef<Path>>(&self, video_file_path: P) -> Result<Option<PathBuf>, RequestedOSDButNoFileProvidedNorFound> {
         let osd_file_path = match (self.osd, &self.osd_file) {
             (true, None) => Some(find_associated_to_video_file(video_file_path).ok_or(RequestedOSDButNoFileProvidedNorFound)?),
@@ -65,6 +71,7 @@ impl TranscodeVideoOSDArgs {
         };
         Ok(osd_file_path)
     }
+
 }
 
 #[derive(Args, Getters, CopyGetters)]

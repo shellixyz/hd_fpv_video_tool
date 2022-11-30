@@ -53,10 +53,12 @@ fn generate_overlay_prepare_generator(common_args: &GenerateOverlayArgs) -> anyh
     let font_dir = FontDir::new(&common_args.font_options().font_dir()?);
     let overlay_generator = OverlayGenerator::new(
         osd_file.frames()?,
+        osd_file.header().font_variant(),
         &font_dir,
         &common_args.font_options().font_ident(),
         scaling,
         common_args.hide_regions(),
+        common_args.hide_items()
     )?;
     Ok(overlay_generator)
 }

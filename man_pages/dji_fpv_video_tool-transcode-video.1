@@ -4,7 +4,7 @@
 .SH NAME
 transcode\-video \- Transcodes video file optionally burning OSD onto it
 .SH SYNOPSIS
-\fBtranscode\-video\fR [\fB\-\-osd\fR] [\fB\-s\fR|\fB\-\-osd\-scaling\fR] [\fB\-n\fR|\fB\-\-no\-osd\-scaling\fR] [\fB\-\-min\-osd\-margins\fR] [\fB\-\-min\-osd\-coverage\fR] [\fB\-d\fR|\fB\-\-osd\-font\-dir\fR] [\fB\-i\fR|\fB\-\-osd\-font\-ident\fR] [\fB\-o\fR|\fB\-\-osd\-frame\-shift\fR] [\fB\-\-osd\-hide\-regions\fR] [\fB\-\-osd\-file\fR] [\fB\-f\fR|\fB\-\-fix\-audio\fR] [\fB\-v\fR|\fB\-\-fix\-audio\-volume\fR] [\fB\-u\fR|\fB\-\-fix\-audio\-sync\fR] [\fB\-\-video\-encoder\fR] [\fB\-\-video\-bitrate\fR] [\fB\-\-video\-crf\fR] [\fB\-\-audio\-encoder\fR] [\fB\-\-audio\-bitrate\fR] [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT_VIDEO_FILE\fR> [\fIOUTPUT_VIDEO_FILE\fR] 
+\fBtranscode\-video\fR [\fB\-\-osd\fR] [\fB\-s\fR|\fB\-\-osd\-scaling\fR] [\fB\-n\fR|\fB\-\-no\-osd\-scaling\fR] [\fB\-\-min\-osd\-margins\fR] [\fB\-\-min\-osd\-coverage\fR] [\fB\-d\fR|\fB\-\-osd\-font\-dir\fR] [\fB\-i\fR|\fB\-\-osd\-font\-ident\fR] [\fB\-o\fR|\fB\-\-osd\-frame\-shift\fR] [\fB\-\-osd\-hide\-regions\fR] [\fB\-\-osd\-hide\-items\fR] [\fB\-\-osd\-file\fR] [\fB\-f\fR|\fB\-\-fix\-audio\fR] [\fB\-v\fR|\fB\-\-fix\-audio\-volume\fR] [\fB\-u\fR|\fB\-\-fix\-audio\-sync\fR] [\fB\-\-video\-encoder\fR] [\fB\-\-video\-bitrate\fR] [\fB\-\-video\-crf\fR] [\fB\-\-audio\-encoder\fR] [\fB\-\-audio\-bitrate\fR] [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT_VIDEO_FILE\fR> [\fIOUTPUT_VIDEO_FILE\fR] 
 .SH DESCRIPTION
 Transcodes video file optionally burning OSD onto it
 .PP
@@ -41,6 +41,9 @@ shift frames to sync OSD with video
 hide rectangular regions from the OSD
 
 The parameter is a `;` separated list of regions.{n} The format for a region is: <left_x>,<top_y>[:<width>x<height>]{n} If the size is not specified it will default to 1x1
+.TP
+\fB\-\-osd\-hide\-items\fR=\fIOSD_ITEM_NAMES\fR
+hide items from the OSD
 .TP
 \fB\-\-osd\-file\fR=\fIOSD file path\fR
 path to FPV.WTF .osd file to use to generate OSD frames to burn onto video

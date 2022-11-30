@@ -28,6 +28,10 @@ pub struct GenerateOverlayArgs {
     #[clap(long, value_parser, value_delimiter = ';', value_name = "REGIONS")]
     hide_regions: Vec<osd::Region>,
 
+    /// hide items from the OSD
+    #[clap(long, value_parser, value_delimiter = ',', value_name = "ITEM_NAMES")]
+    hide_items: Vec<String>,
+
     #[clap(flatten)]
     start_end: StartEndArgs,
 
