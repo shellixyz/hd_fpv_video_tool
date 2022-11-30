@@ -16,8 +16,15 @@ pub type TileIndex = u16;
 pub const TILE_INDICES_DIMENSIONS_TILES: Dimensions = Kind::FakeHD.dimensions_tiles();
 
 #[derive(Debug, Error)]
-#[error("unknown OSD item: {0}")]
-pub struct UnknownOSDItem(String);
+#[error("unknown OSD item for `{font_variant}` font variant: {item_name}")]
+pub struct UnknownOSDItem {
+    font_variant: FontVariant,
+    item_name: String,
+}
+
+impl UnknownOSDItem {
+    pub fn new(font_variant: FontVariant, item_name: &str) -> Self { Self { font_variant, item_name: item_name.to_owned() } }
+}
 
 #[derive(Debug, Deref, Clone, PartialEq, Eq)]
 pub struct TileIndices(Vec<TileIndex>);
@@ -64,7 +71,7 @@ impl TileIndices {
 
     pub fn erase_osd_item(&mut self, font_variant: FontVariant, item_name: &str) -> Result<(), UnknownOSDItem> {
         let oild = font_variant.find_osd_item_location_data(item_name)
-            .ok_or_else(|| UnknownOSDItem(item_name.to_owned()))?;
+            .ok_or_else(|| UnknownOSDItem::new(font_variant, item_name))?;
 
         let regions: Vec<osd::Region> = oild.marker_tile_indices().iter().flat_map(|marker_tile_index| {
             self.enumerate().filter_map(|(coordinates, tile_index)| {
