@@ -288,10 +288,13 @@ pub struct Generator<'a> {
 
 impl<'a> Generator<'a> {
 
-    pub fn new(osd_file_frames: OSDFileSortedFrames, font_variant: FontVariant, font_dir: &FontDir, font_ident: &Option<Option<&str>>, scaling: Scaling, hidden_regions: &'a [Region], hidden_items: &'a [String]) -> Result<Self, DrawFrameOverlayError> {
+    pub fn new(osd_file_frames: OSDFileSortedFrames, font_variant: FontVariant, font_dir: &FontDir, font_ident: &Option<Option<&str>>,
+                    scaling: Scaling, hidden_regions: &'a [Region], hidden_items: &'a [String]) -> Result<Self, DrawFrameOverlayError> {
+
         if osd_file_frames.is_empty() { return Err(DrawFrameOverlayError::OSDFileIsEmpty) }
 
-        let (overlay_resolution, tile_kind, tile_scaling) = best_settings_for_requested_scaling(osd_file_frames.kind(), &scaling)?;
+        let (overlay_resolution, tile_kind, tile_scaling) =
+            best_settings_for_requested_scaling(osd_file_frames.kind(), &scaling)?;
 
         let highest_used_tile_index = osd_file_frames.highest_used_tile_index().unwrap();
         let tiles = match font_ident {
@@ -325,20 +328,25 @@ impl<'a> Generator<'a> {
         osd_file_frame.draw_overlay_frame(self.frame_dimensions, self.font_variant, &self.tile_images, self.hidden_regions, &self.hidden_items)
     }
 
-    pub fn save_frames_to_dir<P: AsRef<Path> + std::marker::Sync>(&mut self, start: Option<Timestamp>, end: Option<Timestamp>, path: P, frame_shift: i32) -> Result<(), SaveFramesToDirError> {
+    pub fn save_frames_to_dir<P: AsRef<Path> + std::marker::Sync>(&mut self, start: Option<Timestamp>, end: Option<Timestamp>,
+                                                                    path: P, frame_shift: i32) -> Result<(), SaveFramesToDirError> {
+
         if path.as_ref().exists() {
             return Err(SaveFramesToDirError::TargetDirectoryExists);
         }
+
         create_path(&path)?;
         log::info!("generating overlay frames and saving into directory: {}", path.as_ref().to_string_lossy());
 
         let first_video_frame = start.start_overlay_frame_count();
         let last_video_frame = end.end_overlay_frame_index();
 
-        let osd_file_frames_slice = self.osd_file_frames.select_slice(first_video_frame, last_video_frame, frame_shift);
+        let osd_file_frames_slice =
+            self.osd_file_frames.select_slice(first_video_frame, last_video_frame, frame_shift);
         if osd_file_frames_slice.is_empty() { return Err(SaveFramesToDirError::NoFrameToWrite); }
 
-        let iter = osd_file_frames_slice.video_frames_rel_index_par_iter(EndOfFramesAction::ContinueToLastVideoFrame);
+        let iter =
+            osd_file_frames_slice.video_frames_rel_index_par_iter(EndOfFramesAction::ContinueToLastVideoFrame);
         let frame_count = iter.len();
 
         let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
@@ -373,14 +381,20 @@ impl<'a> Generator<'a> {
         Ok(())
     }
 
-    pub async fn generate_overlay_video<P: AsRef<Path>>(&mut self, codec: OverlayVideoCodec, start: Option<Timestamp>, end: Option<Timestamp>, output_video_path: P, frame_shift: i32, overwrite_output: bool) -> Result<(), GenerateOverlayVideoError> {
+    pub async fn generate_overlay_video<P: AsRef<Path>>(&mut self, codec: OverlayVideoCodec, start: Option<Timestamp>, end: Option<Timestamp>,
+                                    output_video_path: P, frame_shift: i32, overwrite_output: bool) -> Result<(), GenerateOverlayVideoError> {
 
-        if ! matches!(output_video_path.as_ref().extension(), Some(extension) if extension == "webm") { return Err(GenerateOverlayVideoError::OutputFileExtensionNotWebm) }
-        if ! overwrite_output &&  output_video_path.as_ref().exists() { return Err(GenerateOverlayVideoError::TargetVideoFileExists); }
+        if ! matches!(output_video_path.as_ref().extension(), Some(extension) if extension == "webm") {
+            return Err(GenerateOverlayVideoError::OutputFileExtensionNotWebm)
+        }
+        if ! overwrite_output &&  output_video_path.as_ref().exists() {
+            return Err(GenerateOverlayVideoError::TargetVideoFileExists);
+        }
 
         log::info!("generating overlay video: {}", output_video_path.as_ref().to_string_lossy());
 
-        let frames_iter = self.iter_advanced(start.start_overlay_frame_count(), end.end_overlay_frame_index(), frame_shift);
+        let frames_iter =
+            self.iter_advanced(start.start_overlay_frame_count(), end.end_overlay_frame_index(), frame_shift);
         let frame_count = frames_iter.len();
 
         let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
@@ -414,7 +428,15 @@ impl<'a> Generator<'a> {
     }
 
     pub fn iter_advanced(&self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> FramesIter {
-        self.osd_file_frames.overlay_frames_iter(self.frame_dimensions, first_frame, last_frame, frame_shift, self.font_variant, &self.tile_images, self.hidden_regions, &self.hidden_items)
+        FramesIter {
+            frame_dimensions: self.frame_dimensions,
+            font_variant: self.font_variant,
+            tile_images: &self.tile_images,
+            vframes_iter: self.osd_file_frames.video_frames_iter(first_frame, last_frame, frame_shift),
+            hidden_regions: self.hidden_regions,
+            hidden_items: &self.hidden_items,
+            prev_frame: Frame::new(self.frame_dimensions)
+        }
     }
 
 }
@@ -425,14 +447,7 @@ impl<'a> IntoIterator for &'a Generator<'a> {
     type IntoIter = FramesIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.osd_file_frames.overlay_frames_iter(self.frame_dimensions, 0, None, 0, self.font_variant, &self.tile_images, self.hidden_regions, &self.hidden_items)
-    }
-}
-
-impl OSDFileSortedFrames {
-    #[allow(clippy::too_many_arguments)]
-    pub fn overlay_frames_iter<'a>(&'a self, frame_dimensions: Dimensions, first_frame: u32, last_frame: Option<u32>, frame_shift: i32, font_variant: FontVariant, tile_images: &'a [tile::Image], hidden_regions: &'a [Region], hidden_items: &'a [&'a str]) -> FramesIter {
-        FramesIter::new(self.video_frames_iter(first_frame, last_frame, frame_shift), frame_dimensions, font_variant, tile_images, hidden_regions, hidden_items)
+        self.iter_advanced(0, None, 0)
     }
 }
 
@@ -448,27 +463,14 @@ pub struct FramesIter<'a> {
     prev_frame: Frame
 }
 
-impl<'a> FramesIter<'a> {
-    pub fn new(video_frames_iter: VideoFramesIter<'a>, frame_dimensions: Dimensions, font_variant: FontVariant, tile_images: &'a [tile::Image], hidden_regions: &'a [Region], hidden_items: &'a [&'a str]) -> Self {
-        Self {
-            frame_dimensions,
-            font_variant,
-            tile_images,
-            vframes_iter: video_frames_iter,
-            hidden_regions,
-            hidden_items,
-            prev_frame: Frame::new(frame_dimensions)
-        }
-    }
-}
-
 impl<'a> Iterator for FramesIter<'a> {
     type Item = Result<Frame, UnknownOSDItem>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.vframes_iter.next()? {
             Some(osd_file_frame) => {
-                let frame = match osd_file_frame.draw_overlay_frame(self.frame_dimensions, self.font_variant, self.tile_images, self.hidden_regions, self.hidden_items) {
+                let frame = match osd_file_frame.draw_overlay_frame(self.frame_dimensions, self.font_variant,
+                                                                           self.tile_images, self.hidden_regions, self.hidden_items) {
                     Ok(frame) => frame,
                     Err(error) => return Some(Err(error)),
                 };
