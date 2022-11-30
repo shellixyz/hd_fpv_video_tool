@@ -65,18 +65,28 @@ const fn lde(name: &'static str, marker_tile_indices: &'static [TileIndex], top_
 
 mod location_data {
     use super::{LocationData, ld, ldo};
+
     pub const INAV: [LocationData; 3] = [
         ld("gpslat", &[3], 10),
         ld("gpslon", &[4], 10),
         ldo("alt", &[0x76, 0x77, 0x78, 0x79], -4, 5),
     ];
+
+    pub const ARDUPILOT: [LocationData; 5] = [
+        ld("gpslat", &[0xA6], 10),
+        ld("gpslon", &[0xA7], 11),
+        ldo("alt", &[0xB1, 0xB3], -4, 5),
+        ldo("short+code", &[0x2B], -4, 8),
+        ldo("long+code", &[0x2B], -8, 12),
+    ];
+
 }
 
 impl FontVariant {
     pub const fn osd_items_location_data(&self) -> &'static [LocationData] {
         match self {
             FontVariant::Generic => &[],
-            FontVariant::Ardupilot => &[],
+            FontVariant::Ardupilot => &location_data::ARDUPILOT,
             FontVariant::Betaflight => &[],
             FontVariant::INAV => &location_data::INAV,
             FontVariant::KISSUltra => &[],
