@@ -59,12 +59,15 @@ pub(crate) fn osd_hide_items_arg_help() -> StyledStr {
 
         Available items (font variant: name list):
     "}.to_string();
-    for font_variant in FontVariant::iter() {
-        if ! font_variant.osd_items_location_data().is_empty() {
+    let font_variant_items = FontVariant::iter().filter_map(|font_variant| {
+        if font_variant.osd_items_location_data().is_empty() {
+            None
+        } else {
             let item_names_list = font_variant.osd_items_location_data().iter().map(LocationData::name).join(", ");
-            help.push_str(&format!("  - {font_variant}: {item_names_list}"));
+            Some(format!("  - {font_variant}: {item_names_list}"))
         }
-    }
+    }).join("\n");
+    help.push_str(&font_variant_items);
     help.into()
 }
 
