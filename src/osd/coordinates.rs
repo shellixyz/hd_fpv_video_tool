@@ -11,6 +11,27 @@ use super::region::Region;
 
 
 pub type Coordinate = u8;
+pub type SignedCoordinate = i8;
+
+#[derive(Debug, Clone, CopyGetters, From)]
+#[getset(get_copy = "pub")]
+pub struct SignedCoordinates {
+    pub x: SignedCoordinate,
+    pub y: SignedCoordinate,
+}
+
+impl SignedCoordinates {
+    pub fn new(x: SignedCoordinate, y: SignedCoordinate) -> Self { Self { x, y } }
+}
+
+impl From<Coordinates> for SignedCoordinates {
+    fn from(coordinates: Coordinates) -> Self {
+        Self::new(
+            SignedCoordinate::try_from(coordinates.x).unwrap(),
+            SignedCoordinate::try_from(coordinates.y).unwrap(),
+        )
+    }
+}
 
 #[derive(Debug, Error)]
 #[error("invalid screen coordinates format: {0}")]
@@ -26,6 +47,16 @@ pub struct Coordinates {
 impl Coordinates {
     pub fn new(x: Coordinate, y: Coordinate) -> Self { Self { x, y } }
 }
+
+impl From<SignedCoordinates> for Coordinates {
+    fn from(coordinates: SignedCoordinates) -> Self {
+        Self::new(
+            Coordinate::try_from(coordinates.x).unwrap(),
+            Coordinate::try_from(coordinates.y).unwrap(),
+        )
+    }
+}
+
 
 impl FromStr for Coordinates {
     type Err = FormatError;
@@ -43,24 +74,25 @@ impl FromStr for Coordinates {
     }
 }
 
-pub struct Range {
-    x_range: RangeInclusive<Coordinate>,
-    y_range: RangeInclusive<Coordinate>,
+pub struct SignedRange {
+    x_range: RangeInclusive<SignedCoordinate>,
+    y_range: RangeInclusive<SignedCoordinate>,
 }
 
-impl Range {
+impl SignedRange {
 
-    pub fn new(x_range: RangeInclusive<Coordinate>, y_range: RangeInclusive<Coordinate>) -> Self {
+    pub fn new(x_range: RangeInclusive<SignedCoordinate>, y_range: RangeInclusive<SignedCoordinate>) -> Self {
         Self { x_range, y_range }
     }
 
-    pub fn contains(&self, coordinates: &Coordinates) -> bool {
+    pub fn contains(&self, coordinates: Coordinates) -> bool {
+        let coordinates = SignedCoordinates::from(coordinates);
         self.x_range.contains(&coordinates.x) && self.y_range.contains(&coordinates.y)
     }
 
 }
 
-impl From<&Region> for Range {
+impl From<&Region> for SignedRange {
     fn from(region: &Region) -> Self {
         let tlc = region.top_left_corner();
         let brc = region.bottom_right_corner();

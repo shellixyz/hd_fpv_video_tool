@@ -12,20 +12,20 @@ use crate::osd;
 #[derive(Debug, Clone, Getters)]
 #[getset(get = "pub")]
 pub struct Region {
-    top_left_corner: osd::Coordinates,
+    top_left_corner: osd::SignedCoordinates,
     dimensions: osd::Dimensions,
 }
 
 impl Region {
 
-    pub fn new(top_left_corner: osd::Coordinates, dimensions: osd::Dimensions) -> Self {
+    pub fn new(top_left_corner: osd::SignedCoordinates, dimensions: osd::Dimensions) -> Self {
         Self { top_left_corner, dimensions }
     }
 
-    pub fn bottom_right_corner(&self) -> osd::Coordinates {
-        osd::Coordinates {
-            x: self.top_left_corner.x() + self.dimensions.width - 1,
-            y: self.top_left_corner.y() + self.dimensions.height - 1,
+    pub fn bottom_right_corner(&self) -> osd::SignedCoordinates {
+        osd::SignedCoordinates {
+            x: self.top_left_corner.x() + self.dimensions.width as i8 - 1,
+            y: self.top_left_corner.y() + self.dimensions.height as i8 - 1,
         }
     }
 
@@ -71,7 +71,7 @@ impl FromStr for Region {
                     return Err(InvalidRegionString::InvalidDimensionValue(dimensions_s.to_owned()));
                 }
                 Region {
-                    top_left_corner: origin,
+                    top_left_corner: osd::SignedCoordinates::from(origin),
                     dimensions
                 }
             },
@@ -80,7 +80,7 @@ impl FromStr for Region {
                 let origin = osd::Coordinates::from_str(s)
                     .map_err(|error| FormatError::Origin { value: s.to_owned(), error })?;
                 Region {
-                    top_left_corner: origin,
+                    top_left_corner: osd::SignedCoordinates::from(origin),
                     dimensions: osd::Dimensions::new(1, 1),
                 }
             },

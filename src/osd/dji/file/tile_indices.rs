@@ -50,7 +50,7 @@ impl TileIndices {
     pub fn erase_region(&mut self, region: &osd::Region) {
         let coordinates_range = region.to_coordinates_range();
         for (coordinates, tile_index) in self.enumerate_mut() {
-            if coordinates_range.contains(&coordinates) {
+            if coordinates_range.contains(coordinates) {
                 *tile_index = 0;
             }
         }
