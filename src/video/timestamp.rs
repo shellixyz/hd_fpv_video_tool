@@ -1,5 +1,5 @@
 
-use std::fmt::Display;
+use std::{fmt::Display, str::FromStr};
 
 use derive_more::Constructor;
 use ffmpeg_next::Rational;
@@ -76,10 +76,10 @@ impl Ord for Timestamp {
 #[error("invalid timestamp: {0}")]
 pub struct TimestampFormatError(String);
 
-impl TryFrom<&str> for Timestamp {
-    type Error = TimestampFormatError;
+impl FromStr for Timestamp {
+    type Err = TimestampFormatError;
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         lazy_static! {
             static ref TIMESTAMP_RE: Regex = Regex::new(r"\A(?:(?P<hours>\d{1,3}):)?(?P<minutes>\d{1,2}):(?P<seconds>\d{1,2})\z").unwrap();
         }

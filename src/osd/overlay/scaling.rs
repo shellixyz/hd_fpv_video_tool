@@ -8,16 +8,12 @@ use thiserror::Error;
 
 use super::{
     margins::{
-        margin_value_parser,
-        InvalidMarginsFormatError,
         Margins,
     },
 };
 
 use crate::video::{
     resolution::{
-        target_resolution_value_parser,
-        InvalidTargetResolutionError,
         Resolution as VideoResolution,
         TargetResolution,
     },
@@ -45,16 +41,12 @@ pub enum Scaling {
 
 #[derive(Debug, Error, From)]
 pub enum ScalingArgsError {
-    #[error(transparent)]
-    InvalidMarginsFormatError(InvalidMarginsFormatError),
     #[error("invalid minimum coverage percentage value: {0}")]
     InvalidMinCoveragePercent(u8),
     #[error("scaling and no-scaling arguments are mutually exclusive")]
     IncompatibleArguments,
     #[error("need target video resolution when scaling requested")]
     NeedTargetVideoResolution,
-    #[error(transparent)]
-    InvalidResolutionFormat(InvalidTargetResolutionError),
     #[error("both target video resolution and target video file provided")]
     BothTargetVideoResolutionAndFileProvided,
     #[error("failed to get video resolution from file: {0}")]
@@ -66,7 +58,7 @@ pub enum ScalingArgsError {
 pub struct ScalingArgs {
 
     /// resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
-    #[clap(short = 'r', long, group("target_resolution_group"), value_parser = target_resolution_value_parser, value_names = TargetResolution::valid_list())]
+    #[clap(short = 'r', long, group("target_resolution_group"), value_parser, value_names = TargetResolution::valid_list())]
     target_resolution: Option<TargetResolution>,
 
     /// force using scaling, default is automatic
@@ -78,7 +70,7 @@ pub struct ScalingArgs {
     no_scaling: bool,
 
     /// minimum margins to decide whether scaling should be used and how much to scale
-    #[clap(long, value_parser = min_margins_value_parser, value_name = "horizontal:vertical", default_value = "20:20")]
+    #[clap(long, value_parser, value_name = "horizontal:vertical", default_value = "20:20")]
     min_margins: Margins,
 
     /// minimum percentage of OSD coverage under which scaling will be used if --scaling/--no-scaling options are not provided
@@ -99,16 +91,12 @@ pub struct OSDScalingArgs {
     no_osd_scaling: bool,
 
     /// minimum margins to decide whether scaling should be used and how much to scale
-    #[clap(long, value_parser = min_margins_value_parser, value_name = "horizontal:vertical", default_value = "20:20")]
+    #[clap(long, value_parser, value_name = "horizontal:vertical", default_value = "20:20")]
     min_osd_margins: Margins,
 
     /// minimum percentage of OSD coverage under which scaling will be used if --scaling/--no-scaling options are not provided
     #[clap(long, value_parser = clap::value_parser!(u8).range(1..=100), value_name = "percent", default_value = "90")]
     min_osd_coverage: u8,
-}
-
-fn min_margins_value_parser(min_margins_str: &str) -> Result<Margins, InvalidMarginsFormatError> {
-    margin_value_parser(min_margins_str)
 }
 
 impl Scaling {

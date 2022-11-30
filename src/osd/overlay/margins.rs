@@ -1,4 +1,6 @@
 
+use std::str::FromStr;
+
 use getset::CopyGetters;
 use thiserror::Error;
 use lazy_static::lazy_static;
@@ -16,10 +18,10 @@ pub struct Margins {
     vertical: u32,
 }
 
-impl TryFrom<&str> for Margins {
-    type Error = InvalidMarginsFormatError;
+impl FromStr for Margins {
+    type Err = InvalidMarginsFormatError;
 
-    fn try_from(margins_str: &str) -> Result<Self, Self::Error> {
+    fn from_str(margins_str: &str) -> Result<Self, Self::Err> {
         lazy_static! {
             static ref MARGINS_RE: Regex = Regex::new(r"\A(?P<horiz>\d{1,3}):(?P<vert>\d{1,3})\z").unwrap();
         }
@@ -32,8 +34,4 @@ impl TryFrom<&str> for Margins {
             None => Err(InvalidMarginsFormatError(margins_str.to_owned())),
         }
     }
-}
-
-pub fn margin_value_parser(min_margins_str: &str) -> Result<Margins, InvalidMarginsFormatError> {
-    Margins::try_from(min_margins_str)
 }

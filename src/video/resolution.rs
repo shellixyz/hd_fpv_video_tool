@@ -1,5 +1,5 @@
 
-use std::fmt::Display;
+use std::{fmt::Display, str::FromStr};
 
 use strum::{EnumIter, IntoEnumIterator};
 use lazy_static::lazy_static;
@@ -72,10 +72,6 @@ impl TargetResolution {
 
 }
 
-pub(crate) fn target_resolution_value_parser(target_resolution_str: &str) -> Result<TargetResolution, InvalidTargetResolutionError> {
-    TargetResolution::try_from(target_resolution_str)
-}
-
 #[derive(Debug, Error)]
 #[error("invalid target resolution `{given}`, valid resolutions are: {valid}")]
 pub struct InvalidTargetResolutionError {
@@ -83,10 +79,10 @@ pub struct InvalidTargetResolutionError {
     valid: String
 }
 
-impl TryFrom<&str> for TargetResolution {
-    type Error = InvalidTargetResolutionError;
+impl FromStr for TargetResolution {
+    type Err = InvalidTargetResolutionError;
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         use TargetResolution::*;
         let resolution = match value {
             "720p" => Standard(StandardResolution::Tr720p),

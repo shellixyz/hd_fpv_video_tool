@@ -2,7 +2,7 @@ use clap::Args;
 use getset::CopyGetters;
 use thiserror::Error;
 
-use crate::video::timestamp::{Timestamp, TimestampFormatError};
+use crate::video::timestamp::Timestamp;
 
 
 #[derive(Args, CopyGetters)]
@@ -10,17 +10,13 @@ use crate::video::timestamp::{Timestamp, TimestampFormatError};
 pub struct StartEndArgs {
 
     /// start timestamp
-    #[clap(long, value_parser = timestamp_value_parser, value_name = "[HH:]MM:SS")]
+    #[clap(long, value_parser, value_name = "[HH:]MM:SS")]
     start: Option<Timestamp>,
 
     /// end timestamp
-    #[clap(long, value_parser = timestamp_value_parser, value_name = "[HH:]MM:SS")]
+    #[clap(long, value_parser, value_name = "[HH:]MM:SS")]
     end: Option<Timestamp>,
 
-}
-
-fn timestamp_value_parser(timestamp_str: &str) -> Result<Timestamp, TimestampFormatError> {
-    Timestamp::try_from(timestamp_str)
 }
 
 #[derive(Debug, Error)]
