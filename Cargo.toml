@@ -38,6 +38,7 @@ clap_mangen = "0.2.5"
 env_logger = "0.10.0"
 home = "0.5.4"
 indoc = "1.0.7"
+ringbuffer = "0.10.0"
 
 [profile.release]
 panic = 'abort'

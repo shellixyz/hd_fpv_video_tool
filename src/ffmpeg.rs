@@ -8,6 +8,7 @@ use regex::Regex;
 use thiserror::Error;
 use lazy_static::lazy_static;
 use tokio::task::JoinHandle;
+use ringbuffer::{self, ConstGenericRingBuffer, RingBufferWrite};
 
 use crate::video::{resolution::Resolution, timestamp::Timestamp};
 use crate::process::Command as ProcessCommand;
@@ -440,38 +441,48 @@ impl Process {
         let mut ffmpeg_stderr = ffmpeg_child.stderr.take().unwrap();
         let mut output_buf = String::new();
         let mut read_buf = [0; 1024];
+        let mut last_lines = ConstGenericRingBuffer::<_, 16>::new();
         let progress_style = ProgressStyle::with_template("{wide_bar} {percent:>3}% [ETA {eta:>3}]").unwrap();
         let progress_bar = ProgressBar::new(frame_count).with_style(progress_style);
         progress_bar.set_position(0);
 
         let exit_status = loop {
 
-            // read new data from stderr and push it into output_buf
             let read_count = ffmpeg_stderr.read(&mut read_buf).unwrap();
             output_buf.push_str(String::from_utf8_lossy(&read_buf[0..read_count]).to_string().as_str());
 
-            // try to find a line which is containing progress data
-            let lines = output_buf.split_inclusive('\r').collect::<Vec<_>>();
-            let progress_frame = lines.iter().find_map(|line| {
-                lazy_static! {
-                    static ref PROGRESS_RE: Regex = Regex::new(r"\Aframe=\s*(\d+)").unwrap();
-                }
-                let captures = PROGRESS_RE.captures(line)?;
-                let frame: u64 = captures.get(1).unwrap().as_str().parse().unwrap();
-                Some(frame)
+            let mut lines = output_buf.split_inclusive('\n').map(str::to_string);
+            let last_line = lines.next_back();
+
+            let last_cr_lines = last_line.as_deref().map(|last_line| {
+                    let last_cr_lines = last_line.split_inclusive('\r').map(str::to_string).collect::<Vec<_>>();
+
+                    if let Some(cr_line) = last_cr_lines.iter().rfind(|cr_pl| cr_pl.ends_with('\r')) {
+                        lazy_static! {
+                            static ref PROGRESS_RE: Regex = Regex::new(r"\Aframe=\s*(\d+)").unwrap();
+                        }
+                        if let Some(captures) = PROGRESS_RE.captures(cr_line) {
+                            let frame: u64 = captures.get(1).unwrap().as_str().parse().unwrap();
+                            progress_bar.set_position(frame);
+                        }
+                    }
+
+                    last_cr_lines
             });
 
-            // update the progress bar since we just got a progress update
-            if let Some(progress_frame) = progress_frame {
-                progress_bar.set_position(progress_frame);
-            }
+            last_lines.extend(lines);
+            output_buf.clear();
 
-            // if last line was incomplete put it back into output_buf otherwise just clear output_buf
-            if let Some(last_line) = lines.last() {
-                match last_line.chars().last() {
-                    Some('\r') | None => output_buf.clear(),
-                    Some(_) => output_buf = last_line.to_string(),
-                };
+            if let Some(last_line) = last_line {
+                if last_line.ends_with('\n') {
+                    last_lines.push(last_line);
+                } else {
+                    let last_cr_lines = last_cr_lines.unwrap();
+                    let last_cr_line = last_cr_lines.last().unwrap();
+                    if ! last_cr_line.ends_with('\r') {
+                        output_buf.push_str(last_cr_line);
+                    }
+                }
             }
 
             // check if the ffmpeg process exited and if it did break the loop with the exit status
