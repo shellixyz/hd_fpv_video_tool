@@ -8,7 +8,7 @@ use regex::Regex;
 use thiserror::Error;
 use lazy_static::lazy_static;
 use tokio::task::JoinHandle;
-use ringbuffer::{self, ConstGenericRingBuffer, RingBufferWrite};
+use ringbuffer::{self, ConstGenericRingBuffer, RingBufferWrite, RingBufferExt};
 
 use crate::video::{resolution::Resolution, timestamp::Timestamp};
 use crate::process::Command as ProcessCommand;
@@ -355,7 +355,7 @@ impl CommandBuilder {
             None => return Err(BuildCommandError("no output")),
         };
 
-        Ok(Command { command: pcommand, debug: false, has_stdin_input: self.has_stdin_input() })
+        Ok(Command { command: pcommand, has_stdin_input: self.has_stdin_input() })
     }
 
 }
@@ -363,8 +363,6 @@ impl CommandBuilder {
 #[derive(CopyGetters, Setters)]
 pub struct Command {
     command: ProcessCommand,
-    #[getset(get_copy = "pub", set = "pub")]
-    debug: bool,
     #[getset(get_copy = "pub")]
     has_stdin_input: bool,
 }
@@ -375,31 +373,40 @@ pub struct SpawnError(#[from] IOError);
 
 impl Command {
 
-    fn spawn_base(mut self) -> Result<(process::Child, Option<process::ChildStdin>), SpawnError> {
+    fn spawn_base(mut self, output_type: ProcessOutputType) -> Result<Process, SpawnError> {
         log::debug!("spawning process: {self}");
         let stdin_stdio = if self.has_stdin_input() { process::Stdio::piped() } else { process::Stdio::null() };
-        let (stdout_stdio, stderr_stdio) = if self.debug() {
-            (process::Stdio::inherit(), process::Stdio::inherit())
-        } else {
-            (process::Stdio::null(), process::Stdio::piped())
+        let (stdout_stdio, stderr_stdio) = match output_type {
+            ProcessOutputType::Inherited => (process::Stdio::inherit(), process::Stdio::inherit()),
+            ProcessOutputType::Progress {..} | ProcessOutputType::None =>
+                (process::Stdio::null(), process::Stdio::piped()),
         };
         let mut process_handle = self.command
             .stdin(stdin_stdio).stdout(stdout_stdio).stderr(stderr_stdio)
             .spawn()?;
         let process_stdin = if self.has_stdin_input() { process_handle.stdin.take() } else { None };
-        Ok((process_handle, process_stdin))
+        Ok(Process::new(process_handle, process_stdin, output_type))
     }
 
     pub fn spawn(self) -> Result<Process, SpawnError> {
-        let (process_handle, process_stdin) = Self::spawn_base(self)?;
-        Ok(Process::new(process_handle, process_stdin, None))
+        self.spawn_base(ProcessOutputType::Inherited)
+    }
+
+    pub fn spawn_no_output(self) -> Result<Process, SpawnError> {
+        self.spawn_base(ProcessOutputType::None)
     }
 
     pub fn spawn_with_progress(self, frame_count: u64) -> Result<Process, SpawnError> {
-        let (process_handle, process_stdin) = Self::spawn_base(self)?;
-        Ok(Process::new(process_handle, process_stdin, Some(frame_count)))
+        self.spawn_base(ProcessOutputType::Progress { frame_count })
     }
 
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProcessOutputType {
+    Inherited,
+    Progress { frame_count: u64 },
+    None,
 }
 
 impl Display for Command {
@@ -408,139 +415,134 @@ impl Display for Command {
     }
 }
 
-#[derive(Debug, Error, Getters)]
-#[error("ffmpeg process exited with an error: {exit_status}")]
+#[derive(Debug, Getters)]
 #[getset(get = "pub")]
 pub struct ProcessError {
     exit_status: process::ExitStatus,
     stderr_content: Option<String>,
 }
 
-pub enum ProcessHandle {
-    Process(process::Child),
-    Monitor(JoinHandle<Result<(), ProcessError>>)
+impl Display for ProcessError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ffmpeg process exited with an error: {}", self.exit_status)?;
+        if let Some(stderr_content) = &self.stderr_content {
+            f.write_str("\n\nFFMpeg last lines:\n\n")?;
+            f.write_str(stderr_content)?;
+        }
+        Ok(())
+    }
 }
 
 pub struct Process {
-    handle: ProcessHandle,
+    handle: process::Child,
+    monitor_handle: Option<JoinHandle<Vec<String>>>,
     stdin: Option<process::ChildStdin>,
 }
 
 impl Process {
 
-    fn new(handle: process::Child, stdin: Option<process::ChildStdin>, frame_count: Option<u64>) -> Self {
-        let handle = match frame_count {
-            Some(frame_count) => ProcessHandle::Monitor(tokio::spawn(Self::monitor(frame_count, handle))),
-            None => ProcessHandle::Process(handle),
+    fn new(mut handle: process::Child, stdin: Option<process::ChildStdin>, output_type: ProcessOutputType) -> Self {
+        let monitor_handle = match output_type {
+            ProcessOutputType::Inherited => None,
+            ProcessOutputType::Progress { frame_count } =>
+                Some(tokio::spawn(Self::monitor(handle.stderr.take().unwrap(), Some(frame_count)))),
+            ProcessOutputType::None =>
+                Some(tokio::spawn(Self::monitor(handle.stderr.take().unwrap(), None))),
         };
-        Process { handle, stdin }
+        Process { handle, monitor_handle, stdin }
     }
 
-    // TODO: capture and return some of the last lines from stderr if the process exits with error
-    async fn monitor(frame_count: u64, mut ffmpeg_child: process::Child) -> Result<(), ProcessError> {
-        let mut ffmpeg_stderr = ffmpeg_child.stderr.take().unwrap();
+    async fn monitor(mut ffmpeg_stderr: process::ChildStderr, frame_count: Option<u64>) -> Vec<String> {
         let mut output_buf = String::new();
         let mut read_buf = [0; 1024];
         let mut last_lines = ConstGenericRingBuffer::<_, 16>::new();
-        let progress_style = ProgressStyle::with_template("{wide_bar} {percent:>3}% [ETA {eta:>3}]").unwrap();
-        let progress_bar = ProgressBar::new(frame_count).with_style(progress_style);
-        progress_bar.set_position(0);
+        let progress_bar = frame_count.map(|frame_count| {
+            let progress_style = ProgressStyle::with_template("{wide_bar} {percent:>3}% [ETA {eta:>3}]").unwrap();
+            let progress_bar = ProgressBar::new(frame_count).with_style(progress_style);
+            progress_bar.set_position(0);
+            progress_bar
+        });
 
-        let exit_status = loop {
+        loop {
 
             let read_count = ffmpeg_stderr.read(&mut read_buf).unwrap();
+            if read_count == 0 { break }
             output_buf.push_str(String::from_utf8_lossy(&read_buf[0..read_count]).to_string().as_str());
 
             let mut lines = output_buf.split_inclusive('\n').map(str::to_string);
-            let last_line = lines.next_back();
+            let last_line = lines.next_back().unwrap();
 
-            let last_cr_lines = last_line.as_deref().map(|last_line| {
-                    let last_cr_lines = last_line.split_inclusive('\r').map(str::to_string).collect::<Vec<_>>();
+            let last_cr_lines = last_line.split_inclusive('\r').map(str::to_string).collect::<Vec<_>>();
 
-                    if let Some(cr_line) = last_cr_lines.iter().rfind(|cr_pl| cr_pl.ends_with('\r')) {
-                        lazy_static! {
-                            static ref PROGRESS_RE: Regex = Regex::new(r"\Aframe=\s*(\d+)").unwrap();
-                        }
-                        if let Some(captures) = PROGRESS_RE.captures(cr_line) {
-                            let frame: u64 = captures.get(1).unwrap().as_str().parse().unwrap();
-                            progress_bar.set_position(frame);
-                        }
+            if let Some(progress_bar) = &progress_bar {
+                if let Some(cr_line) = last_cr_lines.iter().rfind(|cr_pl| cr_pl.ends_with('\r')) {
+                    lazy_static! {
+                        static ref PROGRESS_RE: Regex = Regex::new(r"\Aframe=\s*(\d+)").unwrap();
                     }
-
-                    last_cr_lines
-            });
-
-            last_lines.extend(lines);
-            output_buf.clear();
-
-            if let Some(last_line) = last_line {
-                if last_line.ends_with('\n') {
-                    last_lines.push(last_line);
-                } else {
-                    let last_cr_lines = last_cr_lines.unwrap();
-                    let last_cr_line = last_cr_lines.last().unwrap();
-                    if ! last_cr_line.ends_with('\r') {
-                        output_buf.push_str(last_cr_line);
+                    if let Some(captures) = PROGRESS_RE.captures(cr_line) {
+                        let frame: u64 = captures.get(1).unwrap().as_str().parse().unwrap();
+                        progress_bar.set_position(frame);
                     }
                 }
             }
 
-            // check if the ffmpeg process exited and if it did break the loop with the exit status
-            if let Some(result) = ffmpeg_child.try_wait().unwrap() {
-                break result;
+            last_lines.extend(lines);
+            output_buf.clear();
+
+            if last_line.ends_with('\n') {
+                last_lines.push(last_line);
+            } else {
+                let last_cr_line = last_cr_lines.last().unwrap();
+                if ! last_cr_line.ends_with('\r') {
+                    output_buf.push_str(last_cr_line);
+                }
             }
 
         };
 
-        progress_bar.finish_and_clear();
-
-        if ! exit_status.success() {
-            return Err(ProcessError { exit_status, stderr_content: None })
+        if let Some(progress_bar) = progress_bar {
+            progress_bar.finish_and_clear();
         }
 
-        Ok(())
+        last_lines.to_vec()
     }
 
     pub fn take_stdin(&mut self) -> Option<process::ChildStdin> {
         self.stdin.take()
     }
 
+    pub fn id(&self) -> u32 {
+        self.handle.id()
+    }
+
+    async fn last_output_lines(&mut self) -> Option<String> {
+        match self.monitor_handle.take() {
+            Some(monitor_handle) => Some(monitor_handle.await.unwrap().concat()),
+            None => None,
+        }
+    }
+
     pub async fn try_wait(&mut self) -> Result<bool, ProcessError> {
-        use ProcessHandle::*;
-        match &mut self.handle {
-            Process(handle) => {
-                match handle.try_wait().unwrap() {
-                    Some(exit_status) =>
-                        if exit_status.success() {
-                            Ok(true)
-                        } else {
-                            Err(ProcessError { exit_status, stderr_content: None })
-                        },
-                    None => Ok(false),
-                }
-            }
-            Monitor(handle) =>
-                if handle.is_finished() {
-                    match handle.await.unwrap() {
-                        Ok(_) => Ok(true),
-                        Err(process_error) => Err(process_error),
-                    }
+        match self.handle.try_wait().unwrap() {
+            Some(exit_status) =>
+                if exit_status.success() {
+                    Ok(true)
                 } else {
-                    Ok(false)
-                }
+                    Err(ProcessError { exit_status, stderr_content: self.last_output_lines().await })
+                },
+            None => Ok(false),
         }
     }
 
     pub async fn wait(&mut self) -> Result<(), ProcessError> {
-        use ProcessHandle::*;
-        match &mut self.handle {
-            Process(handle) =>
-                match handle.wait().unwrap() {
-                    exit_status if exit_status.success() => Ok(()),
-                    exit_status => Err(ProcessError { exit_status, stderr_content: None })
-                }
-            Monitor(handle) => handle.await.unwrap()
+        match self.handle.wait().unwrap() {
+            exit_status if exit_status.success() => Ok(()),
+            exit_status => Err(ProcessError { exit_status, stderr_content: self.last_output_lines().await })
         }
+    }
+
+    pub fn kill(mut self) -> Result<(), IOError> {
+        self.handle.kill()
     }
 
 }

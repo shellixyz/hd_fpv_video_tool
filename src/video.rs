@@ -250,7 +250,7 @@ pub enum TranscodeVideoError {
     #[error("failed sending OSD images to ffmpeg process: {0}")]
     FailedSendingOSDImagesToFFMpeg(IOError),
     #[error("ffmpeg process exited with error: {0}")]
-    FFMpegExitedWithError(i32),
+    FFMpegExitedWithError(ffmpeg::ProcessError),
     #[error(transparent)]
     UnknownOSDItem(UnknownOSDItem),
 }
@@ -287,7 +287,7 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<(), TranscodeVideoEr
     }
 
     if let Err(error) = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count).unwrap().wait().await {
-        return Err(TranscodeVideoError::FFMpegExitedWithError(error.exit_status().code().unwrap()))
+        return Err(TranscodeVideoError::FFMpegExitedWithError(error))
     }
 
     log::info!("{frame_count} frames transcoded successfully");
@@ -373,13 +373,16 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
     let mut ffmpeg_stdin = ffmpeg_process.take_stdin().unwrap();
 
     for osd_frame_image in osd_frames_iter {
-        ffmpeg_stdin.write_all(osd_frame_image?.as_raw()).map_err(TranscodeVideoError::FailedSendingOSDImagesToFFMpeg)?;
+        if let Err(error) = ffmpeg_stdin.write_all(osd_frame_image?.as_raw()) {
+            log::error!("failed sending OSD images to ffmpeg process: {error}");
+            break;
+        }
     }
 
     drop(ffmpeg_stdin);
 
     if let Err(error) = ffmpeg_process.wait().await {
-        return Err(TranscodeVideoError::FFMpegExitedWithError(error.exit_status().code().unwrap()))
+        return Err(TranscodeVideoError::FFMpegExitedWithError(error))
     }
 
     log::info!("{frame_count} frames transcoded successfully");
