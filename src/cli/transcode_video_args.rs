@@ -96,6 +96,9 @@ pub struct TranscodeVideoArgs {
     fix_audio_sync: bool,
 
     /// video encoder to use
+    ///
+    /// This value is directly passed to the `-c:v` FFMpeg argument.{n}
+    /// Run `ffmpeg -encoders` for a list of available encoders
     #[clap(long, value_parser, default_value = "libx265")]
     video_encoder: String,
 
@@ -110,10 +113,13 @@ pub struct TranscodeVideoArgs {
     video_crf: u8,
 
     /// video encoder to use
+    ///
+    /// This value is directly passed to the `-c:a` FFMpeg argument.{n}
+    /// Run `ffmpeg -encoders` for a list of available encoders
     #[clap(long, value_parser, default_value = "libx265")]
     audio_encoder: String,
 
-    /// max bitrate
+    /// max audio bitrate
     #[clap(long, value_parser, default_value = "25M")]
     audio_bitrate: String,
 

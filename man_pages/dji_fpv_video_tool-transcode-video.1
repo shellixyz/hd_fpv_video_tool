@@ -63,6 +63,8 @@ fix DJI AU audio sync
 .TP
 \fB\-\-video\-encoder\fR=\fIVIDEO_ENCODER\fR [default: libx265]
 video encoder to use
+
+This value is directly passed to the `\-c:v` FFMpeg argument.{n} Run `ffmpeg \-encoders` for a list of available encoders
 .TP
 \fB\-\-video\-bitrate\fR=\fIVIDEO_BITRATE\fR [default: 25M]
 video max bitrate
@@ -72,9 +74,11 @@ video constant quality setting
 .TP
 \fB\-\-audio\-encoder\fR=\fIAUDIO_ENCODER\fR [default: libx265]
 video encoder to use
+
+This value is directly passed to the `\-c:a` FFMpeg argument.{n} Run `ffmpeg \-encoders` for a list of available encoders
 .TP
 \fB\-\-audio\-bitrate\fR=\fIAUDIO_BITRATE\fR [default: 25M]
-max bitrate
+max audio bitrate
 .TP
 \fB\-\-start\fR=\fI[HH:]MM:SS\fR
 start timestamp
