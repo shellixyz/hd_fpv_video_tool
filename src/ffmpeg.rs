@@ -454,7 +454,7 @@ impl Process {
             let lines = output_buf.split_inclusive('\r').collect::<Vec<_>>();
             let progress_frame = lines.iter().find_map(|line| {
                 lazy_static! {
-                    static ref PROGRESS_RE: Regex = Regex::new(r"\Aframe=\s+(\d+)").unwrap();
+                    static ref PROGRESS_RE: Regex = Regex::new(r"\Aframe=\s*(\d+)").unwrap();
                 }
                 let captures = PROGRESS_RE.captures(line)?;
                 let frame: u64 = captures.get(1).unwrap().as_str().parse().unwrap();
