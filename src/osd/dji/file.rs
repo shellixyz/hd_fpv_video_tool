@@ -341,14 +341,14 @@ impl<'a> IntoIterator for &'a mut Reader {
 
 pub fn find_associated_to_video_file<P: AsRef<Path>>(video_file_path: P) -> Option<PathBuf> {
     let video_file_path = video_file_path.as_ref();
-    log::debug!("looking for OSD file associated to video file: {}", video_file_path.to_string_lossy());
+    log::info!("looking for OSD file associated to video file: {}", video_file_path.to_string_lossy());
 
     let osd_file_path = video_file_path.with_extension("osd");
     if osd_file_path.is_file() {
-        log::debug!("found: {}", osd_file_path.to_string_lossy());
+        log::info!("found: {}", osd_file_path.to_string_lossy());
         return Some(osd_file_path);
     } else {
-        log::debug!("not found: {}", osd_file_path.to_string_lossy());
+        log::info!("not found: {}", osd_file_path.to_string_lossy());
     }
 
     let file_stem = video_file_path.file_stem()?.to_string_lossy();
@@ -357,10 +357,10 @@ pub fn find_associated_to_video_file<P: AsRef<Path>>(video_file_path: P) -> Opti
         let dji_file_number = captures.get(1).unwrap().as_str();
         let osd_file_path = video_file_path.with_file_name(format!("DJIG{dji_file_number}")).with_extension("osd");
         if osd_file_path.is_file() {
-            log::debug!("found: {}", osd_file_path.to_string_lossy());
+            log::info!("found: {}", osd_file_path.to_string_lossy());
             return Some(osd_file_path);
         } else {
-            log::debug!("not found: {}", osd_file_path.to_string_lossy());
+            log::info!("not found: {}", osd_file_path.to_string_lossy());
         }
     }
 
