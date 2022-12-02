@@ -22,6 +22,13 @@ impl Region {
         Self { top_left_corner, dimensions }
     }
 
+    pub fn new4(x: super::SignedCoordinate, y: super::SignedCoordinate, width: super::Dimension, height: super::Dimension) -> Self {
+        Self {
+            top_left_corner: super::SignedCoordinates::new(x, y),
+            dimensions: super::Dimensions::new(width, height)
+        }
+    }
+
     pub fn bottom_right_corner(&self) -> super::SignedCoordinates {
         super::SignedCoordinates {
             x: self.top_left_corner.x() + self.dimensions.width as super::SignedCoordinate - 1,
