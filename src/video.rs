@@ -13,6 +13,7 @@ use ffmpeg_next::Rational;
 use crate::cli::font_options::OSDFontDirError;
 use crate::cli::start_end_args::StartEndArgs;
 use crate::cli::transcode_video_args::OutputVideoFileError;
+use crate::file::{check_writable, CheckWritableError};
 use crate::osd::dji::file::tile_indices::UnknownOSDItem;
 use crate::osd::overlay::SendFramesToFFMpegError;
 use crate::{prelude::*, osd::overlay::scaling::ScalingArgsError};
@@ -59,6 +60,8 @@ pub enum CutVideoError {
     FailedSpawningFFMpegProcess(ffmpeg::SpawnError),
     #[error(transparent)]
     FFMpegExitedWithError(ffmpeg::ProcessError),
+    #[error(transparent)]
+    CreateOutputFileError(CheckWritableError),
 }
 
 pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>,
@@ -84,6 +87,8 @@ pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_vid
     };
 
     if ! overwrite && output_video_file.exists() { return Err(CutVideoError::OutputVideoFileExists); }
+
+    check_writable(&output_video_file)?;
 
     log::info!("cutting video: {} -> {}", input_video_file.to_string_lossy(), output_video_file.to_string_lossy());
 
@@ -130,6 +135,8 @@ pub enum FixVideoFileAudioError {
     FFMpegExitedWithError(ffmpeg::ProcessError),
     #[error("the input video file does not have an audio stream")]
     InputVideoDoesNotHaveAnAudioStream,
+    #[error(transparent)]
+    CreateOutputFileError(CheckWritableError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -185,6 +192,8 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_
     };
 
     if ! overwrite && output_video_file.exists() { return Err(FixVideoFileAudioError::OutputVideoFileExists); }
+
+    check_writable(&output_video_file)?;
 
     log::info!("fixing video file audio: {} -> {}", input_video_file.to_string_lossy(), output_video_file.to_string_lossy());
 
@@ -255,6 +264,8 @@ pub enum TranscodeVideoError {
     FFMpegExitedWithError(ffmpeg::ProcessError),
     #[error(transparent)]
     UnknownOSDItem(UnknownOSDItem),
+    #[error(transparent)]
+    CreateOutputFileError(CheckWritableError),
 }
 
 impl From<SendFramesToFFMpegError> for TranscodeVideoError {
@@ -274,6 +285,7 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<(), TranscodeVideoEr
     if ! args.input_video_file().exists() { return Err(TranscodeVideoError::InputVideoFileDoesNotExist); }
     if ! args.overwrite() && output_video_file.exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
     if *args.input_video_file() == output_video_file { return Err(TranscodeVideoError::InputAndOutputFileIsTheSame) }
+    check_writable(&output_video_file)?;
     if args.start_end().start().is_some() && matches!(args.video_audio_fix(), Some(fix) if fix.sync()) {
         return Err(TranscodeVideoError::IncompatibleArguments("cannot fix video audio sync while not starting at the beginning of the file".to_owned()));
     }
@@ -320,6 +332,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
     if ! args.input_video_file().exists() { return Err(TranscodeVideoError::InputVideoFileDoesNotExist); }
     if ! args.overwrite() && output_video_file.exists() { return Err(TranscodeVideoError::OutputVideoFileExists); }
     if *args.input_video_file() == output_video_file { return Err(TranscodeVideoError::InputAndOutputFileIsTheSame) }
+    check_writable(&output_video_file)?;
     if args.start_end().start().is_some() && matches!(args.video_audio_fix(), Some(fix) if fix.sync()) {
         return Err(TranscodeVideoError::IncompatibleArguments("cannot fix video audio sync while not starting at the beginning of the file".to_owned()));
     }

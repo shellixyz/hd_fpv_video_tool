@@ -35,7 +35,7 @@ use crate::{
     ffmpeg,
     file::{
         self,
-        HardLinkError, SymlinkError,
+        HardLinkError, SymlinkError, CheckWritableError, check_writable,
     },
     image::{
         WriteImageFile,
@@ -206,6 +206,8 @@ pub enum GenerateOverlayVideoError {
     FFMpegExitedWithError(ffmpeg::ProcessError),
     #[error(transparent)]
     UnknownOSDItem(UnknownOSDItem),
+    #[error(transparent)]
+    CreateOutputFileError(CheckWritableError),
 }
 
 impl From<SendFramesToFFMpegError> for GenerateOverlayVideoError {
@@ -400,9 +402,12 @@ impl<'a> Generator<'a> {
         if ! matches!(output_video_path.extension(), Some(extension) if extension == "webm") {
             return Err(GenerateOverlayVideoError::OutputFileExtensionNotWebm)
         }
+
         if ! overwrite_output &&  output_video_path.exists() {
             return Err(GenerateOverlayVideoError::TargetVideoFileExists(output_video_path.to_path_buf()));
         }
+
+        check_writable(output_video_path)?;
 
         log::info!("generating overlay video: {}", output_video_path.to_string_lossy());
 

@@ -46,7 +46,7 @@ impl Display for Action {
 
 #[derive(Debug, Error, Getters)]
 #[getset(get = "pub")]
-#[error("error {action} {path}: {error}")]
+#[error("failed {action} {path}: {error}")]
 pub struct Error {
     action: Action,
     path: PathBuf,
@@ -114,7 +114,7 @@ pub fn create<P: AsRef<Path>>(path: P) -> Result<FileWithPath, Error> {
 }
 #[derive(Debug, Error, Getters)]
 #[getset(get = "pub")]
-#[error("error hard linking {original_path} -> {link_path}: {error}")]
+#[error("failed hard linking {original_path} -> {link_path}: {error}")]
 pub struct HardLinkError {
     original_path: PathBuf,
     link_path: PathBuf,
@@ -133,7 +133,7 @@ pub fn hard_link<P: AsRef<Path>, Q: AsRef<Path>>(original_path: P, link_path: Q)
 
 #[derive(Debug, Error, Getters)]
 #[getset(get = "pub")]
-#[error("error symlinking {original_path} -> {link_path}: {error}")]
+#[error("failed symlinking {original_path} -> {link_path}: {error}")]
 pub struct SymlinkError {
     original_path: PathBuf,
     link_path: PathBuf,
@@ -154,4 +154,30 @@ pub fn symlink<P: AsRef<Path>, Q: AsRef<Path>>(original_path: P, link_path: Q) -
 #[cfg(windows)]
 pub fn symlink<P: AsRef<Path>, Q: AsRef<Path>>(original_path: P, link_path: Q) -> Result<(), SymlinkError> {
     std::os::windows::fs::symlink(&original_path, &link_path).map_err(|error| SymlinkError::new(original_path, link_path, error))
+}
+
+#[derive(Debug, Error)]
+pub enum CheckWritableError {
+    #[error("failed creating file {0}: invalid path")]
+    InvalidPath(PathBuf),
+    #[error("failed creating file {file_path}: directory does not exist: {dir_path}")]
+    DirectoryDoesNotExist {
+        file_path: PathBuf,
+        dir_path: PathBuf,
+    },
+    #[error(transparent)]
+    CreateError(#[from] Error),
+}
+
+pub fn check_writable<P: AsRef<Path>>(path: P) -> Result<(), CheckWritableError> {
+    let path = path.as_ref();
+    let dir = path.parent().ok_or_else(|| CheckWritableError::InvalidPath(path.to_path_buf()))?;
+    if ! dir.exists() {
+        return Err(CheckWritableError::DirectoryDoesNotExist {
+            file_path: path.to_path_buf(),
+            dir_path: dir.to_path_buf()
+        })
+    }
+    create(path)?;
+    Ok(())
 }
