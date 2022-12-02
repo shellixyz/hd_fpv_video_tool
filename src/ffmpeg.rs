@@ -404,7 +404,12 @@ impl Command {
     }
 
     pub fn spawn_with_progress(self, frame_count: u64) -> Result<Process, SpawnError> {
-        self.spawn_base(ProcessOutputType::Progress { frame_count })
+        let output_type = if frame_count == 0 {
+            ProcessOutputType::None
+        } else {
+            ProcessOutputType::Progress { frame_count }
+        };
+        self.spawn_base(output_type)
     }
 
 }
