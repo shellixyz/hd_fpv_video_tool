@@ -34,7 +34,8 @@ pub use resolution::Resolution;
 pub use timestamp::Timestamp;
 
 
-pub type Dimensions = GenericDimensions<u16>;
+pub type Dimension = u16;
+pub type Dimensions = GenericDimensions<Dimension>;
 pub type FrameIndex = u32;
 
 #[derive(Debug, Error, From)]
