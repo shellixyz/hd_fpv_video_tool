@@ -72,8 +72,12 @@ video max bitrate
 \fB\-\-video\-crf\fR=\fIVIDEO_CRF\fR [default: 25]
 video constant quality setting
 .TP
-\fB\-\-remove\-video\-defects\fR=\fIREMOVE_VIDEO_DEFECTS\fR
+\fB\-\-remove\-video\-defects\fR=\fIREGIONS\fR
+remove video defects
 
+uses the FFMpeg delogo filter to remove small video defects
+
+The parameter is a `;` separated list of regions.{n} The format for a region is: <left_x>,<top_y>[:<width>x<height>]{n} If the size is not specified it will default to 1x1
 .TP
 \fB\-\-audio\-encoder\fR=\fIAUDIO_ENCODER\fR [default: libx265]
 audio encoder to use

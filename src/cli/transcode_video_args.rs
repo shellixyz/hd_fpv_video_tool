@@ -112,7 +112,14 @@ pub struct TranscodeVideoArgs {
     #[getset(get_copy = "pub")]
     video_crf: u8,
 
-    #[clap(long, value_parser)]
+    /// remove video defects
+    ///
+    /// uses the FFMpeg delogo filter to remove small video defects
+    ///
+    /// The parameter is a `;` separated list of regions.{n}
+    /// The format for a region is: <left_x>,<top_y>[:<width>x<height>]{n}
+    /// If the size is not specified it will default to 1x1
+    #[clap(long, value_parser, value_delimiter = ';', value_name = "REGIONS")]
     remove_video_defects: Vec<video::Region>,
 
     /// audio encoder to use
