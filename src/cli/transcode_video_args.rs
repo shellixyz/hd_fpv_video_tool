@@ -112,7 +112,7 @@ pub struct TranscodeVideoArgs {
     #[getset(get_copy = "pub")]
     video_crf: u8,
 
-    /// video encoder to use
+    /// audio encoder to use
     ///
     /// This value is directly passed to the `-c:a` FFMpeg argument.{n}
     /// Run `ffmpeg -encoders` for a list of available encoders
