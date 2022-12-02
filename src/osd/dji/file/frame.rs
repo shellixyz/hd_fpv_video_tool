@@ -45,7 +45,7 @@ impl Frame {
         Self::new(self.index, tile_indices)
     }
 
-    pub fn with_erased_osd_items(&self, font_variant: FontVariant, item_names: &Vec<String>) -> Result<Self, UnknownOSDItem> {
+    pub fn with_erased_osd_items(&self, font_variant: FontVariant, item_names: &[String]) -> Result<Self, UnknownOSDItem> {
         let mut tile_indices = self.tile_indices.clone();
         tile_indices.erase_osd_items(font_variant, item_names)?;
         Ok(Self::new(self.index, tile_indices))

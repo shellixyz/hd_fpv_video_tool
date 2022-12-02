@@ -376,7 +376,7 @@ impl<'a> Generator<'a> {
             Ok::<(), SaveFramesToDirError>(())
         })?;
 
-        log::info!("overlay frames generation completed: {} frames files written", frame_count);
+        log::info!("overlay frames generation completed: {} frame files written", frame_count);
         Ok(())
     }
 
