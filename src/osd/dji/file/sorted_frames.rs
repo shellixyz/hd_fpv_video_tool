@@ -567,7 +567,7 @@ impl<'a> RayonProducer for ParallelVideoFramesRelIndexIter<'a> {
                     prev_index: u32::try_from(left_last_frame_index as i32 + self.index_shift).unwrap(),
                     video_frame_index: u32::try_from(left_last_frame_index as i32 + self.index_shift + 1).unwrap(),
                     index_shift: self.index_shift,
-                    end_iter: true,
+                    end_iter: self.end_iter,
                     eof_action: self.eof_action,
                     last_video_frame: self.last_video_frame,
                 };
@@ -590,7 +590,7 @@ impl<'a> RayonProducer for ParallelVideoFramesRelIndexIter<'a> {
                     prev_index: self.prev_index,
                     video_frame_index: self.video_frame_index,
                     index_shift: self.index_shift,
-                    end_iter: true,
+                    end_iter: self.end_iter,
                     eof_action: self.eof_action,
                     last_video_frame: self.last_video_frame,
                 };
