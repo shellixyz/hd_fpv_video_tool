@@ -442,8 +442,6 @@ pub fn play_with_osd<P: AsRef<Path>, Q: AsRef<Path>>(video_file: P, osd_video_fi
         .arg(video_file)
         .arg("--lavfi-complex=[vid1][vid2]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2[vo]");
 
-    log::debug!("spawning process: {}", mpv_command);
-
     let mut mpv_child_proc = mpv_command.spawn().map_err(PlayWithOSDError::FailedToStartMPV)?;
 
     match mpv_child_proc.wait().unwrap() {
