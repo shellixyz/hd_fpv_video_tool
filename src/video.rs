@@ -46,11 +46,10 @@ pub enum CutVideoError {
     InputHasNoExtension,
     #[error("output file has a different extension than input")]
     OutputHasADifferentExtensionThanInput,
-    #[error("failed spawning ffmpeg process: {0}")]
-    #[from(ignore)]
-    FailedSpawningFFMpegProcess(IOError),
-    #[error("ffmpeg process exited with error: {0}")]
-    FFMpegExitedWithError(i32),
+    #[error(transparent)]
+    FailedSpawningFFMpegProcess(ffmpeg::SpawnError),
+    #[error(transparent)]
+    FFMpegExitedWithError(ffmpeg::ProcessError),
 }
 
 pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_video_file: &Option<Q>,
@@ -94,9 +93,7 @@ pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_vid
         ffmpeg_command.set_output_audio_codec(Some("copy"));
     }
 
-    if let Err(error) = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count).unwrap().wait().await {
-        return Err(CutVideoError::FFMpegExitedWithError(error.exit_status().code().unwrap()))
-    }
+    ffmpeg_command.build().unwrap().spawn_with_progress(frame_count)?.wait().await?;
 
     log::info!("video file cut successfully");
     Ok(())
@@ -118,11 +115,10 @@ pub enum FixVideoFileAudioError {
     InputHasNoExtension,
     #[error("output file has a different extension than input")]
     OutputHasADifferentExtensionThanInput,
-    #[error("failed spawning ffmpeg process: {0}")]
-    #[from(ignore)]
-    FailedSpawningFFMpegProcess(IOError),
-    #[error("ffmpeg process exited with error: {0}")]
-    FFMpegExitedWithError(i32),
+    #[error(transparent)]
+    FailedSpawningFFMpegProcess(ffmpeg::SpawnError),
+    #[error(transparent)]
+    FFMpegExitedWithError(ffmpeg::ProcessError),
     #[error("the input video file does not have an audio stream")]
     InputVideoDoesNotHaveAnAudioStream,
 }
@@ -199,9 +195,7 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_
         .set_output_file(output_video_file)
         .set_overwrite_output_file(overwrite);
 
-    if let Err(error) = ffmpeg_command.build().unwrap().spawn_with_progress(video_info.frame_count()).unwrap().wait().await {
-        return Err(FixVideoFileAudioError::FFMpegExitedWithError(error.exit_status().code().unwrap()))
-    }
+    ffmpeg_command.build().unwrap().spawn_with_progress(video_info.frame_count())?.wait().await?;
 
     log::info!("video file's audio stream fixed successfully");
     Ok(())
@@ -244,12 +238,11 @@ pub enum TranscodeVideoError {
     IncompatibleArguments(String),
     #[error("OSD file read error: {0}")]
     OSDFileReadError(OSDFileReadError),
-    #[error("failed spawning ffmpeg process: {0}")]
-    #[from(ignore)]
-    FailedSpawningFFMpegProcess(IOError),
+    #[error(transparent)]
+    FailedSpawningFFMpegProcess(ffmpeg::SpawnError),
     #[error("failed sending OSD images to ffmpeg process: {0}")]
     FailedSendingOSDImagesToFFMpeg(IOError),
-    #[error("ffmpeg process exited with error: {0}")]
+    #[error(transparent)]
     FFMpegExitedWithError(ffmpeg::ProcessError),
     #[error(transparent)]
     UnknownOSDItem(UnknownOSDItem),
@@ -286,9 +279,7 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<(), TranscodeVideoEr
         }
     }
 
-    if let Err(error) = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count).unwrap().wait().await {
-        return Err(TranscodeVideoError::FFMpegExitedWithError(error))
-    }
+    ffmpeg_command.build().unwrap().spawn_with_progress(frame_count)?.wait().await?;
 
     log::info!("{frame_count} frames transcoded successfully");
     Ok(())
@@ -369,7 +360,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
         (false, Some(_)) => return Err(TranscodeVideoError::RequestedAudioFixingButInputHasNoAudio),
     }
 
-    let mut ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count).unwrap();
+    let mut ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count)?;
     let mut ffmpeg_stdin = ffmpeg_process.take_stdin().unwrap();
 
     for osd_frame_image in osd_frames_iter {
@@ -381,9 +372,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
 
     drop(ffmpeg_stdin);
 
-    if let Err(error) = ffmpeg_process.wait().await {
-        return Err(TranscodeVideoError::FFMpegExitedWithError(error))
-    }
+    ffmpeg_process.wait().await?;
 
     log::info!("{frame_count} frames transcoded successfully");
     Ok(())

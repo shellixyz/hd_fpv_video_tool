@@ -198,13 +198,12 @@ pub enum GenerateOverlayVideoError {
     TargetVideoFileExists,
     #[error("output video file extension needs to be .webm")]
     OutputFileExtensionNotWebm,
-    #[error("failed spawning ffmpeg process: {0}")]
-    #[from(ignore)]
-    FailedSpawningFFMpegProcess(IOError),
+    #[error(transparent)]
+    FailedSpawningFFMpegProcess(ffmpeg::SpawnError),
     #[error("failed talking to ffmpeg process: {0}")]
     FailedTalkingToFFMpegProcess(IOError),
-    #[error("ffmpeg process exited with error: {0}")]
-    FFMpegExitedWithError(i32),
+    #[error(transparent)]
+    FFMpegExitedWithError(ffmpeg::ProcessError),
     #[error(transparent)]
     UnknownOSDItem(UnknownOSDItem),
 }
@@ -406,7 +405,7 @@ impl<'a> Generator<'a> {
             .set_output_file(output_video_path)
             .set_overwrite_output_file(overwrite_output);
 
-        let mut ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count as u64).unwrap();
+        let mut ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count as u64)?;
         let mut ffmpeg_stdin = ffmpeg_process.take_stdin().unwrap();
 
         for osd_frame_image in frames_iter {
@@ -415,9 +414,7 @@ impl<'a> Generator<'a> {
 
         drop(ffmpeg_stdin);
 
-        if let Err(error) = ffmpeg_process.wait().await {
-            return Err(GenerateOverlayVideoError::FFMpegExitedWithError(error.exit_status().code().unwrap()))
-        }
+        ffmpeg_process.wait().await?;
 
         log::info!("overlay video generation completed: {} frames", frame_count);
         Ok(())

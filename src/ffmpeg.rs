@@ -13,6 +13,9 @@ use ringbuffer::{self, ConstGenericRingBuffer, RingBufferWrite, RingBufferExt};
 use crate::video::{resolution::Resolution, timestamp::Timestamp};
 use crate::process::Command as ProcessCommand;
 
+
+const DEFAULT_BINARY_PATH: &str = "ffmpeg";
+
 #[derive(Debug, Clone)]
 pub enum Input {
     File {
@@ -327,7 +330,7 @@ impl CommandBuilder {
     }
 
     pub fn build(&self) -> Result<Command, BuildCommandError> {
-        let binary_path = self.bin_path.clone().unwrap_or_else(|| PathBuf::from("ffmpeg"));
+        let binary_path = self.bin_path.clone().unwrap_or_else(|| PathBuf::from(DEFAULT_BINARY_PATH));
         let mut pcommand = ProcessCommand::new(binary_path);
 
         if self.inputs.is_empty() { return Err(BuildCommandError("no input"))}
@@ -368,8 +371,11 @@ pub struct Command {
 }
 
 #[derive(Debug, Error)]
-#[error("failed to spawn ffmpeg process: {0}")]
-pub struct SpawnError(#[from] IOError);
+#[error("failed spawning ffmpeg process: {bin_path}: {error}")]
+pub struct SpawnError {
+    bin_path: String,
+    error: IOError,
+}
 
 impl Command {
 
@@ -383,7 +389,8 @@ impl Command {
         };
         let mut process_handle = self.command
             .stdin(stdin_stdio).stdout(stdout_stdio).stderr(stderr_stdio)
-            .spawn()?;
+            .spawn()
+            .map_err(|error| SpawnError { error, bin_path: self.command.get_program().to_string_lossy().to_string() })?;
         let process_stdin = if self.has_stdin_input() { process_handle.stdin.take() } else { None };
         Ok(Process::new(process_handle, process_stdin, output_type))
     }
@@ -415,7 +422,7 @@ impl Display for Command {
     }
 }
 
-#[derive(Debug, Getters)]
+#[derive(Debug, Getters, Error)]
 #[getset(get = "pub")]
 pub struct ProcessError {
     exit_status: process::ExitStatus,
