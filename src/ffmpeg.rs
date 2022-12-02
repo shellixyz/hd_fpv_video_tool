@@ -453,9 +453,11 @@ impl Process {
     }
 
     async fn monitor(mut ffmpeg_stderr: process::ChildStderr, frame_count: Option<u64>) -> Vec<String> {
+
         let mut output_buf = String::new();
         let mut read_buf = [0; 1024];
         let mut last_lines = ConstGenericRingBuffer::<_, 16>::new();
+
         let progress_bar = frame_count.map(|frame_count| {
             let progress_style = ProgressStyle::with_template("{wide_bar} {percent:>3}% [ETA {eta:>3}]").unwrap();
             let progress_bar = ProgressBar::new(frame_count).with_style(progress_style);
