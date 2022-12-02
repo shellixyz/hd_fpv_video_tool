@@ -6,7 +6,7 @@ use std::{
     },
     io::{
         Error as IOError,
-        Write
+        Write, self
     },
 };
 
@@ -194,18 +194,29 @@ pub enum SaveFramesToDirError {
 pub enum GenerateOverlayVideoError {
     #[error(transparent)]
     FrameReadError(ReadError),
-    #[error("target video file exists")]
-    TargetVideoFileExists,
+    #[error("target video file exists: {0}")]
+    TargetVideoFileExists(PathBuf),
     #[error("output video file extension needs to be .webm")]
     OutputFileExtensionNotWebm,
     #[error(transparent)]
     FailedSpawningFFMpegProcess(ffmpeg::SpawnError),
-    #[error("failed talking to ffmpeg process: {0}")]
-    FailedTalkingToFFMpegProcess(IOError),
+    #[error("failed sending OSD frames to ffmpeg process: {0}")]
+    FailedSendingOSDFramesToFFMpeg(IOError),
     #[error(transparent)]
     FFMpegExitedWithError(ffmpeg::ProcessError),
     #[error(transparent)]
     UnknownOSDItem(UnknownOSDItem),
+}
+
+impl From<SendFramesToFFMpegError> for GenerateOverlayVideoError {
+    fn from(error: SendFramesToFFMpegError) -> Self {
+        use SendFramesToFFMpegError::*;
+        match error {
+            PipeError(error) => Self::FailedSendingOSDFramesToFFMpeg(error),
+            UnknownOSDItem(error) => Self::UnknownOSDItem(error),
+            FFMpegExitedWithError(error) => Self::FFMpegExitedWithError(error),
+        }
+    }
 }
 
 fn best_settings_for_requested_scaling(osd_kind: DJIOSDKind, scaling: &Scaling) -> Result<(Dimensions, tile::Kind, Option<TileDimensions>), DrawFrameOverlayError> {
@@ -384,14 +395,16 @@ impl<'a> Generator<'a> {
     pub async fn generate_overlay_video<P: AsRef<Path>>(&mut self, codec: OverlayVideoCodec, start: Option<Timestamp>, end: Option<Timestamp>,
                                     output_video_path: P, frame_shift: i32, overwrite_output: bool) -> Result<(), GenerateOverlayVideoError> {
 
-        if ! matches!(output_video_path.as_ref().extension(), Some(extension) if extension == "webm") {
+        let output_video_path = output_video_path.as_ref();
+
+        if ! matches!(output_video_path.extension(), Some(extension) if extension == "webm") {
             return Err(GenerateOverlayVideoError::OutputFileExtensionNotWebm)
         }
-        if ! overwrite_output &&  output_video_path.as_ref().exists() {
-            return Err(GenerateOverlayVideoError::TargetVideoFileExists);
+        if ! overwrite_output &&  output_video_path.exists() {
+            return Err(GenerateOverlayVideoError::TargetVideoFileExists(output_video_path.to_path_buf()));
         }
 
-        log::info!("generating overlay video: {}", output_video_path.as_ref().to_string_lossy());
+        log::info!("generating overlay video: {}", output_video_path.to_string_lossy());
 
         let frames_iter =
             self.iter_advanced(start.start_overlay_frame_count(), end.end_overlay_frame_index(), frame_shift);
@@ -406,16 +419,9 @@ impl<'a> Generator<'a> {
             .set_output_file(output_video_path)
             .set_overwrite_output_file(overwrite_output);
 
-        let mut ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count as u64)?;
-        let mut ffmpeg_stdin = ffmpeg_process.take_stdin().unwrap();
+        let ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count as u64)?;
 
-        for osd_frame_image in frames_iter {
-            ffmpeg_stdin.write_all(osd_frame_image?.as_raw())?;
-        }
-
-        drop(ffmpeg_stdin);
-
-        ffmpeg_process.wait().await?;
+        frames_iter.send_frames_to_ffmpeg_and_wait(ffmpeg_process).await?;
 
         log::info!("overlay video generation completed: {} frames", frame_count);
         Ok(())
@@ -449,6 +455,16 @@ impl<'a> IntoIterator for &'a Generator<'a> {
     }
 }
 
+#[derive(Debug, Error, From)]
+pub enum SendFramesToFFMpegError {
+    #[error("error sending overlay frames to FFMpeg: pipe error: {0}")]
+    PipeError(io::Error),
+    #[error(transparent)]
+    UnknownOSDItem(UnknownOSDItem),
+    #[error(transparent)]
+    FFMpegExitedWithError(ffmpeg::ProcessError),
+}
+
 #[derive(CopyGetters)]
 pub struct FramesIter<'a> {
     #[getset(get_copy = "pub")]
@@ -459,6 +475,28 @@ pub struct FramesIter<'a> {
     hidden_regions: &'a [Region],
     hidden_items: &'a [&'a str],
     prev_frame: Frame
+}
+
+impl<'a> FramesIter<'a> {
+
+    pub fn send_frames_to_ffmpeg(&mut self, ffmpeg_process: &mut ffmpeg::Process) -> Result<(), SendFramesToFFMpegError> {
+        let mut ffmpeg_stdin = ffmpeg_process.take_stdin().unwrap();
+        for osd_frame_image in self {
+            ffmpeg_stdin.write_all(osd_frame_image?.as_raw())?;
+        }
+        drop(ffmpeg_stdin);
+        Ok(())
+    }
+
+    pub async fn send_frames_to_ffmpeg_and_wait(mut self, mut ffmpeg_process: ffmpeg::Process) -> Result<(), SendFramesToFFMpegError> {
+        let send_result = self.send_frames_to_ffmpeg(&mut ffmpeg_process);
+
+        ffmpeg_process.wait().await?;
+        send_result?;
+
+        Ok(())
+    }
+
 }
 
 impl<'a> Iterator for FramesIter<'a> {

@@ -2,7 +2,7 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitStatus;
-use std::{path::Path, io::Write};
+use std::path::Path;
 
 use derive_more::From;
 use itertools::Itertools;
@@ -14,6 +14,7 @@ use crate::cli::font_options::OSDFontDirError;
 use crate::cli::start_end_args::StartEndArgs;
 use crate::cli::transcode_video_args::OutputVideoFileError;
 use crate::osd::dji::file::tile_indices::UnknownOSDItem;
+use crate::osd::overlay::SendFramesToFFMpegError;
 use crate::{prelude::*, osd::overlay::scaling::ScalingArgsError};
 use crate::{prelude::{TranscodeVideoArgs, Scaling}, cli::transcode_video_args::TranscodeVideoOSDArgs};
 use crate::osd::dji::file::ReadError as OSDFileReadError;
@@ -248,12 +249,23 @@ pub enum TranscodeVideoError {
     OSDFileReadError(OSDFileReadError),
     #[error(transparent)]
     FailedSpawningFFMpegProcess(ffmpeg::SpawnError),
-    #[error("failed sending OSD images to ffmpeg process: {0}")]
-    FailedSendingOSDImagesToFFMpeg(IOError),
+    #[error("failed sending OSD frames to ffmpeg process: {0}")]
+    FailedSendingOSDFramesToFFMpeg(IOError),
     #[error(transparent)]
     FFMpegExitedWithError(ffmpeg::ProcessError),
     #[error(transparent)]
     UnknownOSDItem(UnknownOSDItem),
+}
+
+impl From<SendFramesToFFMpegError> for TranscodeVideoError {
+    fn from(error: SendFramesToFFMpegError) -> Self {
+        use SendFramesToFFMpegError::*;
+        match error {
+            PipeError(error) => Self::FailedSendingOSDFramesToFFMpeg(error),
+            UnknownOSDItem(error) => Self::UnknownOSDItem(error),
+            FFMpegExitedWithError(error) => Self::FFMpegExitedWithError(error),
+        }
+    }
 }
 
 pub async fn transcode(args: &TranscodeVideoArgs) -> Result<(), TranscodeVideoError> {
@@ -385,19 +397,9 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
         (false, Some(_)) => return Err(TranscodeVideoError::RequestedAudioFixingButInputHasNoAudio),
     }
 
-    let mut ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count)?;
-    let mut ffmpeg_stdin = ffmpeg_process.take_stdin().unwrap();
+    let ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count)?;
 
-    for osd_frame_image in osd_frames_iter {
-        if let Err(error) = ffmpeg_stdin.write_all(osd_frame_image?.as_raw()) {
-            log::error!("failed sending OSD images to ffmpeg process: {error}");
-            break;
-        }
-    }
-
-    drop(ffmpeg_stdin);
-
-    ffmpeg_process.wait().await?;
+    osd_frames_iter.send_frames_to_ffmpeg_and_wait(ffmpeg_process).await?;
 
     log::info!("{frame_count} frames transcoded successfully");
     Ok(())
