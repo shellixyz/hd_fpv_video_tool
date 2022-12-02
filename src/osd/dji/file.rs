@@ -5,7 +5,7 @@ use std::{
     path::{
         Path,
         PathBuf,
-    },
+    }, ops::RangeInclusive,
 };
 
 use byte_struct::*;
@@ -52,6 +52,7 @@ use self::{
 
 
 const SIGNATURE: &str = "MSPOSD\x00";
+const SUPPORTED_FORMAT_VERSIONS: RangeInclusive<u16> = 1..=1;
 
 #[derive(Debug, Error, From)]
 pub enum OpenError {
@@ -59,8 +60,10 @@ pub enum OpenError {
     FileError(FileError),
     #[error("invalid DJI OSD file header in file {file_path}")]
     InvalidSignature { file_path: PathBuf },
-    #[error("invalid OSD dimensions in file {file_path}: {dimensions}")]
-    InvalidOSDDimensions { file_path: PathBuf, dimensions: Dimensions }
+    #[error("invalid OSD dimensions in OSD file {file_path}: {dimensions}")]
+    InvalidOSDDimensions { file_path: PathBuf, dimensions: Dimensions },
+    #[error("unsupported OSD file format version: {0}")]
+    UnsupportedFileFormatVersion(u16),
 }
 
 impl OpenError {
@@ -210,6 +213,9 @@ impl Reader {
         let mut header_bytes = [0; FileHeaderRaw::BYTE_LEN];
         file.read_exact(&mut header_bytes)?;
         let header = FileHeaderRaw::read_bytes(&header_bytes);
+        if ! SUPPORTED_FORMAT_VERSIONS.contains(&header.format_version) {
+            return Err(OpenError::UnsupportedFileFormatVersion(header.format_version));
+        }
         Ok(header)
     }
 
