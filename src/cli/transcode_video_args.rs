@@ -5,7 +5,7 @@ use clap::Args;
 use getset::{Getters, CopyGetters};
 use thiserror::Error;
 
-use crate::{osd::{self, overlay::scaling::OSDScalingArgs, dji::file::find_associated_to_video_file}, prelude::VideoAudioFixType};
+use crate::{osd::{self, overlay::scaling::OSDScalingArgs, dji::file::find_associated_to_video_file}, video};
 
 use super::{font_options::OSDFontOptions, start_end_args::StartEndArgs, generate_overlay_args};
 
@@ -112,6 +112,9 @@ pub struct TranscodeVideoArgs {
     #[getset(get_copy = "pub")]
     video_crf: u8,
 
+    #[clap(long, value_parser)]
+    remove_video_defects: Vec<video::Region>,
+
     /// audio encoder to use
     ///
     /// This value is directly passed to the `-c:a` FFMpeg argument.{n}
@@ -150,8 +153,8 @@ pub enum OutputVideoFileError {
 
 impl TranscodeVideoArgs {
 
-    pub fn video_audio_fix(&self) -> Option<VideoAudioFixType> {
-        use VideoAudioFixType::*;
+    pub fn video_audio_fix(&self) -> Option<video::AudioFixType> {
+        use video::AudioFixType::*;
         match (self.fix_audio, self.fix_audio_sync, self.fix_audio_volume) {
             (true, _, _) | (false, true, true) => Some(SyncAndVolume),
             (false, true, false) => Some(Sync),

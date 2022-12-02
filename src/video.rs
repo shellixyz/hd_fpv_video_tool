@@ -5,6 +5,7 @@ use std::process::ExitStatus;
 use std::{path::Path, io::Write};
 
 use derive_more::From;
+use itertools::Itertools;
 use thiserror::Error;
 use std::io::Error as IOError;
 use ffmpeg_next::Rational;
@@ -20,14 +21,20 @@ use crate::ffmpeg;
 pub use self::probe::probe;
 use crate::process::Command as ProcessCommand;
 
-use self::timestamp::Timestamp;
-
 pub mod timestamp;
 pub mod resolution;
 pub mod utils;
 pub mod probe;
+pub mod coordinates;
+pub mod region;
+
+pub use coordinates::{Coordinate, Coordinates, FormatError as CoordinatesFormatError, SignedCoordinate, SignedCoordinates};
+pub use region::Region;
+pub use resolution::Resolution;
+pub use timestamp::Timestamp;
 
 
+pub type Dimensions = GenericDimensions<u16>;
 pub type FrameIndex = u32;
 
 #[derive(Debug, Error, From)]
@@ -271,6 +278,14 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<(), TranscodeVideoEr
         .set_output_file(output_video_file)
         .set_overwrite_output_file(args.overwrite());
 
+    if ! args.remove_video_defects().is_empty() {
+        let defect_filter = args.remove_video_defects().iter().map(|region|
+            format!("delogo={}", region.to_ffmpeg_filter_string())
+        ).join(";");
+        let complex_filter = format!("[0]{}[vo]", defect_filter);
+        ffmpeg_command.add_complex_filter(&complex_filter).add_mapping("[vo]");
+    };
+
     if let Some(video_audio_fix) = args.video_audio_fix() {
         if video_info.has_audio() {
             ffmpeg_command
@@ -340,10 +355,19 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
 
     let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
 
+    let complex_filter = if args.remove_video_defects().is_empty() {
+        "[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]".to_owned()
+    } else {
+        let defect_filter = args.remove_video_defects().iter().map(|region|
+            format!("delogo={}", region.to_ffmpeg_filter_string())
+        ).join(";");
+        format!("[0]{}[s1];[s1][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]", defect_filter)
+    };
+
     ffmpeg_command
         .add_input_file_slice(args.input_video_file(), args.start_end().start(), args.start_end().end())
         .add_stdin_input(osd_overlay_resolution, 60).unwrap()
-        .add_complex_filter("[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]")
+        .add_complex_filter(&complex_filter)
         .add_mapping("[vo]")
         .set_output_video_settings(Some(args.video_encoder()), Some(args.video_bitrate()), Some(args.video_crf()))
         .set_output_file(output_video_file)

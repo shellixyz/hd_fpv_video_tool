@@ -10,7 +10,7 @@ use lazy_static::lazy_static;
 use tokio::task::JoinHandle;
 use ringbuffer::{self, ConstGenericRingBuffer, RingBufferWrite, RingBufferExt};
 
-use crate::video::{resolution::Resolution, timestamp::Timestamp};
+use crate::video::{self, Resolution, Timestamp};
 use crate::process::Command as ProcessCommand;
 
 
@@ -559,4 +559,16 @@ impl Process {
         self.handle.kill()
     }
 
+}
+
+impl video::Region {
+    pub fn to_ffmpeg_filter_string(&self) -> String {
+        format!(
+            "x={}:y={}:w={}:h={}",
+            self.top_left_corner().x,
+            self.top_left_corner().y,
+            self.dimensions().width,
+            self.dimensions().height
+        )
+    }
 }
