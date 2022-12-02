@@ -352,6 +352,8 @@ impl<'a> Generator<'a> {
         let progress_bar = ProgressBar::new(frame_count as u64).with_style(progress_style);
         progress_bar.enable_steady_tick(std::time::Duration::new(0, 100_000_000));
 
+        let abs_output_dir_path = path.as_ref().absolutize().unwrap();
+
         iter.progress_with(progress_bar).try_for_each(|item| {
             use crate::osd::dji::file::sorted_frames::VideoFramesRelIndexIterItem::*;
             match item {
@@ -367,10 +369,9 @@ impl<'a> Generator<'a> {
                 },
                 NonExisting { prev_rel_index, rel_index } => {
                     log::debug!("non existing {} -> {}", rel_index, prev_rel_index);
-                    let prev_path = make_overlay_frame_file_path(&path, prev_rel_index);
+                    let prev_path = make_overlay_frame_file_path(&abs_output_dir_path, prev_rel_index);
                     let link_path = make_overlay_frame_file_path(&path, rel_index);
-                    let abs_link_path = link_path.absolutize().unwrap();
-                    file::symlink(prev_path, abs_link_path)?;
+                    file::symlink(prev_path, link_path)?;
                 },
             }
             Ok::<(), SaveFramesToDirError>(())
