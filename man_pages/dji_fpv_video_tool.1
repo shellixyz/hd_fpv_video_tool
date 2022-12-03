@@ -1,12 +1,16 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH dji_fpv_video_tool 1  "dji_fpv_video_tool 0.1.0" 
+.TH dji_fpv_video_tool 1  "dji_fpv_video_tool 1.0.0" 
 .SH NAME
 dji_fpv_video_tool \- A software tool to manipulate video files and OSD files recoded with the DJI FPV system
 .SH SYNOPSIS
 \fBdji_fpv_video_tool\fR [\fB\-l\fR|\fB\-\-log\-level\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
 .SH DESCRIPTION
-A software tool to manipulate video files and OSD files recoded with the DJI FPV system
+dji_fpv_video_tool is a command line tool for manipulating video files and OSD files recoded with the DJI FPV system
+.PP
+Author: Michel Pastor <shellixyz@gmail.com>
+.PP
+Each command is aliased to the concatenation of the first letter of each word of the command{n} Example: the `generate\-overlay\-frames` command is aliased to `gof`
 .SH OPTIONS
 .TP
 \fB\-l\fR, \fB\-\-log\-level\fR=\fILOG_LEVEL\fR [default: info]
@@ -15,7 +19,7 @@ A software tool to manipulate video files and OSD files recoded with the DJI FPV
 [\fIpossible values: \fRoff, error, warn, info, debug, trace]
 .TP
 \fB\-h\fR, \fB\-\-help\fR
-Print help information
+Print help information (use `\-h` for a summary)
 .TP
 \fB\-V\fR, \fB\-\-version\fR
 Print version information
@@ -45,6 +49,4 @@ Play video using MPV video player with OSD by overlaying transparent OSD video i
 dji_fpv_video_tool\-help(1)
 Print this message or the help of the given subcommand(s)
 .SH VERSION
-v0.1.0
-.SH AUTHORS
-Michel Pastor <shellixyz@gmail.com>
+v1.0.0

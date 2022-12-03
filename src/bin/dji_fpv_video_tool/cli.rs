@@ -8,12 +8,14 @@ use getset::CopyGetters;
 use crate::shell_autocompletion::*;
 
 
-/// A tool to manipulate DJI video files and generate OSD frames from FPV.WTF .osd files
+/// dji_fpv_video_tool is a command line tool for manipulating video files and OSD files recoded with the DJI FPV system
+///
+/// Author: Michel Pastor <shellixyz@gmail.com>
 ///
 /// Each command is aliased to the concatenation of the first letter of each word of the command{n}
 /// Example: the `generate-overlay-frames` command is aliased to `gof`
 #[derive(Parser, CopyGetters)]
-#[clap(author, version, about, long_about = None)]
+#[clap(version, about, long_about)]
 pub struct Cli {
 
     #[clap(short, long, value_parser, default_value_t = LogLevel::Info)]
