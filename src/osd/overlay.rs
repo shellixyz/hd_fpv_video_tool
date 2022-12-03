@@ -260,7 +260,7 @@ fn best_settings_for_requested_scaling(osd_kind: DJIOSDKind, scaling: &Scaling) 
                     // no scaling is possible
                     Ok(values) => {
                         let (overlay_dimensions, _, _) = values;
-                        let (margin_width, margin_height) = crate::video::utils::margins(target_resolution.dimensions(), overlay_dimensions);
+                        let (margin_width, margin_height) = crate::video::margins(target_resolution.dimensions(), overlay_dimensions);
                         let min_margins_condition_met = margin_width >= min_margins.horizontal() as i32 && margin_height >= min_margins.vertical() as i32;
                         let min_dimensions_condition_met = overlay_dimensions.width >= min_resolution.width && overlay_dimensions.height >= min_resolution.height;
 

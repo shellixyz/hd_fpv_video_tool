@@ -25,7 +25,6 @@ use crate::process::Command as ProcessCommand;
 
 pub mod timestamp;
 pub mod resolution;
-pub mod utils;
 pub mod probe;
 pub mod coordinates;
 pub mod region;
@@ -33,6 +32,7 @@ pub mod region;
 pub use coordinates::{Coordinate, Coordinates, FormatError as CoordinatesFormatError, SignedCoordinate, SignedCoordinates};
 pub use region::Region;
 pub use resolution::Resolution;
+pub(crate) use resolution::margins;
 pub use timestamp::Timestamp;
 
 

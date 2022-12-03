@@ -28,7 +28,7 @@ impl DJIOSDKind {
     pub fn best_kind_of_tiles_to_use_without_scaling(&self, video_resolution: VideoResolution) -> Result<tile::Kind, VideoResolutionTooSmallError> {
         let avg_margins = tile::Kind::iter().flat_map(|tile_kind| {
             let osd_dimensions = self.dimensions_pixels_for_tile_kind(tile_kind);
-            let (margin_width, margin_height) = crate::video::utils::margins(video_resolution, osd_dimensions);
+            let (margin_width, margin_height) = crate::video::margins(video_resolution, osd_dimensions);
             if margin_width >= 0 && margin_height >= 0 {
                 Some((tile_kind, (margin_width as u32 + margin_height as u32) / 2))
             } else {
