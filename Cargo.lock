@@ -516,7 +516,8 @@ checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 
 [[package]]
 name = "hd_fpv_osd_font_tool"
-version = "0.1.0"
+version = "1.0.0"
+source = "git+https://github.com/shellixyz/hd_fpv_osd_font_tool#c627bc66d0286df07df27c78ef0e65a950fdfb06"
 dependencies = [
  "anyhow",
  "array-macro",
