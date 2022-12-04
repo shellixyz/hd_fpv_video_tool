@@ -6,6 +6,9 @@
 	],
 	"settings": {
 		"cSpell.words": [
+			"appdir",
+			"appimage",
+			"appimagetool",
 			"ardu",
 			"Ardupilot",
 			"atempo",
@@ -16,6 +19,7 @@
 			"DJIOSD",
 			"DJIU",
 			"dofi",
+			"execvp",
 			"getset",
 			"horiz",
 			"INAV",

@@ -1,0 +1,12 @@
+[package]
+name = "appimage_runner"
+version = "1.0.0"
+edition = "2021"
+license = "GPL-2.0-only"
+authors = ["Michel Pastor <shellixyz@gmail.com>"]
+rust-version = "1.61"
+publish = false
+
+[dependencies]
+anyhow = "1.0.66"
+exec = "0.3.1"
