@@ -184,8 +184,8 @@ pub enum SaveFramesToDirError {
     SymlinkError(SymlinkError),
     #[error("no frame to write")]
     NoFrameToWrite,
-    #[error("target directory exists")]
-    TargetDirectoryExists,
+    #[error("target directory exists: {0}")]
+    TargetDirectoryExists(PathBuf),
     #[error(transparent)]
     UnknownOSDItem(UnknownOSDItem),
 }
@@ -344,7 +344,7 @@ impl<'a> Generator<'a> {
                                                                     path: P, frame_shift: i32) -> Result<(), SaveFramesToDirError> {
 
         if path.as_ref().exists() {
-            return Err(SaveFramesToDirError::TargetDirectoryExists);
+            return Err(SaveFramesToDirError::TargetDirectoryExists(path.as_ref().to_path_buf()));
         }
 
         create_path(&path)?;
