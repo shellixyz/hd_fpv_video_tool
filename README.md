@@ -90,13 +90,36 @@ This command will encode a transparent OSD overlay video encoded with the VP8 co
 
 ### Easiest way
 
-The easiest way is to use the AppImage provided in the [latest release](https://github.com/shellixyz/dji_fpv_video_tool/releases/latest). It includes all the necessary dependencies so nothing else needs to be installed. It can be put anywhere on your filesystem, just make it executable and run it. The only disadvantage of this method is that since the AppImage file contains all the dependencies it is fairly big.
+The easiest way is to use the AppImage provided in the [latest release](https://github.com/shellixyz/dji_fpv_video_tool/releases/latest). It includes all the necessary dependencies. It can be put anywhere on your filesystem, just make it executable and run it. The only disadvantage of this method is that since the AppImage file contains all the dependencies it is fairly big.
 
-### Using the distro specific binaries
+Note that the generated AppImage files have only been tested on Fedora and Ubuntu and that on Debian/Ubuntu you may still need to install `libfuse` for it to work without using the `--appimage-extract` option. To install `libfuse` use this command: `sudo apt-get install -y libfuse2`
 
-The [releases](https://github.com/shellixyz/dji_fpv_video_tool/releases) also contain distro specific binaries for which you will need to install some run-time dependencies.
+### Building from source
 
-#### Run-time dependencies:
+#### Build dependencies
+
+- [rust tools/toolchain](https://www.rust-lang.org/tools/install)
+- ffmpeg libs and headers
+- pkg-config
+- clang
+
+##### On Fedora
+
+`sudo dnf install -y ffmpeg{,-devel} clang`
+
+##### On Debian or Debian derivatives
+
+`sudo apt-get install -y ffmpeg libav{format,util,filter,device}-dev clang pkg-config`
+
+##### On MacOSX
+
+It should work on MacOSX but I do not have access to a machine with MacOSX to test
+
+#### Building
+
+`cargo install --locked https://github.com/shellixyz/dji_fpv_video_tool.git`
+
+#### Run-time dependencies
 
 - [ffmpeg](https://ffmpeg.org/) built with support for the video codecs you want to use and also VP8/VP9 for using the `generate-overlay-video` command
 - [MPV](https://mpv.io/) video player if you want to use the `play-video-with-osd` command
@@ -115,24 +138,3 @@ sudo dnf install -y ffmpeg
 ##### Installing on Debian or Debian derivatives
 
 `sudo apt-get install -y ffmpeg mpv`
-
-### Building from source
-
-#### Build dependencies
-
-- [rust tools/toolchain](https://www.rust-lang.org/tools/install)
-- ffmpeg headers
-- pkg-config
-- clang
-
-##### On Fedora
-
-`sudo dnf install -y ffmpeg{,-devel} clang`
-
-##### On Debian or Debian derivatives
-
-`sudo apt-get install -y ffmpeg libav{format,util,filter,device}-dev clang pkg-config`
-
-#### Building
-
-`cargo install --locked https://github.com/shellixyz/dji_fpv_video_tool.git`
