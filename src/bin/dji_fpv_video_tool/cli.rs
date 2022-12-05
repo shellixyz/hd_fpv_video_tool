@@ -30,13 +30,13 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Displays information about the specified OSD file
+    /// Display information about the specified OSD file
     #[clap(alias = "dofi")]
     DisplayOSDFileInfo {
         osd_file: PathBuf,
     },
 
-    /// Generates OSD overlay frames
+    /// Generates single OSD overlay frames
     ///
     /// This command generates numbered OSD frame images from the specified WTF.FPV OSD file and writes
     /// them into the specified output directory.
@@ -63,7 +63,7 @@ pub enum Commands {
         output_dir: Option<PathBuf>,
     },
 
-    /// Generates OSD overlay video
+    /// Generate an OSD overlay video (to be displayed over the DVR video)
     ///
     /// This command generates a transparent video with the OSD frames rendered from the specified WTF.FPV OSD file.
     /// The generated video can then be used to play an FPV video with OSD without having to burn the OSD into the video.
@@ -100,7 +100,7 @@ pub enum Commands {
         overwrite: bool,
     },
 
-    /// Cuts a video file without transcoding by specifying the desired start and/or end timestamp
+    /// Cut a video file without transcoding by specifying the desired start and/or end timestamp
     ///
     /// Note that without transcoding videos can only be cut at the nearest P-frame so the cuts may not
     /// be at exactly the start/end points. If you need precise slicing use the `transcode` command instead.
@@ -121,7 +121,7 @@ pub enum Commands {
         overwrite: bool,
     },
 
-    /// Fixes a DJI Air Unit video's audio sync and/or volume
+    /// Fix a DJI Air Unit video's audio sync and/or volume
     ///
     /// If the output video file is not provided the output video will be written in the same directory
     /// as the input video with the same file name with suffix `_fixed_audio`
@@ -150,7 +150,7 @@ pub enum Commands {
         overwrite: bool,
     },
 
-    /// Transcodes a video file optionally burning OSD onto it
+    /// Transcode a video file, optionally burning the OSD onto it
     ///
     /// Fonts are loaded either from the directory specified with the --font-dir option or
     /// from the directory found in the environment variable FONTS_DIR or
@@ -165,7 +165,7 @@ pub enum Commands {
         transcode_args: TranscodeVideoArgs,
     },
 
-    /// Plays a video using the MPV video player with OSD by overlaying transparent OSD video in real time
+    /// Play a DVR video using the MPV player, overlaying the transparent OSD video in real time
     ///
     /// You can generate a compatible OSD overlay video file with the `generate-overlay-video` command.
     ///
