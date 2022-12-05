@@ -13,6 +13,13 @@ const DEP_BINARIES: [&str; 2] = [
     "/usr/bin/mpv",
 ];
 
+const EXCLUDE_LIBS: [&str; 53] = [
+    "libasound", "libcdio_paranoia", "libcdio_cdda", "libcdio", "libm", "libdrm", "libEGL", "libgbm", "libwayland-egl", "libwayland-client", "libGL", "libjack",
+    "liblcms2", "libarchive", "libpulse", "libsamplerate", "libuchardet", "libvulkan", "libwayland-cursor", "libxkbcommon", "libX11", "libXss", "libXext", "libXinerama",
+    "libXrandr", "libXv", "libz", "libgcc_s", "libc", "libGLdispatch", "libwayland-server", "libexpat", "libstdc++", "libffi", "libGLX", "libacl", "liblzma", "libzstd",
+    "liblz4", "libxml2", "libdbus-1", "libxcb", "libXrender", "libsndfile", "libsystemd", "libasyncns", "libXau", "libFLAC", "libvorbis", "libvorbisenc", "libopus", "libogg", "libcap"
+];
+
 const RUNNER_BIN_PATH: &str = "target/release/appimage_runner";
 
 fn create_path<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
@@ -34,6 +41,8 @@ fn binary_linked_libs<P: AsRef<Path>>(bin_path: P) -> anyhow::Result<Vec<PathBuf
 fn install_binary_shared_libs<P: AsRef<Path>, Q: AsRef<Path>>(binary_path: P, lib_dir_path: Q) -> anyhow::Result<()> {
     create_path(&lib_dir_path)?;
     for lib_path in binary_linked_libs(&binary_path)? {
+        let lib_file_name = lib_path.file_name().unwrap().to_str().unwrap();
+        if EXCLUDE_LIBS.iter().any(|ex_name| lib_file_name.starts_with(&format!("{ex_name}."))) { continue; }
         let to_path =  lib_dir_path.as_ref().join(lib_path.file_name().unwrap());
         log::debug!("copying `{}` => `{}`", lib_path.to_string_lossy(), to_path.to_string_lossy());
         std::fs::copy(&lib_path, &to_path)
