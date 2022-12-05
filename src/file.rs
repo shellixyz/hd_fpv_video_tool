@@ -172,7 +172,7 @@ pub enum CheckWritableError {
 pub fn check_writable<P: AsRef<Path>>(path: P) -> Result<(), CheckWritableError> {
     let path = path.as_ref();
     let dir = path.parent().ok_or_else(|| CheckWritableError::InvalidPath(path.to_path_buf()))?;
-    if ! dir.exists() {
+    if ! dir.as_os_str().is_empty() && ! dir.exists() {
         return Err(CheckWritableError::DirectoryDoesNotExist {
             file_path: path.to_path_buf(),
             dir_path: dir.to_path_buf()
