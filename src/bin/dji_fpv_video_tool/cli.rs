@@ -100,7 +100,7 @@ pub enum Commands {
         overwrite: bool,
     },
 
-    /// Cut video file
+    /// Cuts a video file without transcoding by specifying the desired start and/or end timestamp
     ///
     /// Note that without transcoding videos can only be cut at the nearest P-frame so the cuts may not
     /// be at exactly the start/end points. If you need precise slicing use the `transcode` command instead.
@@ -121,7 +121,7 @@ pub enum Commands {
         overwrite: bool,
     },
 
-    /// Fixes DJI Air Unit video audio sync and/or volume
+    /// Fixes a DJI Air Unit video's audio sync and/or volume
     ///
     /// If the output video file is not provided the output video will be written in the same directory
     /// as the input video with the same file name with suffix `_fixed_audio`
@@ -150,7 +150,7 @@ pub enum Commands {
         overwrite: bool,
     },
 
-    /// Transcodes video file optionally burning OSD onto it
+    /// Transcodes a video file optionally burning OSD onto it
     ///
     /// Fonts are loaded either from the directory specified with the --font-dir option or
     /// from the directory found in the environment variable FONTS_DIR or
@@ -165,7 +165,7 @@ pub enum Commands {
         transcode_args: TranscodeVideoArgs,
     },
 
-    /// Play video using MPV video player with OSD by overlaying transparent OSD video in real time
+    /// Plays a video using the MPV video player with OSD by overlaying transparent OSD video in real time
     ///
     /// You can generate a compatible OSD overlay video file with the `generate-overlay-video` command.
     ///
