@@ -117,7 +117,7 @@ It should work on MacOSX but I do not have access to a machine with MacOSX to te
 
 #### Building
 
-`cargo install --locked https://github.com/shellixyz/dji_fpv_video_tool.git`
+`cargo install --locked https://github.com/shellixyz/dji_fpv_video_tool.git dji_fpv_video_tool`
 
 #### Run-time dependencies
 
