@@ -422,7 +422,7 @@ impl<'a> Generator<'a> {
             .set_output_video_settings(Some(codec.params().encoder()), codec.params().bitrate(), codec.params().crf())
             .add_args(codec.params().additional_args())
             .set_output_file(output_video_path)
-            .set_overwrite_output_file(overwrite_output);
+            .set_overwrite_output_file(true);
 
         let ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count as u64)?;
 

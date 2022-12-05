@@ -101,7 +101,7 @@ pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_vid
         .add_input_file_slice(input_video_file, start_end.start(), start_end.end())
         .set_output_video_codec(Some("copy"))
         .set_output_file(output_video_file)
-        .set_overwrite_output_file(overwrite);
+        .set_overwrite_output_file(true);
 
     if video_info.has_audio() {
         ffmpeg_command.set_output_audio_codec(Some("copy"));
@@ -211,7 +211,7 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_
         .set_output_video_codec(Some("copy"))
         .set_output_audio_settings(Some("aac"), Some("93k"))
         .set_output_file(output_video_file)
-        .set_overwrite_output_file(overwrite);
+        .set_overwrite_output_file(true);
 
     ffmpeg_command.build().unwrap().spawn_with_progress(video_info.frame_count())?.wait().await?;
 
@@ -301,7 +301,7 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<(), TranscodeVideoEr
         .add_input_file_slice(args.input_video_file(), args.start_end().start(), args.start_end().end())
         .set_output_video_settings(Some(args.video_encoder()), Some(args.video_bitrate()), Some(args.video_crf()))
         .set_output_file(output_video_file)
-        .set_overwrite_output_file(args.overwrite());
+        .set_overwrite_output_file(true);
 
     if ! args.remove_video_defects().is_empty() {
         let defect_filter = args.remove_video_defects().iter().map(|region|
@@ -397,7 +397,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(args: &TranscodeVideoArgs, osd_f
         .add_mapping("[vo]")
         .set_output_video_settings(Some(args.video_encoder()), Some(args.video_bitrate()), Some(args.video_crf()))
         .set_output_file(output_video_file)
-        .set_overwrite_output_file(args.overwrite());
+        .set_overwrite_output_file(true);
 
     match (video_info.has_audio(), args.video_audio_fix()) {
         (true, None) => { ffmpeg_command.add_mapping("0:a"); },
