@@ -66,7 +66,7 @@ For these examples we are assuming that:
 
 `dji_fpv_video_tool transcode-video --osd DJIG0000.mp4`
 
-Will automatically use the `DJIG0000.osd` file in the same directory as the video and automatically select a name for the output file: `DJIG0000_transcoded.mp4`. The OSD file can automatically be found if it is named with the same `DJIGXXXX` prefix as the video file or with the same name but with `.osd` extension. You can also specify the OSD file to use and the output file name manually. The above command is equivalent to:
+Will automatically use the `DJIG0000.osd` file in the same directory as the video and automatically select a name for the output file: `DJIG0000_transcoded.mp4`. The OSD file can automatically be found if it is named with the same `DJIGXXXX` prefix as the video file or with the same name but with `.osd` extension. You can also specify the OSD file to use and the output file name manually. The default encoder is `libx265` so the output is encoded with the H.265 codec but the video encoder used can be selected with the `--video-encoder` option. The above command is equivalent to:
 
 `dji_fpv_video_tool transcode-video --osd-file DJIG0000.osd DJIG0000.mp4 DJIG0000_transcoded.mp4`
 
