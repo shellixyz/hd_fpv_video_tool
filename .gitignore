@@ -3,10 +3,11 @@
 *.srt
 *.png
 *.bak*
-/*.mp4
+*.mp4
 /.vscode
 /fonts
-/*.webm
+*.webm
+*.bin
 /TODO
 /*.AppImage
 /libs
