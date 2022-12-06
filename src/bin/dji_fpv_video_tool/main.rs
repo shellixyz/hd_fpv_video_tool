@@ -4,7 +4,8 @@
 use std::{
     io::Write,
     process::exit,
-    path::Path, env::current_exe
+    path::{Path, PathBuf},
+    env::current_exe,
 };
 
 use clap::Parser;
@@ -66,9 +67,15 @@ fn generate_overlay_prepare_generator(common_args: &GenerateOverlayArgs) -> anyh
 fn generate_overlay_frames_command(command: &Commands) -> anyhow::Result<()> {
     if let Commands::GenerateOverlayFrames { common_args, output_dir } = command {
         common_args.check_valid()?;
-        let output_dir = match output_dir {
-            Some(output_dir) => output_dir.clone(),
-            None => {
+        let output_dir = match (output_dir, common_args.target_video_file()) {
+            (Some(output_dir), _) => output_dir.clone(),
+            (None, Some(target_video_file)) => {
+                let target_video_file_stem = target_video_file.file_stem().ok_or_else(|| anyhow!("target video file has no file name"))?;
+                let mut output_file_stem = target_video_file_stem.to_os_string();
+                output_file_stem.push("_osd_frames");
+                PathBuf::from(output_file_stem)
+            },
+            (None, None) => {
                 let osd_file = common_args.osd_file();
                 let mut output_dir_name = Path::new(osd_file.file_stem().ok_or_else(|| anyhow!("OSD file has no file name"))?).as_os_str().to_os_string();
                 output_dir_name.push("_osd_frames");
@@ -84,9 +91,15 @@ fn generate_overlay_frames_command(command: &Commands) -> anyhow::Result<()> {
 async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()> {
     if let Commands::GenerateOverlayVideo { common_args, video_file, overwrite, codec } = command {
         common_args.check_valid()?;
-        let output_video_path = match video_file {
-            Some(output_video_file) => output_video_file.clone(),
-            None => {
+        let output_video_path = match (video_file, common_args.target_video_file()) {
+            (Some(output_video_file), _) => output_video_file.clone(),
+            (None, Some(target_video_file)) => {
+                let target_video_file_stem = target_video_file.file_stem().ok_or_else(|| anyhow!("target video file has no file name"))?;
+                let mut output_file_stem = target_video_file_stem.to_os_string();
+                output_file_stem.push("_osd");
+                Path::new(&output_file_stem).with_extension("webm")
+            },
+            (None, None) => {
                 let osd_file = common_args.osd_file();
                 let mut output_file_stem = Path::new(osd_file.file_stem().ok_or_else(|| anyhow!("OSD file has no file name"))?).as_os_str().to_os_string();
                 output_file_stem.push("_osd");
