@@ -2,8 +2,9 @@
 
 ## What it is and what it can be used for
 
-It is a unix compatible command line tool intended to be used for various tasks related to modifying and videos recorded with the
-DJI FPV video system but also works with other video sources. This project is not affiliated to the DJI company in any way.
+It is a unix compatible command line tool intended to be used for various tasks related to modifying videos recorded with the
+DJI FPV video system (but also works with other video sources) and working with `.osd` files recorded by DJI goggles hacked thanks
+to the [FPV.WTF](https://github.com/fpv-wtf) project. This project is not affiliated to the DJI company in any way.
 
 ## How to use
 
@@ -90,9 +91,9 @@ This command will encode a transparent OSD overlay video encoded with the VP8 co
 
 ### Easiest way
 
-The easiest way is to use the AppImage provided in the [latest release](https://github.com/shellixyz/dji_fpv_video_tool/releases/latest). It includes all the necessary dependencies. It can be put anywhere on your filesystem, just make it executable and run it. The only disadvantage of this method is that since the AppImage file contains all the dependencies it is fairly big.
+The easiest way is to use the AppImage provided in the [latest release](https://github.com/shellixyz/dji_fpv_video_tool/releases/latest). It includes all the necessary dependencies. It can be put anywhere on your filesystem, just make it executable and run it. The only disadvantage of this method is that since the AppImage file contains all the dependencies so it is fairly big.
 
-Note that the generated AppImage files have only been tested on Fedora and Ubuntu and that on Debian/Ubuntu you may still need to install `libfuse` for it to work without using the `--appimage-extract` option. To install `libfuse` use this command: `sudo apt-get install -y libfuse2`
+Note that the generated AppImage files have only been tested on Fedora and Ubuntu and that on you may still need to install `libfuse` v2 for it to work without using the `--appimage-extract` option. To install `libfuse` on Debian and derivatives like Ubuntu use this command: `sudo apt-get install -y libfuse2`.
 
 ### Building from source
 
@@ -104,6 +105,12 @@ Note that the generated AppImage files have only been tested on Fedora and Ubunt
 - clang
 
 ##### On Fedora
+
+You probably want to instead install ffmpeg from RPM fusion on Fedora which has support for more codecs so start by installing the RPM Fusion repository:
+
+`sudo dnf install "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"`
+
+then run
 
 `sudo dnf install -y ffmpeg{,-devel} clang`
 
@@ -128,10 +135,10 @@ It should work on MacOSX but I do not have access to a machine with MacOSX to te
 
 `sudo dnf install -y ffmpeg-free mpv`
 
-Note that you probably want to instead install ffmpeg from RPM fusion on Fedora which has support for non-free codecs:
+Note that you probably want to instead install ffmpeg from RPM fusion on Fedora which has support for more codecs:
 
 ```
-sudo dnf install -y "http://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(cut -d ' ' -f 3 /etc/fedora-release).noarch.rpm"
+sudo dnf install "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
 sudo dnf install -y ffmpeg
 ```
 
