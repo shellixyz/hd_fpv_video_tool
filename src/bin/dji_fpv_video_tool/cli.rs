@@ -1,4 +1,3 @@
-
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
@@ -6,7 +5,6 @@ use dji_fpv_video_tool::prelude::*;
 use getset::CopyGetters;
 
 use crate::shell_autocompletion::*;
-
 
 /// dji_fpv_video_tool is a command line tool for manipulating video files and OSD files recoded with the DJI FPV system
 ///
@@ -17,7 +15,6 @@ use crate::shell_autocompletion::*;
 #[derive(Parser, CopyGetters)]
 #[clap(version, about, long_about)]
 pub struct Cli {
-
     #[clap(short, long, value_parser, default_value_t = LogLevel::Info)]
     #[arg(value_enum)]
     #[getset(get_copy = "pub")]
@@ -25,18 +22,15 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub command: Commands,
-
 }
 
 #[derive(Subcommand)]
 pub enum Commands {
     /// Display information about the specified OSD file
     #[clap(alias = "dofi")]
-    DisplayOSDFileInfo {
-        osd_file: PathBuf,
-    },
+    DisplayOSDFileInfo { osd_file: PathBuf },
 
-    /// Generates single OSD overlay frames
+    /// Generate a transparent overlay frame sequence as PNG files from a .osd file
     ///
     /// This command generates numbered OSD frame images from the specified WTF.FPV OSD file and writes
     /// them into the specified output directory.
@@ -55,7 +49,6 @@ pub enum Commands {
     /// if neither of these are available it falls back to the `fonts` directory inside the current directory.
     #[clap(alias = "gof")]
     GenerateOverlayFrames {
-
         #[clap(flatten)]
         common_args: GenerateOverlayArgs,
 
@@ -63,7 +56,7 @@ pub enum Commands {
         output_dir: Option<PathBuf>,
     },
 
-    /// Generate an OSD overlay video (to be displayed over the DVR video)
+    /// Generate an OSD overlay video to be displayed over another video
     ///
     /// This command generates a transparent video with the OSD frames rendered from the specified WTF.FPV OSD file.
     /// The generated video can then be used to play an FPV video with OSD without having to burn the OSD into the video.
@@ -85,7 +78,6 @@ pub enum Commands {
     /// and their encoders are very slow
     #[clap(alias = "gov")]
     GenerateOverlayVideo {
-
         #[clap(flatten)]
         common_args: GenerateOverlayArgs,
 
@@ -106,7 +98,6 @@ pub enum Commands {
     /// be at exactly the start/end points. If you need precise slicing use the `transcode` command instead.
     #[clap(alias = "cv")]
     CutVideo {
-
         #[clap(flatten)]
         start_end: StartEndArgs,
 
@@ -130,7 +121,6 @@ pub enum Commands {
     /// the DJI FPV air unit has NOT been cut off.
     #[clap(alias = "fva")]
     FixVideoAudio {
-
         /// fix audio sync only
         #[clap(short, long, value_parser)]
         sync: bool,
@@ -157,7 +147,6 @@ pub enum Commands {
     /// if neither of these are available it falls back to the `fonts` directory inside the current directory
     #[clap(alias = "tv")]
     TranscodeVideo {
-
         #[clap(flatten)]
         osd_args: TranscodeVideoOSDArgs,
 
@@ -165,7 +154,7 @@ pub enum Commands {
         transcode_args: TranscodeVideoArgs,
     },
 
-    /// Play a DVR video using the MPV player, overlaying the transparent OSD video in real time
+    /// Play a video with OSD by overlaying a transparent OSD video in real time
     ///
     /// You can generate a compatible OSD overlay video file with the `generate-overlay-video` command.
     ///
@@ -173,11 +162,9 @@ pub enum Commands {
     /// as the <VIDEO_FILE> argument with suffix `_osd` and with `webm` extension.
     #[clap(alias = "pvwo")]
     PlayVideoWithOSD {
-
         video_file: PathBuf,
 
         osd_video_file: Option<PathBuf>,
-
     },
 
     #[clap(hide(true))]
@@ -188,5 +175,4 @@ pub enum Commands {
 
     #[clap(hide(true))]
     GenerateManPages,
-
 }
