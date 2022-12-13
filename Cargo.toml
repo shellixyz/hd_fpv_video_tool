@@ -24,7 +24,7 @@ log = "0.4.17"
 strum = { version = "0.24.1", features = ["derive"] }
 derive_more = "0.99.17"
 byte_struct = "0.8.0"
-hd_fpv_osd_font_tool = { version = "1.0", git = "https://github.com/shellixyz/hd_fpv_osd_font_tool" }
+hd_fpv_osd_font_tool = { version = "~1", git = "https://github.com/shellixyz/hd_fpv_osd_font_tool" }
 getset = "0.1.2"
 rayon = "1.5.3"
 indicatif = { version = "0.17.1", features = ["rayon"] }
@@ -42,6 +42,7 @@ env_logger = "0.10.0"
 home = "0.5.4"
 indoc = "1.0.7"
 ringbuffer = "0.10.0"
+fs-err = { git = "https://github.com/shellixyz/fs-err", branch = "custom", version = "3.0.0" }
 
 [profile.release]
 panic = 'abort'

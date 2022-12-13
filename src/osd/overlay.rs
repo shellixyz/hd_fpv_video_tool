@@ -34,8 +34,8 @@ use crate::{
     },
     ffmpeg,
     file::{
-        self,
-        HardLinkError, SymlinkError, CheckWritableError, check_writable,
+        check_writable,
+        CheckWritableError,
     },
     image::{
         WriteImageFile,
@@ -178,10 +178,8 @@ pub enum SaveFramesToDirError {
     ReadError(ReadError),
     #[error(transparent)]
     ImageWriteError(ImageWriteError),
-    #[error(transparent)]
-    HardLinkError(HardLinkError),
-    #[error(transparent)]
-    SymlinkError(SymlinkError),
+    #[error(transparent)] #[from(ignore)]
+    SymlinkError(IOError),
     #[error("no frame to write")]
     NoFrameToWrite,
     #[error("target directory exists: {0}")]
@@ -384,7 +382,8 @@ impl<'a> Generator<'a> {
                     log::debug!("non existing {} -> {}", rel_index, prev_rel_index);
                     let prev_path = make_overlay_frame_file_path(&abs_output_dir_path, prev_rel_index);
                     let link_path = make_overlay_frame_file_path(&path, rel_index);
-                    file::symlink(prev_path, link_path)?;
+                    fs_err::os::unix::fs::symlink(prev_path, link_path)
+                        .map_err(SaveFramesToDirError::SymlinkError)?;
                 },
             }
             Ok::<(), SaveFramesToDirError>(())

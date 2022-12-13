@@ -1,11 +1,16 @@
 
-use std::path::PathBuf;
+use std::{
+    io::{
+        Error as IOError,
+        Write,
+    },
+    path::PathBuf,
+};
 
 use clap::{ValueEnum, CommandFactory};
 use strum::EnumIter;
 use clap_complete::generate as clap_complete_generate;
-
-use dji_fpv_video_tool::prelude::*;
+use fs_err::File;
 
 use super::cli::Cli;
 
@@ -35,9 +40,9 @@ macro_rules! shell_enum_and_impl {
         }
 
         impl Shell {
-            pub fn generate_completion_file(&self, current_exe_name: &str) -> Result<(), file::Error> {
+            pub fn generate_completion_file(&self, current_exe_name: &str) -> Result<(), IOError> {
                 use Shell::*;
-                let mut file = file::create(self.completion_file_path(current_exe_name))?;
+                let mut file = File::create(self.completion_file_path(current_exe_name))?;
                 let mut buffer: Vec<u8> = Default::default();
                 match self {
                     $($shell => clap_complete_generate(clap_complete::shells::$shell, &mut Cli::command(), current_exe_name, &mut buffer),)+

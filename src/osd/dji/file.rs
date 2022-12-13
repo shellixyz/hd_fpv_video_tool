@@ -1,7 +1,10 @@
 
 use std::{
     fmt::Display,
-    io::SeekFrom,
+    io::{
+        Error as IOError,
+        SeekFrom, Read, Seek,
+    },
     path::{
         Path,
         PathBuf,
@@ -17,6 +20,7 @@ use regex::Regex;
 use strum::{Display, EnumIter};
 use thiserror::Error;
 use lazy_static::lazy_static;
+use fs_err::File;
 
 use hd_fpv_osd_font_tool::prelude::*;
 
@@ -27,10 +31,6 @@ pub mod sorted_frames;
 use crate::{
     osd::{
         dji::InvalidDimensionsError,
-    },
-    file::{
-        Error as FileError,
-        FileWithPath,
     },
 };
 
@@ -57,7 +57,7 @@ const SUPPORTED_FORMAT_VERSIONS: RangeInclusive<u16> = 1..=1;
 #[derive(Debug, Error, From)]
 pub enum OpenError {
     #[error(transparent)]
-    FileError(FileError),
+    FileError(IOError),
     #[error("invalid DJI OSD file header in file {file_path}")]
     InvalidSignature { file_path: PathBuf },
     #[error("invalid OSD dimensions in OSD file {file_path}: {dimensions}")]
@@ -81,7 +81,7 @@ impl OpenError {
 #[derive(Debug, Error, From)]
 pub enum ReadError {
     #[error(transparent)]
-    FileError(FileError),
+    FileError(IOError),
     #[error("Unexpected end of file: {file_path}")]
     UnexpectedEOF { file_path: PathBuf }
 }
@@ -191,7 +191,7 @@ const FIRST_FRAME_FILE_POS: u64 = (SIGNATURE.len() + FileHeaderRaw::BYTE_LEN) as
 
 #[derive(Getters, CopyGetters)]
 pub struct Reader {
-    file: FileWithPath,
+    file: File,
     #[getset(get = "pub")]
     header: FileHeader,
     #[getset(get_copy = "pub")]
@@ -200,7 +200,7 @@ pub struct Reader {
 
 impl Reader {
 
-    fn check_signature<P: AsRef<Path>>(file_path: P, file: &mut FileWithPath) -> Result<(), OpenError> {
+    fn check_signature<P: AsRef<Path>>(file_path: P, file: &mut File) -> Result<(), OpenError> {
         let mut signature = [0; SIGNATURE.len()];
         file.read_exact(&mut signature)?;
         if signature != SIGNATURE.as_bytes() {
@@ -209,7 +209,7 @@ impl Reader {
         Ok(())
     }
 
-    fn read_header(file: &mut FileWithPath) -> Result<FileHeaderRaw, OpenError> {
+    fn read_header(file: &mut File) -> Result<FileHeaderRaw, OpenError> {
         let mut header_bytes = [0; FileHeaderRaw::BYTE_LEN];
         file.read_exact(&mut header_bytes)?;
         let header = FileHeaderRaw::read_bytes(&header_bytes);
@@ -220,7 +220,7 @@ impl Reader {
     }
 
     pub fn open<P: AsRef<Path>>(file_path: P) -> Result<Self, OpenError> {
-        let mut file = FileWithPath::open(&file_path)?;
+        let mut file = File::open(&file_path)?;
         Self::check_signature(&file_path,&mut file)?;
         let header: FileHeader = Self::read_header(&mut file).unwrap().into();
         let osd_kind = Kind::try_from(header.osd_dimensions()).map_err(|error| {
@@ -267,7 +267,7 @@ impl Reader {
         Ok(SortedUniqFrames::new(osd_kind, font_variant, frames))
     }
 
-    pub fn rewind(&mut self) -> Result<(), FileError> {
+    pub fn rewind(&mut self) -> Result<(), IOError> {
         self.file.seek(SeekFrom::Start(FIRST_FRAME_FILE_POS))?;
         Ok(())
     }
@@ -275,7 +275,7 @@ impl Reader {
     fn keep_position_do<F, X, E>(&mut self, f: F) -> Result<X, E>
     where F: FnOnce(&mut Self) -> Result<X, E>
     {
-        let starting_position = self.file.pos();
+        let starting_position = self.file.seek(SeekFrom::Current(0)).unwrap();
         let return_value = f(self);
         self.file.seek(SeekFrom::Start(starting_position)).unwrap();
         return_value

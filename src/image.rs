@@ -1,6 +1,5 @@
 
 use std::{
-    fmt::Display,
     path::{
         Path,
         PathBuf
@@ -9,7 +8,8 @@ use std::{
     ops::Deref
 };
 
-use derive_more::{Error, From};
+// use derive_more::{Error, From};
+use thiserror::Error;
 use image::{
     DynamicImage,
     ImageError,
@@ -19,15 +19,15 @@ use image::{
     io::Reader as ImageReader
 };
 
-use crate::file::{
-    Error as FileError,
-    Action as FileAction
-};
 
-
-#[derive(Debug, Error, From)]
+#[derive(Debug, Error)]
 pub enum ReadError {
-    OpenError(FileError),
+    #[error("failed opening image file `{file_path}`: {error}")]
+    OpenError {
+        file_path: PathBuf,
+        error: IOError
+    },
+    #[error("failed decoding image file `{file_path}`: {error}")]
     DecodeError {
         file_path: PathBuf,
         error: ImageError
@@ -36,21 +36,14 @@ pub enum ReadError {
 
 impl ReadError {
     pub fn open_error<P: AsRef<Path>>(path: P, error: IOError) -> Self {
-        Self::OpenError(FileError::new(FileAction::Open, path, error))
+        Self::OpenError {
+            file_path: path.as_ref().to_path_buf(),
+            error,
+        }
     }
 
     pub fn decode_error<P: AsRef<Path>>(path: P, error: ImageError) -> Self {
         Self::DecodeError { file_path: path.as_ref().to_path_buf(), error }
-    }
-}
-
-impl Display for ReadError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use ReadError::*;
-        match self {
-            OpenError(error) => error.fmt(f),
-            DecodeError { file_path, error } => write!(f, "failed decoding {}: #{error}", file_path.to_string_lossy()),
-        }
     }
 }
 
@@ -59,7 +52,8 @@ pub fn read_image_file<P: AsRef<Path>>(path: P) -> Result<DynamicImage, ReadErro
     reader.decode().map_err(|error| ReadError::decode_error(&path, error) )
 }
 
-#[derive(Debug, From, Error)]
+#[derive(Debug, Error)]
+#[error("failed to write image file `{file_path}`: {error}")]
 pub struct WriteError {
     file_path: PathBuf,
     error: ImageError,
@@ -68,12 +62,6 @@ pub struct WriteError {
 impl WriteError {
     pub fn new<P: AsRef<Path>>(path: P, error: ImageError) -> Self {
         Self { file_path: path.as_ref().to_path_buf(), error }
-    }
-}
-
-impl Display for WriteError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "failed to write image {}: {}", self.file_path.to_string_lossy(), self.error)
     }
 }
 
