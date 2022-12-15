@@ -34,8 +34,8 @@ use crate::{
     },
     ffmpeg,
     file::{
-        check_writable,
-        CheckWritableError,
+        self,
+        TouchError,
     },
     image::{
         WriteImageFile,
@@ -205,7 +205,7 @@ pub enum GenerateOverlayVideoError {
     #[error(transparent)]
     UnknownOSDItem(UnknownOSDItem),
     #[error(transparent)]
-    CreateOutputFileError(CheckWritableError),
+    WriteToFileError(TouchError),
 }
 
 impl From<SendFramesToFFMpegError> for GenerateOverlayVideoError {
@@ -406,7 +406,7 @@ impl<'a> Generator<'a> {
             return Err(GenerateOverlayVideoError::TargetVideoFileExists(output_video_path.to_path_buf()));
         }
 
-        check_writable(output_video_path)?;
+        file::touch(output_video_path)?;
 
         log::info!("generating overlay video: {}", output_video_path.to_string_lossy());
 

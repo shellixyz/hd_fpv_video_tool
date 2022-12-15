@@ -13,7 +13,7 @@ use thiserror::Error;
 
 
 #[derive(Debug, Error)]
-pub enum CheckWritableError {
+pub enum TouchError {
     #[error("failed creating file {0}: invalid path")]
     InvalidPath(PathBuf),
     #[error("failed creating file {file_path}: directory does not exist: {dir_path}")]
@@ -25,11 +25,11 @@ pub enum CheckWritableError {
     CreateError(#[from] IOError),
 }
 
-pub fn check_writable<P: AsRef<Path>>(path: P) -> Result<(), CheckWritableError> {
+pub fn touch<P: AsRef<Path>>(path: P) -> Result<(), TouchError> {
     let path = path.as_ref();
-    let dir = path.parent().ok_or_else(|| CheckWritableError::InvalidPath(path.to_path_buf()))?;
+    let dir = path.parent().ok_or_else(|| TouchError::InvalidPath(path.to_path_buf()))?;
     if ! dir.as_os_str().is_empty() && ! dir.exists() {
-        return Err(CheckWritableError::DirectoryDoesNotExist {
+        return Err(TouchError::DirectoryDoesNotExist {
             file_path: path.to_path_buf(),
             dir_path: dir.to_path_buf()
         })
