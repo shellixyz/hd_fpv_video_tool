@@ -47,7 +47,7 @@ Prints the CLI commands or help of the given subcommand(s)
 
 ### Command aliases
 
-The commands can be a bit long to write. For convenience they are aliases to the concatenation of the first letter of each word.
+The commands can be a bit long to write. For convenience they are aliased to the concatenation of the first letter of each word.
 For example the `generate-overlay-video` command can also be called with the `gov` command.
 
 ### OSD fonts
