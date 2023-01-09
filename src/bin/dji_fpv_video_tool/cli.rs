@@ -6,7 +6,7 @@ use getset::CopyGetters;
 
 use crate::shell_autocompletion::*;
 
-/// dji_fpv_video_tool is a command line tool for manipulating video files and OSD files recoded with the DJI FPV system
+/// dji_fpv_video_tool is a command line tool for manipulating video files and OSD files recorded with the DJI FPV system
 ///
 /// Author: Michel Pastor <shellixyz@gmail.com>
 ///
