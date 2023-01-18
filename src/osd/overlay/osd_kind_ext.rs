@@ -3,10 +3,9 @@
 use hd_fpv_osd_font_tool::prelude::*;
 use strum::IntoEnumIterator;
 
-use super::Dimensions as OverlayFrameDimensions;
+use super::{Dimensions as OverlayFrameDimensions, VideoResolutionTooSmallError};
 
 use crate::osd;
-use crate::osd::dji::VideoResolutionTooSmallError;
 use crate::video::resolution::Resolution as VideoResolution;
 
 

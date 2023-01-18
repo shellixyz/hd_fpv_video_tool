@@ -52,12 +52,8 @@ use super::{
         Frame as OSDFileFrame,
         SortedUniqFrames as OSDFileSortedFrames,
     },
-    dji::{
-        VideoResolutionTooSmallError,
-        font_dir::FontDir,
-    },
     Region,
-    tile_resize::ResizeTiles, font_variant::FontVariant, file::{ReadError, sorted_frames::{GetFramesExt, VideoFramesIter}}, tile_indices::UnknownOSDItem,
+    tile_resize::ResizeTiles, font_variant::FontVariant, file::{ReadError, sorted_frames::{GetFramesExt, VideoFramesIter}}, tile_indices::UnknownOSDItem, FontDir,
 };
 
 use self::scaling::Scaling;
@@ -70,6 +66,13 @@ pub struct Frame {
 
     #[deref]
     image: ImageBuffer<Rgba<u8>, Vec<u8>>
+}
+
+#[derive(Debug, Error)]
+#[error("video resolution {video_resolution} too small to fit {osd_kind} kind OSD")]
+pub struct VideoResolutionTooSmallError {
+    pub osd_kind: super::Kind,
+    pub video_resolution: VideoResolution
 }
 
 impl Frame {

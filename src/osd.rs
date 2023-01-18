@@ -1,6 +1,7 @@
 
 pub mod file;
 pub mod font_variant;
+pub mod font_dir;
 pub mod kind;
 pub mod overlay;
 pub mod dji;
@@ -25,3 +26,4 @@ pub use coordinates::{
 pub use font_variant::FontVariant;
 pub use kind::Kind;
 pub use tile_indices::TileIndices;
+pub use font_dir::FontDir;

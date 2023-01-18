@@ -8,9 +8,9 @@ pub use crate::{
     },
     file,
     osd::{
+        FontDir,
         Dimensions as OSDDimensions,
         dji::{
-            font_dir::FontDir,
             file::{
                 OpenError as OSDFileOpenError,
                 Reader as OSDFileReader,
