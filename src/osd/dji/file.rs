@@ -17,39 +17,18 @@ use getset::{Getters, CopyGetters};
 use derive_more::From;
 use itertools::Itertools;
 use regex::Regex;
-use strum::{Display, EnumIter};
 use thiserror::Error;
 use lazy_static::lazy_static;
 use fs_err::File;
 
 use hd_fpv_osd_font_tool::prelude::*;
 
-pub mod frame;
-pub mod tile_indices;
-pub mod sorted_frames;
-
 use crate::{
     osd::{
-        dji::InvalidDimensionsError,
+        Dimensions, FontVariant, file::{ReadError, Frame, sorted_frames::SortedUniqFrames}, Kind, TileIndices, tile_indices::TileIndex, kind::InvalidDimensionsError,
     },
+    video::FrameIndex as VideoFrameIndex,
 };
-
-use super::{
-    Dimensions,
-    Kind,
-};
-
-use self::{
-    frame::{
-        Frame,
-        Header as FrameHeader,
-    },
-    tile_indices::{
-        TileIndex,
-        TileIndices,
-    }, sorted_frames::{SortedUniqFrames},
-};
-
 
 const SIGNATURE: &str = "MSPOSD\x00";
 const SUPPORTED_FORMAT_VERSIONS: RangeInclusive<u16> = 1..=1;
@@ -76,20 +55,6 @@ impl OpenError {
         Self::InvalidOSDDimensions { file_path: file_path.as_ref().to_path_buf(), dimensions }
     }
 
-}
-
-#[derive(Debug, Error, From)]
-pub enum ReadError {
-    #[error(transparent)]
-    FileError(IOError),
-    #[error("Unexpected end of file: {file_path}")]
-    UnexpectedEOF { file_path: PathBuf }
-}
-
-impl ReadError {
-    fn unexpected_eof<P: AsRef<Path>>(file_path: P) -> Self {
-        Self::UnexpectedEOF { file_path: file_path.as_ref().to_path_buf() }
-    }
 }
 
 #[derive(ByteStruct, Debug)]
@@ -122,43 +87,6 @@ impl Display for Offset {
 #[error("unknown font variant ID: {0}")]
 pub struct UnknownFontVariantID(pub u8);
 
-#[derive(Debug, Display, Clone, Copy, EnumIter, PartialEq, Eq, Hash)]
-pub enum FontVariant {
-    Generic,
-    Ardupilot,
-    Betaflight,
-    INAV,
-    KISSUltra,
-    Unknown
-}
-
-impl FontVariant {
-    pub fn font_set_ident(&self) -> Option<&str> {
-        use FontVariant::*;
-        match self {
-            Ardupilot => Some("ardu"),
-            INAV => Some("inav"),
-            Betaflight => Some("bf"),
-            KISSUltra => Some("ultra"),
-            Generic | Unknown => None,
-        }
-    }
-}
-
-impl From<u8> for FontVariant {
-    fn from(value: u8) -> Self {
-        use FontVariant::*;
-        match value {
-            0 => Generic,
-            1 => Betaflight,
-            2 => INAV,
-            3 => Ardupilot,
-            4 => KISSUltra,
-            _ => Unknown,
-        }
-    }
-}
-
 #[derive(Debug, Getters)]
 #[getset(get = "pub")]
 pub struct FileHeader {
@@ -171,7 +99,15 @@ pub struct FileHeader {
 
 impl FileHeader {
     pub fn font_variant(&self) -> FontVariant {
-        FontVariant::from(self.font_variant_id)
+        use FontVariant::*;
+        match self.font_variant_id {
+            0 => Generic,
+            1 => Betaflight,
+            2 => INAV,
+            3 => Ardupilot,
+            4 => KISSUltra,
+            _ => Unknown,
+        }
     }
 }
 
@@ -185,6 +121,14 @@ impl From<FileHeaderRaw> for FileHeader {
             font_variant_id: fhr.font_variant
         }
     }
+}
+
+#[derive(ByteStruct, Debug, CopyGetters)]
+#[getset(get_copy = "pub")]
+#[byte_struct_le]
+pub struct FrameHeader {
+    frame_index: VideoFrameIndex,
+    data_len: u32
 }
 
 const FIRST_FRAME_FILE_POS: u64 = (SIGNATURE.len() + FileHeaderRaw::BYTE_LEN) as u64;

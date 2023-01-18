@@ -4,16 +4,14 @@ use std::{iter::Enumerate, ops::Index};
 use derive_more::Deref;
 use thiserror::Error;
 
-use crate::osd::dji::{Kind, Dimensions};
 use crate::osd;
 
-use super::FontVariant;
-
+use super::{FontVariant, Dimensions, Kind};
 
 pub type TileIndex = u16;
 
 // frame payloads are always 1320*2=2640 bytes representing a 60x22 grid which corresponds to the FakeHD OSD format
-pub const TILE_INDICES_DIMENSIONS_TILES: Dimensions = Kind::FakeHD.dimensions_tiles();
+pub const TILE_INDICES_DIMENSIONS_TILES: Dimensions = Kind::DJI_FakeHD.dimensions_tiles();
 
 #[derive(Debug, Error)]
 #[error("unknown OSD item for `{font_variant}` font variant: {item_name}")]

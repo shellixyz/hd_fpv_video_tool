@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use getset::{CopyGetters, Getters};
 use strum::IntoEnumIterator;
 
-use super::dji::file::FontVariant;
-use super::dji::file::tile_indices::TileIndex;
 use super::Dimensions;
+use super::font_variant::FontVariant;
+use super::tile_indices::TileIndex;
 use crate::osd;
 
 #[derive(Debug, Clone, Copy, CopyGetters)]
@@ -31,12 +31,12 @@ pub struct LocationData {
 
 impl LocationData {
 
-    pub const fn new(name: &'static str, marker_tile_indices: &'static [TileIndex], top_left_offset_x: i8, top_left_offset_y: i8, width: u8, height: u8) -> Self {
+    pub const fn new(name: &'static str, marker_tile_indices: &'static [TileIndex], top_left_offset_x: i8, top_left_offset_y: i8, width: u32, height: u32) -> Self {
         Self {
             name,
             marker_tile_indices,
             top_left_offset: Offset::new(top_left_offset_x, top_left_offset_y),
-            dimensions: Dimensions { width , height }
+            dimensions: Dimensions { width, height }
         }
     }
 
@@ -50,16 +50,16 @@ impl LocationData {
 
 }
 
-const fn ld(name: &'static str, marker_tile_indices: &'static [TileIndex], width: u8) -> LocationData {
+const fn ld(name: &'static str, marker_tile_indices: &'static [TileIndex], width: u32) -> LocationData {
     LocationData::new(name, marker_tile_indices, 0, 0, width, 1)
 }
 
-const fn ldo(name: &'static str, marker_tile_indices: &'static [TileIndex], top_left_offset_x: i8, width: u8) -> LocationData {
+const fn ldo(name: &'static str, marker_tile_indices: &'static [TileIndex], top_left_offset_x: i8, width: u32) -> LocationData {
     LocationData::new(name, marker_tile_indices, top_left_offset_x, 0, width, 1)
 }
 
 #[allow(dead_code)]
-const fn lde(name: &'static str, marker_tile_indices: &'static [TileIndex], top_left_offset_x: i8, top_left_offset_y: i8, width: u8, height: u8) -> LocationData {
+const fn lde(name: &'static str, marker_tile_indices: &'static [TileIndex], top_left_offset_x: i8, top_left_offset_y: i8, width: u32, height: u32) -> LocationData {
     LocationData::new(name, marker_tile_indices, top_left_offset_x, top_left_offset_y, width, height)
 }
 

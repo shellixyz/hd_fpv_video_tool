@@ -3,14 +3,14 @@
 use hd_fpv_osd_font_tool::prelude::*;
 use strum::IntoEnumIterator;
 
-use super::DJIOSDKind;
 use super::Dimensions as OverlayFrameDimensions;
 
+use crate::osd;
 use crate::osd::dji::VideoResolutionTooSmallError;
 use crate::video::resolution::Resolution as VideoResolution;
 
 
-impl DJIOSDKind {
+impl osd::Kind {
 
     pub fn dimensions_pixels_for_tile_kind(&self, tile_kind: tile::Kind) -> OverlayFrameDimensions {
         self.dimensions_tiles() * tile_kind.dimensions()

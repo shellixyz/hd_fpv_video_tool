@@ -10,9 +10,9 @@ use rayon::iter::plumbing::Producer as RayonProducer;
 use rayon::iter::plumbing::UnindexedConsumer as RayonUnindexedConsumer;
 use strum::EnumIter;
 
-use super::{frame::Frame, tile_indices::TileIndex, FontVariant};
+use super::Frame;
 
-use crate::{video::FrameIndex as VideoFrameIndex, osd::dji::Kind};
+use crate::{video::FrameIndex as VideoFrameIndex, osd::{Kind, FontVariant, tile_indices::TileIndex}};
 
 
 #[derive(Deref, Clone, CopyGetters)]
@@ -607,7 +607,7 @@ mod tests {
     use rayon::iter::plumbing::Producer;
     use strum::IntoEnumIterator;
 
-    use crate::osd::dji::{file::{frame::Frame as OSDFileFrame, tile_indices::TileIndices, FontVariant}, Kind};
+    use crate::osd::{TileIndices, FontVariant, Kind};
 
     use super::{SortedUniqFrames, EndOfFramesAction, VideoFramesRelIndexIterItem, VideoFramesRelIndexIter, ParallelVideoFramesRelIndexIter};
 
@@ -659,8 +659,8 @@ mod tests {
 
     #[test]
     fn split_video_frames_rel_index_iter() {
-        let frames = [5, 8, 10, 11, 14].map(|index| OSDFileFrame::new(index, TileIndices::new(vec![])));
-        let frames = SortedUniqFrames::new(Kind::HD, FontVariant::Ardupilot, frames.to_vec());
+        let frames = [5, 8, 10, 11, 14].map(|index| super::Frame::new(index, TileIndices::new(vec![])));
+        let frames = SortedUniqFrames::new(Kind::DJI_HD, FontVariant::Ardupilot, frames.to_vec());
         for eof_action in EndOfFramesAction::iter() {
             for first_video_frame in 0..15 {
                 for last_video_frame in first_video_frame..18 {

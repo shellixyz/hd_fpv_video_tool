@@ -6,7 +6,7 @@ use anyhow::anyhow;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
 
-use crate::{prelude::ScalingArgs, video, osd::{dji::file::FontVariant, item::LocationData}};
+use crate::{prelude::ScalingArgs, video, osd::{item::LocationData, font_variant::FontVariant}};
 
 use super::{font_options::FontOptions, start_end_args::StartEndArgs};
 use crate::osd;

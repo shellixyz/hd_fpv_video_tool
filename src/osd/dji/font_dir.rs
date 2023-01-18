@@ -3,7 +3,7 @@ use std::path::{PathBuf, Path};
 
 use hd_fpv_osd_font_tool::prelude::*;
 
-use super::file::{FontVariant, tile_indices::TileIndex};
+use crate::osd::{font_variant::FontVariant, tile_indices::TileIndex};
 
 
 pub struct FontDir(PathBuf);

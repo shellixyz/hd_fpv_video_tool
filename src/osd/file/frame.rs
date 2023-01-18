@@ -1,24 +1,10 @@
-use byte_struct::*;
 use derive_more::Deref;
 use getset::{CopyGetters, Getters};
 
-use super::FontVariant;
-use super::tile_indices::{
-    TileIndices,
-    TileIndicesEnumeratorIter, UnknownOSDItem,
+use crate::{
+    osd::{Region, TileIndices, tile_indices::{TileIndicesEnumeratorIter, UnknownOSDItem}, FontVariant},
+    video
 };
-
-use crate::video::FrameIndex as VideoFrameIndex;
-use crate::osd;
-
-
-#[derive(ByteStruct, Debug, CopyGetters)]
-#[getset(get_copy = "pub")]
-#[byte_struct_le]
-pub struct Header {
-    frame_index: VideoFrameIndex,
-    data_len: u32
-}
 
 #[derive(Debug, CopyGetters, Getters, Deref, Clone, PartialEq, Eq)]
 pub struct Frame {
@@ -31,7 +17,7 @@ pub struct Frame {
 
 impl Frame {
 
-    pub fn new(index: VideoFrameIndex, tile_indices: TileIndices) -> Self {
+    pub fn new(index: video::FrameIndex, tile_indices: TileIndices) -> Self {
         Self { index, tile_indices }
     }
 
@@ -39,7 +25,7 @@ impl Frame {
         self.tile_indices().enumerate()
     }
 
-    pub fn with_erased_regions(&self, regions: &[osd::Region]) -> Self {
+    pub fn with_erased_regions(&self, regions: &[Region]) -> Self {
         let mut tile_indices = self.tile_indices.clone();
         tile_indices.erase_regions(regions);
         Self::new(self.index, tile_indices)

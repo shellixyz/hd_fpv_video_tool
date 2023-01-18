@@ -44,24 +44,20 @@ use crate::{
     video::{
         FrameIndex as VideoFrameIndex,
         resolution::Resolution as VideoResolution, timestamp::{Timestamp, StartEndOverlayFrameIndex},
-    }, osd::dji::file::sorted_frames::{GetFramesExt, EndOfFramesAction},
+    }, osd::file::sorted_frames::EndOfFramesAction,
 };
 
 use super::{
+    file::{
+        Frame as OSDFileFrame,
+        SortedUniqFrames as OSDFileSortedFrames,
+    },
     dji::{
-        Kind as DJIOSDKind,
         VideoResolutionTooSmallError,
         font_dir::FontDir,
-        file::{
-            ReadError,
-            frame::{
-                Frame as OSDFileFrame,
-            },
-            sorted_frames::{SortedUniqFrames as OSDFileSortedFrames, VideoFramesIter}, FontVariant, tile_indices::UnknownOSDItem,
-        },
     },
     Region,
-    tile_resize::ResizeTiles,
+    tile_resize::ResizeTiles, font_variant::FontVariant, file::{ReadError, sorted_frames::{GetFramesExt, VideoFramesIter}}, tile_indices::UnknownOSDItem,
 };
 
 use self::scaling::Scaling;
@@ -87,7 +83,7 @@ impl Frame {
 }
 
 
-impl OSDFileFrame {
+impl super::file::Frame {
 
     fn draw_overlay_frame(&self, dimensions: Dimensions, font_variant: FontVariant, tile_images: &[tile::Image], hidden_regions: &[Region], hidden_items: &[impl AsRef<str>]) -> Result<Frame, UnknownOSDItem> {
         let (tiles_width, tiles_height) = tile_images.first().unwrap().dimensions();
@@ -117,7 +113,7 @@ pub enum DrawFrameOverlayError {
     #[error("failed to load font file: {0}")]
     FontLoadError(bin_file::LoadError),
     #[error("video resolution {video_resolution} too small to render {osd_kind} OSD kind without scaling")]
-    VideoResolutionTooSmallError{ osd_kind: DJIOSDKind, video_resolution: VideoResolution },
+    VideoResolutionTooSmallError{ osd_kind: super::Kind, video_resolution: VideoResolution },
 }
 
 pub fn format_overlay_frame_file_index(frame_index: VideoFrameIndex) -> String {
@@ -219,7 +215,7 @@ impl From<SendFramesToFFMpegError> for GenerateOverlayVideoError {
     }
 }
 
-fn best_settings_for_requested_scaling(osd_kind: DJIOSDKind, scaling: &Scaling) -> Result<(Dimensions, tile::Kind, Option<TileDimensions>), DrawFrameOverlayError> {
+fn best_settings_for_requested_scaling(osd_kind: super::Kind, scaling: &Scaling) -> Result<(Dimensions, tile::Kind, Option<TileDimensions>), DrawFrameOverlayError> {
     Ok(match *scaling {
 
         Scaling::No { target_resolution } => {
@@ -366,7 +362,7 @@ impl<'a> Generator<'a> {
         let abs_output_dir_path = path.as_ref().absolutize().unwrap();
 
         iter.progress_with(progress_bar).try_for_each(|item| {
-            use crate::osd::dji::file::sorted_frames::VideoFramesRelIndexIterItem::*;
+            use crate::osd::file::sorted_frames::VideoFramesRelIndexIterItem::*;
             match item {
                 Existing { rel_index, frame } => {
                     log::debug!("existing {}", &rel_index);
