@@ -31,7 +31,7 @@ use crate::{
         },
         Kind,
         TileIndices,
-        TileIndex,
+        TileIndex, tile_indices,
     },
     video::FrameIndex as VideoFrameIndex,
 };
@@ -98,19 +98,18 @@ impl From<FileHeaderRaw> for FileHeader {
 #[derive(ByteStruct, Debug, CopyGetters)]
 #[getset(get_copy = "pub")]
 #[byte_struct_le]
-pub struct FrameHeader {
+pub struct FrameRaw {
     frame_timestamp: u32, // *100µs
+    tile_indices: [[u16; DIMENSIONS.width as usize]; DIMENSIONS.height as usize],
 }
 
-impl FrameHeader {
+impl FrameRaw {
     pub fn frame_index(&self) -> VideoFrameIndex {
-        (self.frame_timestamp as f64 * 60.0 / 10_000.0).round() as VideoFrameIndex
+        (self.frame_timestamp as f64 * 60.0 / 1_000.0).round() as VideoFrameIndex
     }
 }
 
 const FIRST_FRAME_FILE_POS: u64 = FileHeaderRaw::BYTE_LEN as u64;
-const FRAME_DATA_LEN: usize = 1060;
-const FRAME_BYTE_LEN: usize = FrameHeader::BYTE_LEN + 2 * FRAME_DATA_LEN;
 
 #[derive(Getters)]
 pub struct Reader {
@@ -134,46 +133,11 @@ impl Reader {
         if header.osd_dimensions != DIMENSIONS {
             return Err(OpenError::InvalidHeader(file_path.as_ref().to_owned()));
         }
-        if (file.metadata()?.len() - FileHeaderRaw::BYTE_LEN as u64) % FRAME_BYTE_LEN as u64 != 0 {
+        if (file.metadata()?.len() - FileHeaderRaw::BYTE_LEN as u64) % FrameRaw::BYTE_LEN as u64 != 0 {
             return Err(OpenError::InvalidSize(file_path.as_ref().to_owned()));
         }
         Ok(Self { file, header })
     }
-
-    fn read_frame_header(&mut self) -> Result<Option<FrameHeader>, ReadError> {
-        let mut frame_header_bytes = [0; FrameHeader::BYTE_LEN];
-        match self.file.read(&mut frame_header_bytes)? {
-            0 => Ok(None),
-            FrameHeader::BYTE_LEN => Ok(Some(FrameHeader::read_bytes(&frame_header_bytes))),
-            _ => Err(ReadError::unexpected_eof(self.file.path()))
-        }
-    }
-
-    // pub fn read_frame(&mut self) -> Result<Option<Frame>, ReadError> {
-    //     let header = match self.read_frame_header()? {
-    //         Some(header) => header,
-    //         None => return Ok(None),
-    //     };
-    //     let mut data_bytes= vec![0; FRAME_DATA_LEN * 2];
-    //     self.file.read_exact(&mut data_bytes)?;
-    //     let tile_indices = TileIndices::new(data_bytes.chunks_exact(u16::BYTE_LEN)
-    //         .map(|bytes| u16::from_le_bytes(bytes.try_into().unwrap())).collect());
-    //     Ok(Some(Frame::new(header.frame_index(), tile_indices)))
-    // }
-
-    // pub fn frames(&mut self) -> Result<SortedUniqFrames, ReadError> {
-    //     self.rewind()?;
-    //     let font_variant = self.header.font_variant();
-    //     let mut frames = vec![];
-    //     for frame_read_result in self {
-    //         match frame_read_result {
-    //             Ok(frame) => frames.push(frame),
-    //             Err(error) => return Err(error),
-    //         }
-    //     }
-    //     let frames = frames.into_iter().sorted_unstable_by_key(Frame::index).unique_by(Frame::index).collect();
-    //     Ok(SortedUniqFrames::new(Kind::WSA, font_variant, frames))
-    // }
 
     pub fn rewind(&mut self) -> Result<(), IOError> {
         self.file.seek(SeekFrom::Start(FIRST_FRAME_FILE_POS))?;
@@ -189,20 +153,6 @@ impl Reader {
         return_value
     }
 
-    // pub fn last_frame_frame_index(&mut self) -> Result<u32, ReadError> {
-    //     self.keep_position_do(|reader| {
-    //         Ok(reader.frames()?.last().unwrap().index())
-    //     })
-    // }
-
-    // pub fn max_used_tile_index(&mut self) -> Result<TileIndex, ReadError> {
-    //     self.keep_position_do(|reader| {
-    //         Ok(*reader.frames()?.iter().flat_map(|frame|
-    //             frame.tile_indices().as_slice()
-    //         ).max().unwrap())
-    //     })
-    // }
-
     pub fn iter(&mut self) -> Iter {
         self.into_iter()
     }
@@ -211,15 +161,25 @@ impl Reader {
 
 impl GenericReader for Reader {
     fn read_frame(&mut self) -> Result<Option<Frame>, ReadError> {
-        let header = match self.read_frame_header()? {
-            Some(header) => header,
-            None => return Ok(None),
+        let mut frame_raw_bytes = [0; FrameRaw::BYTE_LEN];
+        let frame_raw = match self.file.read(&mut frame_raw_bytes)? {
+            0 => return Ok(None),
+            FrameRaw::BYTE_LEN => FrameRaw::read_bytes(&frame_raw_bytes),
+            _ => return Err(ReadError::unexpected_eof(self.file.path()))
         };
-        let mut data_bytes= vec![0; FRAME_DATA_LEN * 2];
-        self.file.read_exact(&mut data_bytes)?;
-        let tile_indices = TileIndices::new(data_bytes.chunks_exact(u16::BYTE_LEN)
-            .map(|bytes| u16::from_le_bytes(bytes.try_into().unwrap())).collect());
-        Ok(Some(Frame::new(header.frame_index(), tile_indices)))
+        let mut tile_indices = Vec::with_capacity(tile_indices::COUNT);
+        let (x_range, y_range) = (0..DIMENSIONS.width as usize, 0..DIMENSIONS.height as usize);
+        for x in 0..tile_indices::DIMENSIONS.width as usize {
+            for y in 0..tile_indices::DIMENSIONS.height as usize {
+                if x_range.contains(&x) && y_range.contains(&y) {
+                    // let index = x + y * DIMENSIONS.width as usize;
+                    tile_indices.push(frame_raw.tile_indices[y][x]);
+                } else {
+                    tile_indices.push(0);
+                }
+            }
+        }
+        Ok(Some(Frame::new(frame_raw.frame_index(), TileIndices::new(tile_indices))))
     }
 
     fn frames(&mut self) -> Result<SortedUniqFrames, ReadError> {

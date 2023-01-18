@@ -89,12 +89,19 @@ impl Frame {
 impl super::file::Frame {
 
     fn draw_overlay_frame(&self, dimensions: Dimensions, font_variant: FontVariant, tile_images: &[tile::Image], hidden_regions: &[Region], hidden_items: &[impl AsRef<str>]) -> Result<Frame, UnknownOSDItem> {
+        // dbg!(dimensions);
+        // dbg!(font_variant);
         let (tiles_width, tiles_height) = tile_images.first().unwrap().dimensions();
+        // dbg!(tiles_width);
+        // dbg!(tiles_height);
+        // dbg!(self.tile_indices().len());
+        // dbg!(self.tile_indices().iter().enumerate().collect_vec());
         let mut frame = Frame::new(dimensions);
         let mut tile_indices = self.tile_indices().clone();
         tile_indices.erase_regions(hidden_regions);
         tile_indices.erase_osd_items(font_variant, hidden_items)?;
         for (osd_coordinates, tile_index) in tile_indices.enumerate() {
+            // dbg!(&osd_coordinates);
             frame.copy_from(
                 &tile_images[tile_index as usize],
                 osd_coordinates.x as u32 * tiles_width,

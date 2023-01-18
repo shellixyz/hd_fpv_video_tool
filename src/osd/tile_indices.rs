@@ -11,7 +11,8 @@ use super::{FontVariant, Dimensions, Kind};
 pub type TileIndex = u16;
 
 // frame payloads are always 1320*2=2640 bytes representing a 60x22 grid which corresponds to the FakeHD OSD format
-pub const TILE_INDICES_DIMENSIONS_TILES: Dimensions = Kind::DJI_FakeHD.dimensions_tiles();
+pub const DIMENSIONS: Dimensions = Kind::DJI_FakeHD.dimensions_tiles();
+pub const COUNT: usize = DIMENSIONS.width as usize * DIMENSIONS.height as usize;
 
 #[derive(Debug, Error)]
 #[error("unknown OSD item for `{font_variant}` font variant: {item_name}")]
@@ -34,13 +35,13 @@ impl TileIndices {
     }
 
     fn screen_coordinates_to_index(x: osd::Coordinate, y: osd::Coordinate) -> usize {
-        y as usize + x as usize * TILE_INDICES_DIMENSIONS_TILES.height as usize
+        y as usize + x as usize * DIMENSIONS.height as usize
     }
 
     fn index_to_screen_coordinates(index: usize) -> osd::Coordinates {
         osd::Coordinates::new(
-            (index / TILE_INDICES_DIMENSIONS_TILES.height as usize) as osd::Coordinate,
-            (index % TILE_INDICES_DIMENSIONS_TILES.height as usize) as osd::Coordinate
+            (index / DIMENSIONS.height as usize) as osd::Coordinate,
+            (index % DIMENSIONS.height as usize) as osd::Coordinate
         )
     }
 
