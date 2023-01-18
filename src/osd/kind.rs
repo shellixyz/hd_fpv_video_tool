@@ -3,7 +3,7 @@
 use hd_fpv_osd_font_tool::prelude::tile;
 use thiserror::Error;
 
-use super::{dji, Dimensions};
+use super::{dji, wsa, Dimensions};
 
 
 #[derive(Debug, strum::Display, Clone, Copy)]
@@ -11,7 +11,8 @@ use super::{dji, Dimensions};
 pub enum Kind {
     DJI_SD,
     DJI_FakeHD,
-    DJI_HD
+    DJI_HD,
+    WSA,
 }
 
 impl Kind {
@@ -22,6 +23,7 @@ impl Kind {
             DJI_SD => dji::dimensions::SD,
             DJI_FakeHD => dji::dimensions::FAKE_HD,
             DJI_HD => dji::dimensions::HD,
+            WSA => wsa::DIMENSIONS,
         }
     }
 
@@ -31,6 +33,7 @@ impl Kind {
             DJI_SD => tile::Kind::SD,
             DJI_FakeHD => tile::Kind::HD,
             DJI_HD => tile::Kind::HD,
+            WSA => tile::Kind::SD,
         }
     }
 

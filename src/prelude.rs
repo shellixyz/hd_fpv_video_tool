@@ -8,6 +8,7 @@ pub use crate::{
     },
     file,
     osd::{
+        self,
         FontDir,
         Dimensions as OSDDimensions,
         dji::{

@@ -18,7 +18,7 @@ use crate::osd::overlay::SendFramesToFFMpegError;
 use crate::osd::tile_indices::UnknownOSDItem;
 use crate::{prelude::*, osd::overlay::scaling::ScalingArgsError};
 use crate::{prelude::{TranscodeVideoArgs, Scaling}, cli::transcode_video_args::TranscodeVideoOSDArgs};
-use crate::osd::file::ReadError as OSDFileReadError;
+use crate::osd::file::{ReadError as OSDFileReadError, GenericReader};
 use crate::ffmpeg;
 pub use self::probe::probe;
 use crate::process::Command as ProcessCommand;

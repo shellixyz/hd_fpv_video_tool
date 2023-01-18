@@ -5,7 +5,7 @@ use clap::Args;
 use getset::{Getters, CopyGetters};
 use thiserror::Error;
 
-use crate::{osd::{self, overlay::scaling::OSDScalingArgs, dji::file::find_associated_to_video_file}, video};
+use crate::{osd::{self, overlay::scaling::OSDScalingArgs, file::find_associated_to_video_file}, video};
 
 use super::{font_options::OSDFontOptions, start_end_args::StartEndArgs, generate_overlay_args};
 

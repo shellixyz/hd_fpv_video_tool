@@ -15,7 +15,7 @@ use strum::IntoEnumIterator;
 use anyhow::anyhow;
 
 
-use dji_fpv_video_tool::prelude::*;
+use dji_fpv_video_tool::{prelude::*, osd::file::GenericReader};
 mod shell_autocompletion;
 mod man_pages;
 mod cli;
@@ -24,15 +24,27 @@ use {cli::*, man_pages::*, shell_autocompletion::*};
 
 
 fn display_osd_file_info_command<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
-    let mut file = OSDFileReader::open(&path)?;
-    let frames = file.frames()?;
-    let header = file.header();
+    let mut reader = osd::file::open(path)?;
+
     println!();
-    println!("Format version: {}", header.format_version());
-    println!("OSD size: {} tiles", header.osd_dimensions());
-    println!("OSD tiles dimension: {} px", header.tile_dimensions());
-    println!("OSD video offset: {} px", header.offset());
-    println!("OSD Font variant: {} ({})", header.font_variant_id(), header.font_variant());
+    match &reader {
+        osd::file::Reader::DJI(reader) => {
+            let header = reader.header();
+            println!("OSD file type: DJI FPV");
+            println!("Format version: {}", header.format_version());
+            println!("OSD size: {} tiles", header.osd_dimensions());
+            println!("OSD tiles dimension: {} px", header.tile_dimensions());
+            println!("OSD video offset: {} px", header.offset());
+            println!("OSD Font variant: {} ({})", header.font_variant_id(), header.font_variant());
+        },
+        osd::file::Reader::WSA(reader) => {
+            let header = reader.header();
+            println!("OSD file type: Walksnail Avatar");
+            println!("OSD Font variant: {} ({})", header.font_variant_id(), header.font_variant());
+        },
+    }
+
+    let frames = reader.frames()?;
     println!("Number of OSD frames: {}", frames.len());
     if let Some(last_frame) = frames.last() {
         println!("Highest video frame index: {}", last_frame.index());
