@@ -1,12 +1,12 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH dji_fpv_video_tool 1  "dji_fpv_video_tool 1.0.0" 
+.TH hd_fpv_video_tool 1  "hd_fpv_video_tool 1.0.0" 
 .SH NAME
-dji_fpv_video_tool \- A software tool to manipulate video files and OSD files recoded with the DJI FPV system
+hd_fpv_video_tool \- A software tool to manipulate video files and OSD files recoded with the DJI FPV system
 .SH SYNOPSIS
-\fBdji_fpv_video_tool\fR [\fB\-l\fR|\fB\-\-log\-level\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+\fBhd_fpv_video_tool\fR [\fB\-l\fR|\fB\-\-log\-level\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
 .SH DESCRIPTION
-dji_fpv_video_tool is a command line tool for manipulating video files and OSD files recorded with the DJI FPV system
+hd_fpv_video_tool is a command line tool for manipulating video files and OSD files recorded with the DJI and Walksnail Avatar FPV systems
 .PP
 Author: Michel Pastor <shellixyz@gmail.com>
 .PP
@@ -25,28 +25,28 @@ Print help information (use `\-h` for a summary)
 Print version information
 .SH SUBCOMMANDS
 .TP
-dji_fpv_video_tool\-display\-osd\-file\-info(1)
+hd_fpv_video_tool\-display\-osd\-file\-info(1)
 Display information about the specified OSD file
 .TP
-dji_fpv_video_tool\-generate\-overlay\-frames(1)
+hd_fpv_video_tool\-generate\-overlay\-frames(1)
 Generate a transparent overlay frame sequence as PNG files from a .osd file
 .TP
-dji_fpv_video_tool\-generate\-overlay\-video(1)
+hd_fpv_video_tool\-generate\-overlay\-video(1)
 Generate an OSD overlay video to be displayed over another video
 .TP
-dji_fpv_video_tool\-cut\-video(1)
+hd_fpv_video_tool\-cut\-video(1)
 Cut a video file without transcoding by specifying the desired start and/or end timestamp
 .TP
-dji_fpv_video_tool\-fix\-video\-audio(1)
+hd_fpv_video_tool\-fix\-video\-audio(1)
 Fix a DJI Air Unit video\*(Aqs audio sync and/or volume
 .TP
-dji_fpv_video_tool\-transcode\-video(1)
+hd_fpv_video_tool\-transcode\-video(1)
 Transcode a video file, optionally burning the OSD onto it
 .TP
-dji_fpv_video_tool\-play\-video\-with\-osd(1)
+hd_fpv_video_tool\-play\-video\-with\-osd(1)
 Play a video with OSD by overlaying a transparent OSD video in real time
 .TP
-dji_fpv_video_tool\-help(1)
+hd_fpv_video_tool\-help(1)
 Print this message or the help of the given subcommand(s)
 .SH VERSION
 v1.0.0

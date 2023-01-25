@@ -52,7 +52,7 @@ For example the `generate-overlay-video` command can also be called with the `go
 
 ### OSD fonts
 
-To generate OSD overlays the OSD fonts are needed. The same OSD font files you are using on your goggles can be used. You can put the files inside the `~/.local/share/dji_fpv_video_tool/fonts` directory so that the program will use them automatically. You can also put them in any location on your filesystem and tell the program where to look using the `DJI_OSD_FONTS_DIR` environment variable or using the `--font-dir` or `--osd-font-dir` options depending on the command.
+To generate OSD overlays the OSD fonts are needed. The same OSD font files you are using on your goggles can be used. You can put the files inside the `~/.local/share/hd_fpv_video_tool/fonts` directory so that the program will use them automatically. You can also put them in any location on your filesystem and tell the program where to look using the `DJI_OSD_FONTS_DIR` environment variable or using the `--font-dir` or `--osd-font-dir` options depending on the command.
 
 ### Example usage
 
@@ -65,33 +65,33 @@ For these examples we are assuming that:
 
 #### Transcoding a video and burning the OSD onto it
 
-`dji_fpv_video_tool transcode-video --osd DJIG0000.mp4`
+`hd_fpv_video_tool transcode-video --osd DJIG0000.mp4`
 
 Will automatically use the `DJIG0000.osd` file in the same directory as the video and automatically select a name for the output file: `DJIG0000_transcoded.mp4`. The OSD file can automatically be found if it is named with the same `DJIGXXXX` prefix as the video file or with the same name but with `.osd` extension. You can also specify the OSD file to use and the output file name manually. The default encoder is `libx265` so the output is encoded with the H.265 codec but the video encoder used can be selected with the `--video-encoder` option. The above command is equivalent to:
 
-`dji_fpv_video_tool transcode-video --osd-file DJIG0000.osd DJIG0000.mp4 DJIG0000_transcoded.mp4`
+`hd_fpv_video_tool transcode-video --osd-file DJIG0000.osd DJIG0000.mp4 DJIG0000_transcoded.mp4`
 
 If you want to burn the OSD onto a video coming from a DJI FPV air unit with video you can do so while also fixing the audio synchronization and volume using this command:
 
-`dji_fpv_video_tool transcode-video --fix-audio --osd DJIU0000.mp4`
+`hd_fpv_video_tool transcode-video --fix-audio --osd DJIU0000.mp4`
 
-Run `dji_fpv_video_tool transcode-video --help` or `dji_fpv_video_tool help transcode-video` for a list of all the options available for this command.
+Run `hd_fpv_video_tool transcode-video --help` or `hd_fpv_video_tool help transcode-video` for a list of all the options available for this command.
 
 #### Generating a transparent OSD overlay video and playing an unmodified video with OSD
 
 First we need to generate the transparent OSD overlay video:
 
-`dji_fpv_video_tool generate-overlay-video --target-video-file DJIG0000.mp4 DJIG0000.osd`
+`hd_fpv_video_tool generate-overlay-video --target-video-file DJIG0000.mp4 DJIG0000.osd`
 
 This command will encode a transparent OSD overlay video encoded with the VP8 coded by default and write it into the `DJIG0000_osd.webm` file. The original video `DJIG0000.mp4` will not be modified. It is only used to choose the right resolution and OSD scaling for the output video. We can then use the `play-video-with-osd` command to play the `DJIG0000.mp4` file with overlayed OSD:
 
-`dji_fpv_video_tool play-video-with-osd DJIG0000.mp4`
+`hd_fpv_video_tool play-video-with-osd DJIG0000.mp4`
 
 ## Installation
 
 ### Easiest way
 
-The easiest way is to use the AppImage provided in the [latest release](https://github.com/shellixyz/dji_fpv_video_tool/releases/latest). It includes all the necessary dependencies. It can be put anywhere on your filesystem, just make it executable and run it. The only disadvantage of this method is that since the AppImage file contains all the dependencies so it is fairly big.
+The easiest way is to use the AppImage provided in the [latest release](https://github.com/shellixyz/hd_fpv_video_tool/releases/latest). It includes all the necessary dependencies. It can be put anywhere on your filesystem, just make it executable and run it. The only disadvantage of this method is that since the AppImage file contains all the dependencies so it is fairly big.
 
 Note that the generated AppImage files have only been tested on Fedora and Ubuntu and that on you may still need to install `libfuse` v2 for it to work without using the `--appimage-extract` option. To install `libfuse` on Debian and derivatives like Ubuntu use this command: `sudo apt-get install -y libfuse2`.
 
@@ -124,7 +124,7 @@ It should work on MacOSX but I do not have access to a machine with MacOSX to te
 
 #### Building
 
-`cargo install --locked https://github.com/shellixyz/dji_fpv_video_tool.git dji_fpv_video_tool`
+`cargo install --locked https://github.com/shellixyz/hd_fpv_video_tool.git hd_fpv_video_tool`
 
 #### Run-time dependencies
 

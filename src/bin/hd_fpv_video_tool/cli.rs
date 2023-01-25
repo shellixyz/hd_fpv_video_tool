@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use dji_fpv_video_tool::prelude::*;
+use hd_fpv_video_tool::prelude::*;
 use getset::CopyGetters;
 
 use crate::shell_autocompletion::*;
 
-/// dji_fpv_video_tool is a command line tool for manipulating video files and OSD files recorded with the DJI FPV system
+/// hd_fpv_video_tool is a command line tool for manipulating video files and OSD files recorded with the DJI and Walksnail Avatar FPV systems
 ///
 /// Author: Michel Pastor <shellixyz@gmail.com>
 ///

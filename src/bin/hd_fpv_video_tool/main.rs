@@ -15,7 +15,7 @@ use strum::IntoEnumIterator;
 use anyhow::anyhow;
 
 
-use dji_fpv_video_tool::{prelude::*, osd::file::GenericReader};
+use hd_fpv_video_tool::{prelude::*, osd::file::GenericReader};
 mod shell_autocompletion;
 mod man_pages;
 mod cli;
