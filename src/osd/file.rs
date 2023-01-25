@@ -4,6 +4,7 @@ use std::{io::Error as IOError, path::{PathBuf, Path}};
 
 use derive_more::From;
 use thiserror::Error;
+use ambassador::{delegatable_trait, Delegate};
 
 pub mod frame;
 pub mod sorted_frames;
@@ -28,6 +29,7 @@ impl ReadError {
     }
 }
 
+#[delegatable_trait]
 pub trait GenericReader {
     fn read_frame(&mut self) -> Result<Option<Frame>, ReadError>;
     fn frames(&mut self) -> Result<SortedUniqFrames, ReadError>;
@@ -59,55 +61,11 @@ pub fn find_associated_to_video_file<P: AsRef<Path>>(video_file_path: P) -> Opti
     }
 }
 
+#[derive(Delegate)]
+#[delegate(GenericReader)]
 pub enum Reader {
-    DJI(super::dji::file::Reader),
-    WSA(super::wsa::file::Reader),
-}
-
-// impl Reader {
-//     pub fn frames(&mut self) -> Result<SortedUniqFrames, ReadError> {
-//         match self {
-//             Reader::DJI(reader) => reader.frames(),
-//             Reader::WSA(reader) => reader.frames(),
-//         }
-//     }
-// }
-
-impl GenericReader for Reader {
-    fn read_frame(&mut self) -> Result<Option<Frame>, ReadError> {
-        match self {
-            Reader::DJI(reader) => reader.read_frame(),
-            Reader::WSA(reader) => reader.read_frame(),
-        }
-    }
-
-    fn frames(&mut self) -> Result<SortedUniqFrames, ReadError> {
-        match self {
-            Reader::DJI(reader) => reader.frames(),
-            Reader::WSA(reader) => reader.frames(),
-        }
-    }
-
-    fn last_frame_frame_index(&mut self) -> Result<u32, ReadError> {
-        match self {
-            Reader::DJI(reader) => reader.last_frame_frame_index(),
-            Reader::WSA(reader) => reader.last_frame_frame_index(),
-        }
-    }
-
-    fn max_used_tile_index(&mut self) -> Result<TileIndex, ReadError> {
-        match self {
-            Reader::DJI(reader) => reader.max_used_tile_index(),
-            Reader::WSA(reader) => reader.max_used_tile_index(),
-        }
-    }
-
-    fn font_variant(&self) -> FontVariant {
-        match self {
-            Reader::DJI(reader) => reader.font_variant(),
-            Reader::WSA(reader) => reader.font_variant(),
-        }
-    }
+    DJI(crate::osd::dji::file::Reader),
+    WSA(crate::osd::wsa::file::Reader),
 }
 
 #[derive(Debug, Error)]

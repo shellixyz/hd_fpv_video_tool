@@ -43,6 +43,7 @@ home = "0.5.4"
 indoc = "1.0.7"
 ringbuffer = "0.10.0"
 fs-err = { git = "https://github.com/shellixyz/fs-err", branch = "custom", version = "3.0.0" }
+ambassador = "0.3.5"
 
 [profile.release]
 panic = 'abort'
