@@ -57,11 +57,12 @@ To generate OSD overlays the OSD fonts are needed. The same OSD font files you a
 ### Example usage
 
 For these examples we are assuming that:
+
 - You have installed the fonts in the default directory so that they will be found automatically
 - These files are present in the current directory:
-    - DJIG0000.osd (the OSD file recorded by your goggles hacked with FPV.WTF)
-    - DJIG0000.mp4 (video recorded by your goggles)
-    - DJIU0000.mp4 (video recorded by your air unit if it has the capability)
+  - DJIG0000.osd (the OSD file recorded by your goggles hacked with FPV.WTF)
+  - DJIG0000.mp4 (video recorded by your goggles)
+  - DJIU0000.mp4 (video recorded by your air unit if it has the capability)
 
 #### Transcoding a video and burning the OSD onto it
 
@@ -137,7 +138,7 @@ It should work on MacOSX but I do not have access to a machine with MacOSX to te
 
 Note that you probably want to instead install ffmpeg from RPM fusion on Fedora which has support for more codecs:
 
-```
+```shell
 sudo dnf install "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
 sudo dnf install -y ffmpeg
 ```
