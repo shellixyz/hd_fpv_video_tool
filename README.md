@@ -1,10 +1,9 @@
-# DJI FPV video tool
+# HD FPV video tool
 
 ## What it is and what it can be used for
 
-It is a unix compatible command line tool intended to be used for various tasks related to modifying videos recorded with the
-DJI FPV video system (but also works with other video sources) and working with `.osd` files recorded by DJI goggles hacked thanks
-to the [FPV.WTF](https://github.com/fpv-wtf) project. This project is not affiliated to the DJI company in any way.
+It is a Unix compatible command line tool intended to be used for various tasks related to modifying videos recorded with the
+DJI and Walksnail Avatar FPV video systems (but also works with other video sources) and working with `.osd` files recorded onto the goggles.
 
 ## How to use
 
@@ -17,13 +16,13 @@ Displays information about the specified OSD file like the recorded OSD layout a
 #### generate-overlay-frames
 
 Generates OSD overlay frames.
-This command generates numbered OSD frame images from the specified WTF.FPV OSD file and writes them into the specified output directory.
+This command generates numbered OSD frame images from the specified OSD file and writes them into the specified output directory.
 
 Use this command when you want to generate OSD frame images to check what the OSD looks like or when you want to manually burn the OSD onto a video.
 
 #### generate-overlay-video
 
-Generates an OSD overlay video. This command generates a transparent video with the OSD frames rendered from the specified WTF.FPV OSD file.  The generated video can then be used to play an FPV video with OSD without having to burn the OSD into the video using the `play-video-with-osd` command (or any other video player which can overlay a VP8/9 transparent video other another video in real time).
+Generates an OSD overlay video. This command generates a transparent video with the OSD frames rendered from the specified OSD file.  The generated video can then be used to play an FPV video with OSD without having to burn the OSD into the video using the `play-video-with-osd` command (or any other video player which can overlay a VP8/9 transparent video other another video in real time).
 
 #### cut-video
 
