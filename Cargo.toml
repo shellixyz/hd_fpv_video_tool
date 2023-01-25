@@ -1,6 +1,6 @@
 [package]
 name = "hd_fpv_video_tool"
-description = "A software tool to manipulate video files and OSD files recoded with the DJI FPV system"
+description = "A software tool to manipulate video files and OSD files recoded with the DJI and Walksnail Avatar FPV systems"
 version = "1.0.0"
 edition = "2021"
 license = "GPL-2.0-only"
