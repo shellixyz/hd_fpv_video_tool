@@ -119,21 +119,21 @@ pub fn open(path: impl AsRef<Path>) -> Result<Reader, UnrecognizedOSDFile> {
     if let Some(file_stem) = path.file_stem() {
         let file_stem = file_stem.to_string_lossy();
         if file_stem.starts_with("DJIG") {
-            if let Ok(reader) = super::dji::file::Reader::open(&path) {
+            if let Ok(reader) = super::dji::file::Reader::open(path) {
                 return Ok(Reader::DJI(reader));
             }
         } else if file_stem.starts_with("AvatarG") {
-            if let Ok(reader) = super::wsa::file::Reader::open(&path) {
+            if let Ok(reader) = super::wsa::file::Reader::open(path) {
                 return Ok(Reader::WSA(reader));
             }
         }
     }
 
-    if let Ok(reader) = super::dji::file::Reader::open(&path) {
+    if let Ok(reader) = super::dji::file::Reader::open(path) {
         return Ok(Reader::DJI(reader));
     }
 
-    if let Ok(reader) = super::wsa::file::Reader::open(&path) {
+    if let Ok(reader) = super::wsa::file::Reader::open(path) {
         return Ok(Reader::WSA(reader));
     }
 

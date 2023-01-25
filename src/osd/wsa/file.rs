@@ -172,7 +172,6 @@ impl GenericReader for Reader {
         for x in 0..tile_indices::DIMENSIONS.width as usize {
             for y in 0..tile_indices::DIMENSIONS.height as usize {
                 if x_range.contains(&x) && y_range.contains(&y) {
-                    // let index = x + y * DIMENSIONS.width as usize;
                     tile_indices.push(frame_raw.tile_indices[y][x]);
                 } else {
                     tile_indices.push(0);
