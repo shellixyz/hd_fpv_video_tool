@@ -124,7 +124,7 @@ It should work on MacOSX but I do not have access to a machine with MacOSX to te
 
 #### Building
 
-`cargo install --locked https://github.com/shellixyz/hd_fpv_video_tool.git hd_fpv_video_tool`
+`cargo install --locked --git https://github.com/shellixyz/hd_fpv_video_tool.git hd_fpv_video_tool`
 
 #### Run-time dependencies
 
