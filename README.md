@@ -51,7 +51,11 @@ For example the `generate-overlay-video` command can also be called with the `go
 
 ### OSD fonts
 
-To generate OSD overlays the [OSD fonts are needed](https://github.com/fpv-wtf/msp-osd/tree/main/fonts). The same OSD font files you are using on your goggles can be used. You can put the files inside the `~/.local/share/hd_fpv_video_tool/fonts` directory so that the program will use them automatically. You can also put them in any location on your filesystem and tell the program where to look using the `DJI_OSD_FONTS_DIR` environment variable or using the `--font-dir` or `--osd-font-dir` options depending on the command.
+To generate OSD overlays the OSD fonts in WTF.FPV bin format are needed. This program is using the fonts in the WTF.FPV bin format for rendering the OSD for both the DJI and Walksnail system. If needed you can convert your custom OSD font from Walksnail format to WTF.FPV bin format using [hd_fpv_osd_font_tool](https://github.com/shellixyz/hd_fpv_osd_font_tool). If you are using DJI goggles the same OSD font files you are using on your goggles can be used. You can put the files inside the `~/.local/share/hd_fpv_video_tool/fonts` directory so that the program will use them automatically. You can also put them in any location on your filesystem and tell the program where to look using the `DJI_OSD_FONTS_DIR` environment variable or using the `--font-dir` or `--osd-font-dir` options depending on the command.
+
+* [Fonts from the WTF.FPV project](https://github.com/fpv-wtf/msp-osd/tree/main/fonts)
+* [Latest ArduPilot fonts](https://github.com/ArduPilot/ardupilot/tree/master/libraries/AP_OSD/fonts/HDFonts)
+* [Latest ArduCustom fonts](https://github.com/ArduCustom/ardupilot/tree/master_custom/libraries/AP_OSD/fonts/HDFonts/DJI)
 
 ### Example usage
 
