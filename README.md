@@ -51,7 +51,7 @@ For example the `generate-overlay-video` command can also be called with the `go
 
 ### OSD fonts
 
-To generate OSD overlays the OSD fonts are needed. The same OSD font files you are using on your goggles can be used. You can put the files inside the `~/.local/share/hd_fpv_video_tool/fonts` directory so that the program will use them automatically. You can also put them in any location on your filesystem and tell the program where to look using the `DJI_OSD_FONTS_DIR` environment variable or using the `--font-dir` or `--osd-font-dir` options depending on the command.
+To generate OSD overlays the [OSD fonts are needed](https://github.com/fpv-wtf/msp-osd/tree/main/fonts). The same OSD font files you are using on your goggles can be used. You can put the files inside the `~/.local/share/hd_fpv_video_tool/fonts` directory so that the program will use them automatically. You can also put them in any location on your filesystem and tell the program where to look using the `DJI_OSD_FONTS_DIR` environment variable or using the `--font-dir` or `--osd-font-dir` options depending on the command.
 
 ### Example usage
 
