@@ -122,9 +122,13 @@ then run
 
 `sudo apt-get install -y ffmpeg libav{format,util,filter,device}-dev clang pkg-config`
 
-##### On MacOSX
+##### On macOS
 
-It should work on MacOSX but I do not have access to a machine with MacOSX to test
+Install rust and ffmpeg packages with brew:
+
+`brew install rust ffmpeg`
+
+Then you can continue building the tool with cargo.
 
 #### Building
 
