@@ -75,7 +75,7 @@ Will automatically use the `DJIG0000.osd` file in the same directory as the vide
 
 `hd_fpv_video_tool transcode-video --osd-file DJIG0000.osd DJIG0000.mp4 DJIG0000_transcoded.mp4`
 
-If you want to burn the OSD onto a video coming from a DJI FPV air unit with video you can do so while also fixing the audio synchronization and volume using this command:
+If you want to burn the OSD onto a video coming from a DJI FPV air unit with audio you can do so while also fixing the audio synchronization and volume using this command:
 
 `hd_fpv_video_tool transcode-video --fix-audio --osd DJIU0000.mp4`
 
@@ -95,9 +95,9 @@ This command will encode a transparent OSD overlay video encoded with the VP8 co
 
 ### Easiest way
 
-The easiest way is to use the AppImage provided in the [latest release](https://github.com/shellixyz/hd_fpv_video_tool/releases/latest). It includes all the necessary dependencies. It can be put anywhere on your filesystem, just make it executable and run it. The only disadvantage of this method is that since the AppImage file contains all the dependencies so it is fairly big.
+The easiest way is to use the AppImage provided in the [latest release](https://github.com/shellixyz/hd_fpv_video_tool/releases/latest). It includes all the necessary dependencies. It can be put anywhere on your filesystem, just make it executable and run it. The only disadvantage of this method is that since the AppImage file contains all the dependencies it is fairly big.
 
-Note that the generated AppImage files have only been tested on Fedora and Ubuntu and that on you may still need to install `libfuse` v2 for it to work without using the `--appimage-extract` option. To install `libfuse` on Debian and derivatives like Ubuntu use this command: `sudo apt-get install -y libfuse2`.
+Note that the generated AppImage files have only been tested on Fedora and Ubuntu and that on some distros like Ubuntu you may still need to install `libfuse` v2 for it to work without using the `--appimage-extract` option. To install `libfuse` on Debian and derivatives like Ubuntu use this command: `sudo apt-get install -y libfuse2`.
 
 ### Building from source
 
