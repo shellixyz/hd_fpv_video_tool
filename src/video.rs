@@ -75,7 +75,10 @@ pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(input_video_file: P, output_vid
         Some(output_video_file) => {
             let output_video_file = output_video_file.as_ref();
             if input_video_file == output_video_file { return Err(CutVideoError::InputAndOutputFileIsTheSame) }
-            if input_video_file.extension() != output_video_file.extension() { return Err(CutVideoError::OutputHasADifferentExtensionThanInput) }
+            let (input_file_extension, output_file_extension) = (input_video_file.extension(), output_video_file.extension());
+            if input_file_extension.is_none() != output_file_extension.is_none() || matches!((input_file_extension, output_file_extension), (Some(i), Some(o)) if i.to_ascii_lowercase() != o.to_ascii_lowercase()) {
+                return Err(CutVideoError::OutputHasADifferentExtensionThanInput)
+            }
             output_video_file.to_path_buf()
         },
         None => {
@@ -180,7 +183,10 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(input_video_
         Some(output_video_file) => {
             let output_video_file = output_video_file.as_ref();
             if input_video_file == output_video_file { return Err(FixVideoFileAudioError::InputAndOutputFileIsTheSame) }
-            if input_video_file.extension() != output_video_file.extension() { return Err(FixVideoFileAudioError::OutputHasADifferentExtensionThanInput) }
+            let (input_file_extension, output_file_extension) = (input_video_file.extension(), output_video_file.extension());
+            if input_file_extension.is_none() != output_file_extension.is_none() || matches!((input_file_extension, output_file_extension), (Some(i), Some(o)) if i.to_ascii_lowercase() != o.to_ascii_lowercase()) {
+                return Err(FixVideoFileAudioError::OutputHasADifferentExtensionThanInput);
+            }
             output_video_file.to_path_buf()
         },
         None => {
