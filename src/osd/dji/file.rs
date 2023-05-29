@@ -263,13 +263,22 @@ impl GenericReader for Reader {
         let osd_kind = self.osd_kind;
         let font_variant = self.header.font_variant();
         let mut frames = vec![];
+        let osd_dimensions = self.header.osd_dimensions;
         for frame_read_result in self {
             match frame_read_result {
                 Ok(frame) => frames.push(frame),
                 Err(error) => return Err(error),
             }
         }
-        let frames = frames.into_iter().sorted_unstable_by_key(Frame::index).unique_by(Frame::index).collect();
+        let frames = frames.into_iter().sorted_unstable_by_key(Frame::index).unique_by(Frame::index).collect::<Vec<Frame>>();
+        'outer: for frame in frames.iter() {
+            for (coordinates, tile_index) in frame.enumerate_tile_indices() {
+                if tile_index > 0 && (coordinates.x as u32 >= osd_dimensions.width || coordinates.y as u32 >= osd_dimensions.height) {
+                    log::warn!("the OSD dimensions in the OSD file header do not seem to match the actual data in the file, the OSD might not be rendered fully");
+                    break 'outer;
+                }
+            }
+        }
         Ok(SortedUniqFrames::new(osd_kind, font_variant, frames))
     }
 
