@@ -53,7 +53,7 @@ use super::{
         SortedUniqFrames as OSDFileSortedFrames,
     },
     Region,
-    tile_resize::ResizeTiles, font_variant::FontVariant, file::{ReadError, sorted_frames::{GetFramesExt, VideoFramesIter}}, tile_indices::UnknownOSDItem, FontDir,
+    tile_resize::ResizeTiles, font_variant::FontVariant, file::{ReadError, sorted_frames::{GetFramesExt, VideoFramesIter, GetFrames}}, tile_indices::UnknownOSDItem, FontDir,
 };
 
 use self::scaling::Scaling;
@@ -95,8 +95,11 @@ impl super::file::Frame {
         tile_indices.erase_regions(hidden_regions);
         tile_indices.erase_osd_items(font_variant, hidden_items)?;
         for (osd_coordinates, tile_index) in tile_indices.enumerate() {
+            let Some(tile_image) = tile_images.get(tile_index as usize) else {
+                continue;
+            };
             frame.copy_from(
-                &tile_images[tile_index as usize],
+                &tile_image,
                 osd_coordinates.x as u32 * tiles_width,
                 osd_coordinates.y as u32 * tiles_height
             ).unwrap();
@@ -328,9 +331,26 @@ impl<'a> Generator<'a> {
             }
         }
 
+        Self::check_osd_file_frames_tile_indices(&osd_file_frames, &tile_images);
+
         let hidden_items = hidden_items.iter().map(String::as_str).collect();
 
         Ok(Self { osd_file_frames, tile_images, frame_dimensions: overlay_resolution, hidden_regions, hidden_items, font_variant })
+    }
+
+    fn check_osd_file_frames_tile_indices(osd_file_frames: &OSDFileSortedFrames, tile_images: &Vec<tile::Image>) {
+        let mut invalid_tile_indices = vec![];
+        for osd_frame in osd_file_frames.frames() {
+            for tile_index in osd_frame.tile_indices().iter() {
+                if *tile_index as usize > tile_images.len() - 1 {
+                    invalid_tile_indices.push(*tile_index);
+                }
+            }
+        }
+        if ! invalid_tile_indices.is_empty() {
+            let invalid_tile_indices_str = invalid_tile_indices.iter().map(u16::to_string).collect::<Vec<_>>().join(", ");
+            log::warn!("the OSD file contains invalid tile indices, it is probably corrupted: {}", invalid_tile_indices_str);
+        }
     }
 
     fn draw_frame(&self, osd_file_frame: &OSDFileFrame) -> Result<Frame, UnknownOSDItem> {
