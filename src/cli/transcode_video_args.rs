@@ -126,7 +126,7 @@ pub struct TranscodeVideoArgs {
     ///
     /// This value is directly passed to the `-c:a` FFMpeg argument.{n}
     /// Run `ffmpeg -encoders` for a list of available encoders
-    #[clap(long, value_parser, default_value = "libx265")]
+    #[clap(long, value_parser, default_value = "aac")]
     audio_encoder: String,
 
     /// max audio bitrate
