@@ -98,11 +98,15 @@ impl super::file::Frame {
             let Some(tile_image) = tile_images.get(tile_index as usize) else {
                 continue;
             };
-            frame.copy_from(
-                &tile_image,
-                osd_coordinates.x as u32 * tiles_width,
-                osd_coordinates.y as u32 * tiles_height
-            ).unwrap();
+            let x = osd_coordinates.x as u32 * tiles_width;
+            let y = osd_coordinates.y as u32 * tiles_height;
+            if x < frame.width() && y < frame.height() {
+                frame.copy_from(
+                    &tile_image,
+                    osd_coordinates.x as u32 * tiles_width,
+                    osd_coordinates.y as u32 * tiles_height
+                ).unwrap();
+            }
         }
         Ok(frame)
     }
