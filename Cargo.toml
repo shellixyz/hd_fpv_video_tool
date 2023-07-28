@@ -32,7 +32,7 @@ thiserror = "1.0.37"
 anyhow = "1.0.66"
 regex = "1.7.0"
 lazy_static = "1.4.0"
-ffmpeg-next = "5.1.1"
+ffmpeg-next = "6.0.0"
 tokio = { version = "1.22.0", features = ["rt-multi-thread", "macros"] }
 itertools = "0.10.5"
 path-absolutize = "3.0.14"
