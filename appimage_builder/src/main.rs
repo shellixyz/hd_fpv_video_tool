@@ -6,7 +6,7 @@ use regex::Regex;
 use indoc::indoc;
 
 #[cfg(not(target_os = "linux"))]
-compile_error!("this program is only intended to be run only on linux");
+compile_error!("this program is only intended to be run on linux");
 
 const DEP_BINARIES: [&str; 2] = [
     "/usr/bin/ffmpeg",
