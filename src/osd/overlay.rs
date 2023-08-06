@@ -102,7 +102,7 @@ impl super::file::Frame {
             let y = osd_coordinates.y as u32 * tiles_height;
             if x < frame.width() && y < frame.height() {
                 frame.copy_from(
-                    &tile_image,
+                    tile_image,
                     osd_coordinates.x as u32 * tiles_width,
                     osd_coordinates.y as u32 * tiles_height
                 ).unwrap();

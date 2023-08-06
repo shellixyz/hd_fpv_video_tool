@@ -219,7 +219,7 @@ impl Reader {
     fn keep_position_do<F, X, E>(&mut self, f: F) -> Result<X, E>
     where F: FnOnce(&mut Self) -> Result<X, E>
     {
-        let starting_position = self.file.seek(SeekFrom::Current(0)).unwrap();
+        let starting_position = self.file.stream_position().unwrap();
         let return_value = f(self);
         self.file.seek(SeekFrom::Start(starting_position)).unwrap();
         return_value

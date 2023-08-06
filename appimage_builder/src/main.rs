@@ -220,7 +220,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let appimage_path = Path::new(application_name).with_extension("AppImage");
-    generate_appimage(&appimage_path, &appdir_path)?;
+    generate_appimage(appimage_path, &appdir_path)?;
 
     Ok(())
 }

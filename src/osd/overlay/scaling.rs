@@ -6,11 +6,7 @@ use derive_more::From;
 use getset::{CopyGetters, Getters};
 use thiserror::Error;
 
-use super::{
-    margins::{
-        Margins,
-    },
-};
+use super::margins::Margins;
 
 use crate::video::{
     resolution::{
