@@ -315,6 +315,7 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<(), TranscodeVideoEr
         ).join(";");
         let complex_filter = format!("[0]{}[vo]", defect_filter);
         ffmpeg_command.add_complex_filter(&complex_filter).add_mapping("[vo]");
+        if video_info.has_audio() { ffmpeg_command.add_mapping("0:a"); }
     };
 
     if let Some(video_audio_fix) = args.video_audio_fix() {
