@@ -130,7 +130,7 @@ pub struct TranscodeVideoArgs {
     audio_encoder: String,
 
     /// max audio bitrate
-    #[clap(long, value_parser, default_value = "25M")]
+    #[clap(long, value_parser, default_value = "93k")]
     audio_bitrate: String,
 
     #[clap(flatten)]
