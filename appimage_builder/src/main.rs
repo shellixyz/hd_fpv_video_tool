@@ -1,12 +1,19 @@
-use std::{io::{self, Write}, path::{Path, PathBuf}, process::Command, env::set_current_dir};
+use std::{io::{self, Write}, path::{Path, PathBuf}, process::Command, env::set_current_dir, fs::{File, self}, os::unix::fs::PermissionsExt};
 
 use anyhow::{anyhow, Context};
 use env_logger::fmt::Color;
+use futures_util::stream::StreamExt;
+use indicatif::{ProgressStyle, ProgressBar};
 use regex::Regex;
 use indoc::indoc;
+use which::which;
 
 #[cfg(not(target_os = "linux"))]
 compile_error!("this program is only intended to be run on linux");
+
+const APPIMAGETOOL_BIN_NAME: &str = "appimagetool";
+
+const APPIMAGETOOL_URL: &str = "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage";
 
 const DEP_BINARIES: [&str; 2] = [
     "/usr/bin/ffmpeg",
@@ -163,28 +170,76 @@ fn install_icon_file<P: AsRef<Path>>(appdir_path: P) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn generate_appimage<P: AsRef<Path>, Q: AsRef<Path>>(appimage_path: P, appdir_path: Q) -> anyhow::Result<()> {
+async fn download_file_with_progress(url: &str, dest_path: &str) -> anyhow::Result<()> {
+    let response = reqwest::get(url).await?;
 
-    let appimage_path = appimage_path.as_ref();
+    let status_code = response.status();
+    if ! status_code.is_success() {
+        return Err(anyhow!("failed to download: {}", status_code));
+    }
 
-    log::info!("generating AppImage image: {}", appimage_path.to_string_lossy());
+    let total_size = response.content_length().unwrap_or(0);
 
-    let appimagetool_output = Command::new("appimagetool")
-        .args([appdir_path.as_ref(), appimage_path])
-        .output()
-        .map_err(|error| anyhow!("failed to launch appimagetool: {error}"))?;
+    let mut dest_file = File::create(dest_path)?;
+    let mut downloaded = 0;
+    let progress_style = ProgressStyle::with_template("{wide_bar} {percent:>3}% [ETA {eta:>3}]").unwrap();
+    let progress_bar = ProgressBar::new(total_size).with_style(progress_style);
 
-    if ! appimagetool_output.status.success() {
-        log::error!("failed to generate AppImage image: appimagetool: {}", appimagetool_output.status);
-        println!();
-        io::stderr().write_all(&appimagetool_output.stderr).unwrap();
-        return Err(anyhow!("failed to generate AppImage image: appimagetool: {}", appimagetool_output.status));
+    let mut stream = response.bytes_stream();
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        dest_file.write_all(&chunk)?;
+        downloaded += chunk.len() as u64;
+        progress_bar.set_position(downloaded);
     }
 
     Ok(())
 }
 
-fn main() -> anyhow::Result<()> {
+async fn prepare_appimagetool() -> anyhow::Result<PathBuf> {
+    if let Ok(appimagetool_path) = which(APPIMAGETOOL_BIN_NAME) {
+        log::info!("AppImage tool found: {}", appimagetool_path.to_string_lossy());
+        return Ok(appimagetool_path);
+    }
+
+    let appimagetool_path = Path::new(APPIMAGETOOL_BIN_NAME);
+
+    if ! appimagetool_path.exists() {
+        log::info!("AppImage tool not found, downloading");
+        download_file_with_progress(APPIMAGETOOL_URL, APPIMAGETOOL_BIN_NAME).await.context("appimagetool")?;
+    }
+
+    if ! appimagetool_path.is_file() { log::error!("{APPIMAGETOOL_BIN_NAME} exists but is not a regular file"); }
+
+    std::fs::set_permissions(appimagetool_path, fs::Permissions::from_mode(0o755)).context("failed to set {APPIMAGETOOL_BIN_NAME} permissions")?;
+
+    Ok([Path::new("."), appimagetool_path].iter().collect())
+}
+
+fn generate_appimage<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(appimagetool_bin_path: P, appimage_path: Q, appdir_path: R) -> anyhow::Result<()> {
+
+    let appimage_path = appimage_path.as_ref();
+
+    log::info!("generating AppImage image: {}", appimage_path.to_string_lossy());
+
+    let appimagetool_output = Command::new(appimagetool_bin_path.as_ref())
+        .args([appdir_path.as_ref(), appimage_path])
+        .output()
+        .map_err(|error| anyhow!("failed to launch {APPIMAGETOOL_BIN_NAME}: {error}"))?;
+
+    if ! appimagetool_output.status.success() {
+        log::error!("failed to generate AppImage image: {APPIMAGETOOL_BIN_NAME}: {}", appimagetool_output.status);
+        println!();
+        io::stderr().write_all(&appimagetool_output.stderr).unwrap();
+        return Err(anyhow!("failed to generate AppImage image: {APPIMAGETOOL_BIN_NAME}: {}", appimagetool_output.status));
+    }
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
 
     setup_logger();
 
@@ -220,7 +275,8 @@ fn main() -> anyhow::Result<()> {
     }
 
     let appimage_path = Path::new(application_name).with_extension("AppImage");
-    generate_appimage(appimage_path, &appdir_path)?;
+    let appimagetool_path = prepare_appimagetool().await?;
+    generate_appimage(appimagetool_path, appimage_path, &appdir_path)?;
 
     Ok(())
 }
