@@ -61,11 +61,11 @@ To generate OSD overlays the OSD fonts in WTF.FPV bin format are needed. This pr
 
 For these examples we are assuming that:
 
-- You have installed the fonts in the default directory so that they will be found automatically
-- These files are present in the current directory:
-  - DJIG0000.osd (the OSD file recorded by your goggles hacked with FPV.WTF)
-  - DJIG0000.mp4 (video recorded by your goggles)
-  - DJIU0000.mp4 (video recorded by your air unit if it has the capability)
+* You have installed the fonts in the default directory so that they will be found automatically
+* These files are present in the current directory:
+  * DJIG0000.osd (the OSD file recorded by your goggles hacked with FPV.WTF)
+  * DJIG0000.mp4 (video recorded by your goggles)
+  * DJIU0000.mp4 (video recorded by your air unit if it has the capability)
 
 #### Transcoding a video and burning the OSD onto it
 
@@ -103,10 +103,10 @@ Note that the generated AppImage files have only been tested on Fedora and Ubunt
 
 #### Build dependencies
 
-- [rust tools/toolchain](https://www.rust-lang.org/tools/install)
-- ffmpeg libs and headers
-- pkg-config
-- clang
+* [rust tools/toolchain](https://www.rust-lang.org/tools/install)
+* ffmpeg libs and headers
+* pkg-config
+* clang
 
 ##### On Fedora
 
@@ -136,8 +136,8 @@ Then you can continue building the tool with cargo.
 
 #### Run-time dependencies
 
-- [ffmpeg](https://ffmpeg.org/) built with support for the video codecs you want to use and also VP8/VP9 for using the `generate-overlay-video` command
-- [MPV](https://mpv.io/) video player if you want to use the `play-video-with-osd` command
+* [ffmpeg](https://ffmpeg.org/) built with support for the video codecs you want to use and also VP8/VP9 for using the `generate-overlay-video` command
+* [MPV](https://mpv.io/) video player if you want to use the `play-video-with-osd` command
 
 ##### Installing on Fedora
 
