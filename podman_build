@@ -2,4 +2,4 @@
 
 modprobe fuse
 podman build -t hd_fpv_video_tool_build .
-podman run -it --device /dev/fuse --cap-add SYS_ADMIN -v "$(dirname $0):/hd_fpv_video_tool" hd_fpv_video_tool_build
+podman run -it --device /dev/fuse --cap-add SYS_ADMIN -v "$(dirname $0):/hd_fpv_video_tool":Z hd_fpv_video_tool_build
