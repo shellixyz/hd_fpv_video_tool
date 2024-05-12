@@ -342,7 +342,7 @@ impl<'a> Generator<'a> {
         Ok(Self { osd_file_frames, tile_images, frame_dimensions: overlay_resolution, hidden_regions, hidden_items, font_variant })
     }
 
-    fn check_osd_file_frames_tile_indices(osd_file_frames: &OSDFileSortedFrames, tile_images: &Vec<tile::Image>) {
+    fn check_osd_file_frames_tile_indices(osd_file_frames: &OSDFileSortedFrames, tile_images: &[tile::Image]) {
         let mut invalid_tile_indices = vec![];
         for osd_frame in osd_file_frames.frames() {
             for tile_index in osd_frame.tile_indices().iter() {

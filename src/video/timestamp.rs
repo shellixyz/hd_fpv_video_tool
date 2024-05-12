@@ -62,7 +62,7 @@ impl Display for Timestamp {
 
 impl PartialOrd for Timestamp {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.total_seconds().partial_cmp(&other.total_seconds())
+        Some(self.total_seconds().cmp(&other.total_seconds()))
     }
 }
 

@@ -35,6 +35,7 @@ macro_rules! shell_enum_and_impl {
     ($($shell:ident),+) => {
 
         #[derive(Debug, Clone, ValueEnum, EnumIter, strum::Display)]
+        #[allow(clippy::enum_variant_names)]
         pub enum Shell {
             $($shell),+
         }
