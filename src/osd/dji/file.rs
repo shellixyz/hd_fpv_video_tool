@@ -166,7 +166,7 @@ impl Reader {
     pub fn open<P: AsRef<Path>>(file_path: P) -> Result<Self, OpenError> {
         let mut file = File::open(&file_path)?;
         Self::check_signature(&file_path,&mut file)?;
-        let header: FileHeader = Self::read_header(&mut file).unwrap().into();
+        let header: FileHeader = Self::read_header(&mut file)?.into();
         let osd_kind = Kind::try_from(header.osd_dimensions()).map_err(|error| {
             let InvalidDimensionsError(dimensions) = error;
             OpenError::invalid_osd_dimensions(&file_path, dimensions)
