@@ -16,8 +16,8 @@ const APPIMAGETOOL_BIN_NAME: &str = "appimagetool";
 const APPIMAGETOOL_URL: &str = "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage";
 
 const DEP_BINARIES: [&str; 2] = [
-    "/usr/bin/ffmpeg",
-    "/usr/bin/mpv",
+    "ffmpeg",
+    "mpv",
 ];
 
 const EXCLUDE_LIBS: [&str; 53] = [
@@ -273,6 +273,11 @@ async fn main() -> anyhow::Result<()> {
     install_application_binary(application_binary_path, &bin_dir_path)?;
 
     for binary_path in DEP_BINARIES {
+        let Ok(binary_path) = which(binary_path) else {
+            let err_msg = format!("binary dependency not found: {binary_path}");
+            log::error!("{}", err_msg);
+            return Err(anyhow!(err_msg));
+        };
         install_binary_dependency(binary_path, &bin_dir_path, &lib_dir_path)?;
     }
 
