@@ -37,7 +37,9 @@ fn create_path<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
 
 fn binary_linked_libs<P: AsRef<Path>>(bin_path: P) -> anyhow::Result<Vec<PathBuf>> {
     let ldd_output = Command::new("ldd").arg(bin_path.as_ref()).output()?;
-    if ! ldd_output.status.success() { return Err(anyhow!("LDD failed: {}", ldd_output.status)); }
+    if ! ldd_output.status.success() {
+        return Err(anyhow!("command failed ({}): ldd {}: {}", ldd_output.status, bin_path.as_ref().to_string_lossy(), String::from_utf8_lossy(&ldd_output.stderr)));
+    }
     let lib_re = Regex::new("=> (.+) \\(").unwrap();
     let ldd_output = std::str::from_utf8(&ldd_output.stdout)?;
     Ok(lib_re.captures_iter(ldd_output).map(|captures|
