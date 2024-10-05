@@ -214,7 +214,7 @@ async fn prepare_appimagetool() -> anyhow::Result<PathBuf> {
 
     if ! appimagetool_path.is_file() { log::error!("{APPIMAGETOOL_BIN_NAME} exists but is not a regular file"); }
 
-    std::fs::set_permissions(appimagetool_path, fs::Permissions::from_mode(0o755)).context("failed to set {APPIMAGETOOL_BIN_NAME} permissions")?;
+    std::fs::set_permissions(appimagetool_path, fs::Permissions::from_mode(0o755)).context(format!("failed to set {APPIMAGETOOL_BIN_NAME} permissions"))?;
 
     Ok([Path::new("."), appimagetool_path].iter().collect())
 }
