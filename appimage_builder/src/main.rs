@@ -35,6 +35,16 @@ fn create_path<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
     )
 }
 
+fn copy_file<P: AsRef<Path>, Q: AsRef<Path>>(from_path: P, to_path: Q, permissions_mode: u32) -> anyhow::Result<()> {
+    let to_path = to_path.as_ref();
+    std::fs::copy(&from_path, &to_path)
+        .with_context(|| format!("failed to copy `{}` => `{}`", from_path.as_ref().to_string_lossy(), to_path.to_string_lossy()))?;
+    let to_permissions = fs::Permissions::from_mode(permissions_mode);
+    fs::set_permissions(to_path, to_permissions)
+        .with_context(|| format!("failed to set permissions for `{}`", to_path.to_string_lossy()))?;
+    Ok(())
+}
+
 fn binary_linked_libs<P: AsRef<Path>>(bin_path: P) -> anyhow::Result<Vec<PathBuf>> {
     let ldd_output = Command::new("ldd").arg(bin_path.as_ref()).output()?;
     if ! ldd_output.status.success() {
@@ -54,7 +64,7 @@ fn install_binary_shared_libs<P: AsRef<Path>, Q: AsRef<Path>>(binary_path: P, li
         if EXCLUDE_LIBS.iter().any(|ex_name| lib_file_name.starts_with(&format!("{ex_name}."))) { continue; }
         let to_path =  lib_dir_path.as_ref().join(lib_path.file_name().unwrap());
         log::debug!("copying `{}` => `{}`", lib_path.to_string_lossy(), to_path.to_string_lossy());
-        std::fs::copy(&lib_path, &to_path)
+        copy_file(&lib_path, &to_path, 0o644)
             .with_context(|| format!("{} linked libs copy: failed copying `{}` => `{}`",
                 binary_path.as_ref().to_string_lossy(),
                 lib_path.to_string_lossy(),
@@ -132,7 +142,7 @@ fn install_binary_dependency<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(bin
     if ! binary_path.as_ref().exists() { return Err(anyhow!("binary dependency not found: {binary_path_str}")) }
     log::info!("installing binary dependency: {binary_path_str}");
     let bin_dest_path = bin_dir_path.as_ref().join(binary_path.as_ref().file_name().unwrap());
-    std::fs::copy(&binary_path, &bin_dest_path)
+    copy_file(&binary_path, &bin_dest_path, 0o755)
         .with_context(|| format!("failed to install binary dependency at {}", bin_dest_path.to_string_lossy()))?;
     log::info!("installing shared libs for binary: {binary_path_str}");
     install_binary_shared_libs(&binary_path, lib_dir_path)?;
