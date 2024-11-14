@@ -22,7 +22,7 @@ Use this command when you want to generate OSD frame images to check what the OS
 
 #### generate-overlay-video
 
-Generates an OSD overlay video. This command generates a transparent video with the OSD frames rendered from the specified OSD file.  The generated video can then be used to play an FPV video with OSD without having to burn the OSD into the video using the `play-video-with-osd` command (or any other video player which can overlay a VP8/9 transparent video other another video in real time).
+Generates an OSD overlay video. This command generates a transparent video with the OSD frames rendered from the specified OSD file.  The generated video can then be used to play an FPV video with OSD without having to burn the OSD into the video using the `play-video-with-osd` command (or any other video player which can overlay a VP8/9 transparent video over another video in real time).
 
 #### cut-video
 
