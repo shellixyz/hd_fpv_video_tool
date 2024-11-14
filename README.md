@@ -5,6 +5,8 @@
 It is a Unix compatible command line tool intended to be used for various tasks related to modifying videos recorded with the
 DJI and Walksnail Avatar FPV video systems (but also works with other video sources) and working with `.osd` files recorded onto the goggles.
 
+It can for example among other things transcode videos, fix the audio recorded by DJI air units and burn the OSD recorded using FPV.WTF onto a video.
+
 ## How to use
 
 ### Available commands
