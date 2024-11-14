@@ -89,7 +89,7 @@ First we need to generate the transparent OSD overlay video:
 
 `hd_fpv_video_tool generate-overlay-video --target-video-file DJIG0000.mp4 DJIG0000.osd`
 
-This command will encode a transparent OSD overlay video encoded with the VP8 coded by default and write it into the `DJIG0000_osd.webm` file. The original video `DJIG0000.mp4` will not be modified. It is only used to choose the right resolution and OSD scaling for the output video. We can then use the `play-video-with-osd` command to play the `DJIG0000.mp4` file with overlayed OSD:
+This command will encode a transparent OSD overlay video encoded with the VP8 codec by default and write it into the `DJIG0000_osd.webm` file. The original video `DJIG0000.mp4` will not be modified. It is only used to choose the right resolution and OSD scaling for the output video. We can then use the `play-video-with-osd` command to play the `DJIG0000.mp4` file with overlayed OSD:
 
 `hd_fpv_video_tool play-video-with-osd DJIG0000.mp4`
 
