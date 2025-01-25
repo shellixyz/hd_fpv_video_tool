@@ -18,32 +18,32 @@ publish = false
 members = ["appimage_builder", "appimage_builder/runner"]
 
 [dependencies]
-clap = { version = "4.0.18", features = ["derive", "string"] }
+clap = { version = "4.5.27", features = ["derive", "string"] }
 image = { version = "0.24.9", features = ["rgb", "png"], default-features = false }
-log = "0.4.17"
-strum = { version = "0.24.1", features = ["derive"] }
-derive_more = "0.99.17"
+log = "0.4.25"
+strum = { version = "0.26.3", features = ["derive"] }
+derive_more = { version = "1.0.0", features = ["deref", "deref_mut", "from", "constructor", "error"] }
 byte_struct = "0.9.0"
 hd_fpv_osd_font_tool = { version = "~1", git = "https://github.com/shellixyz/hd_fpv_osd_font_tool" }
-getset = "0.1.2"
+getset = "0.1.4"
 rayon = "1.5.3"
-indicatif = { version = "0.17.1", features = ["rayon"] }
-thiserror = "1.0.37"
+indicatif = { version = "0.17.9", features = ["rayon"] }
+thiserror = "2.0.11"
 anyhow = "1.0.66"
 regex = "1.7.0"
 lazy_static = "1.4.0"
-ffmpeg-next = "7.0.1"
-tokio = { version = "1.22.0", features = ["rt-multi-thread", "macros"] }
-itertools = "0.12.1"
+ffmpeg-next = "7.1.0"
+tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros"] }
+itertools = "0.14.0"
 path-absolutize = "3.0.14"
-clap_complete = "4.0.6"
+clap_complete = "4.5.42"
 clap_mangen = "0.2.5"
 env_logger = "0.10.0"
-home = "0.5.4"
+home = "0.5.11"
 indoc = "2.0.5"
 ringbuffer = "0.10.0"
 fs-err = { git = "https://github.com/shellixyz/fs-err", branch = "custom", version = "3.0.0" }
-ambassador = "0.3.5"
+ambassador = "0.4.1"
 
 [profile.release]
 panic = 'abort'
