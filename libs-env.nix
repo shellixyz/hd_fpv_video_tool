@@ -3,12 +3,13 @@ let
 in
   pkgs.mkShell {
     buildInputs = with pkgs; [
+        openssl
         clang
-	libclang
-        ffmpeg_7
+        libclang
+        ffmpeg
     ];
     nativeBuildInputs = with pkgs; [
         pkg-config
-	rustPlatform.bindgenHook
+        rustPlatform.bindgenHook
     ];
   }
