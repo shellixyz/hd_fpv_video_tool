@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"[rust]": {
+			"editor.defaultFormatter": "rust-lang.rust-analyzer",
+			"editor.formatOnSave": true
+		},
+		"cSpell.words": [
+		],
+		"rust-analyzer.cargo.features": [
+		],
+		"rust-analyzer.showUnlinkedFileNotification": false
+	},
+}
