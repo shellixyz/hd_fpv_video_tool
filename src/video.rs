@@ -88,7 +88,7 @@ pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(
 			let (input_file_extension, output_file_extension) =
 				(input_video_file.extension(), output_video_file.extension());
 			if input_file_extension.is_none() != output_file_extension.is_none()
-				|| matches!((input_file_extension, output_file_extension), (Some(i), Some(o)) if i.to_ascii_lowercase() != o.to_ascii_lowercase())
+				|| matches!((input_file_extension, output_file_extension), (Some(i), Some(o)) if !i.eq_ignore_ascii_case(o))
 			{
 				return Err(CutVideoError::OutputHasADifferentExtensionThanInput);
 			}
@@ -225,7 +225,7 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(
 			let (input_file_extension, output_file_extension) =
 				(input_video_file.extension(), output_video_file.extension());
 			if input_file_extension.is_none() != output_file_extension.is_none()
-				|| matches!((input_file_extension, output_file_extension), (Some(i), Some(o)) if i.to_ascii_lowercase() != o.to_ascii_lowercase())
+				|| matches!((input_file_extension, output_file_extension), (Some(i), Some(o)) if !i.eq_ignore_ascii_case(o))
 			{
 				return Err(FixVideoFileAudioError::OutputHasADifferentExtensionThanInput);
 			}
