@@ -402,6 +402,17 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		.set_overwrite_output_file(true);
 
 	if !args.remove_video_defects().is_empty() {
+		for rvd_arg in args.remove_video_defects() {
+			let x_range = 1..(video_info.resolution().width() as i32 - rvd_arg.dimensions().width() as i32);
+			let y_range = 1..(video_info.resolution().height() as i32 - rvd_arg.dimensions().height() as i32);
+			if !x_range.contains(&(rvd_arg.top_left_corner().x() as i32))
+				|| !y_range.contains(&(rvd_arg.top_left_corner().y() as i32))
+			{
+				return Err(TranscodeVideoError::IncompatibleArguments(
+					"cannot remove video defects that are outside the video frame".to_owned(),
+				));
+			}
+		}
 		let defect_filter = args
 			.remove_video_defects()
 			.iter()
