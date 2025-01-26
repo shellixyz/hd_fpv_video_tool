@@ -4,17 +4,17 @@
 .SH NAME
 cut\-video \- Cut a video file without transcoding by specifying the desired start and/or end timestamp
 .SH SYNOPSIS
-\fBcut\-video\fR [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT_VIDEO_FILE\fR> [\fIOUTPUT_VIDEO_FILE\fR] 
+\fBcut\-video\fR [\fB\-s\fR|\fB\-\-start\fR] [\fB\-e\fR|\fB\-\-end\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT_VIDEO_FILE\fR> [\fIOUTPUT_VIDEO_FILE\fR] 
 .SH DESCRIPTION
 Cut a video file without transcoding by specifying the desired start and/or end timestamp
 .PP
 Note that without transcoding videos can only be cut at the nearest P\-frame so the cuts may not be at exactly the start/end points. If you need precise slicing use the `transcode` command instead.
 .SH OPTIONS
 .TP
-\fB\-\-start\fR=\fI[HH:]MM:SS\fR
+\fB\-s\fR, \fB\-\-start\fR=\fI[HH:]MM:SS\fR
 start timestamp
 .TP
-\fB\-\-end\fR=\fI[HH:]MM:SS\fR
+\fB\-e\fR, \fB\-\-end\fR=\fI[HH:]MM:SS\fR
 end timestamp
 .TP
 \fB\-y\fR, \fB\-\-overwrite\fR

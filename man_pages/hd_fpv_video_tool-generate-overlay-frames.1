@@ -38,8 +38,10 @@ start timestamp
 \fB\-\-end\fR=\fI[HH:]MM:SS\fR
 end timestamp
 .TP
-\fB\-r\fR, \fB\-\-target\-resolution\fR=\fI720p 720p4:3 1080p 1080p4:3 <width>x<height>\fR
+\fB\-r\fR, \fB\-\-target\-resolution\fR=\fITARGET_RESOLUTION\fR
 resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
+
+[possible values: 720p, 720p4:3, 1080p, 1080p4:3, <width>x<height>]
 .TP
 \fB\-s\fR, \fB\-\-scaling\fR
 force using scaling, default is automatic
