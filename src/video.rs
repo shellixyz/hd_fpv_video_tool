@@ -571,18 +571,17 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 
 	let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
 
-	if args.add_audio() {
-		if video_info.has_audio() {
-			log::warn!("ignoring request to add audio stream to output video as input has one");
-		} else {
-			ffmpeg_command.add_input_filter("lavfi", "anullsrc=channel_layout=stereo:sample_rate=48000");
-			ffmpeg_command.add_arg("-shortest");
-			ffmpeg_command.set_output_audio_settings(Some(args.audio_encoder()), Some(args.audio_bitrate()));
-		}
-	}
-
 	let complex_filter = if args.remove_video_defects().is_empty() {
-		"[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]".to_owned()
+		if let Some(resolution) = args.video_resolution() {
+			let resolution_dimensions = resolution.dimensions();
+			format!(
+				"[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[s1];[s1]scale={}x{}:flags=lanczos[vo]",
+				resolution_dimensions.width(),
+				resolution_dimensions.height()
+			)
+		} else {
+			"[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]".to_owned()
+		}
 	} else {
 		if !remove_video_defects_regions_are_inside_video_frame(args.remove_video_defects(), &video_info.resolution()) {
 			return Err(TranscodeVideoError::IncompatibleArguments(
@@ -594,10 +593,20 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 			.iter()
 			.map(|region| format!("delogo={}", region.to_ffmpeg_filter_string()))
 			.join(";");
-		format!(
-			"[0]{}[s1];[s1][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]",
-			defect_filter
-		)
+		if let Some(resolution) = args.video_resolution() {
+			let resolution_dimensions = resolution.dimensions();
+			format!(
+				"[0]{}[s1];[s1][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[s2];[s2]scale={}x{}:flags=lanczos[vo]",
+				defect_filter,
+				resolution_dimensions.width(),
+				resolution_dimensions.height()
+			)
+		} else {
+			format!(
+				"[0]{}[s1];[s1][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]",
+				defect_filter
+			)
+		}
 	};
 
 	ffmpeg_command
@@ -617,6 +626,17 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 		)
 		.set_output_file(output_video_file)
 		.set_overwrite_output_file(true);
+
+	if args.add_audio() {
+		if video_info.has_audio() {
+			log::warn!("ignoring request to add audio stream to output video as input has one");
+		} else {
+			ffmpeg_command.add_input_filter("lavfi", "anullsrc=channel_layout=stereo:sample_rate=48000");
+			ffmpeg_command.add_arg("-shortest");
+			ffmpeg_command.set_output_audio_settings(Some(args.audio_encoder()), Some(args.audio_bitrate()));
+			ffmpeg_command.add_mapping("2:a");
+		}
+	}
 
 	match (video_info.has_audio(), args.video_audio_fix()) {
 		(true, None) => {

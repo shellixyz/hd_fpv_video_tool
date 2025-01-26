@@ -141,7 +141,6 @@ pub struct TranscodeVideoArgs {
 	video_crf: u8,
 
 	/// [possible values: 720p, 720p4:3, 1080p, 1080p4:3, <width>x<height>]
-	// TODO: does not work right now when burning the OSD onto the video
 	#[clap(short = 'r', long)]
 	#[getset(skip)]
 	#[getset(get_copy = "pub")]
