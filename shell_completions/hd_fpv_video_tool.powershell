@@ -1,0 +1,257 @@
+
+using namespace System.Management.Automation
+using namespace System.Management.Automation.Language
+
+Register-ArgumentCompleter -Native -CommandName 'hd_fpv_video_tool' -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+
+    $commandElements = $commandAst.CommandElements
+    $command = @(
+        'hd_fpv_video_tool'
+        for ($i = 1; $i -lt $commandElements.Count; $i++) {
+            $element = $commandElements[$i]
+            if ($element -isnot [StringConstantExpressionAst] -or
+                $element.StringConstantType -ne [StringConstantType]::BareWord -or
+                $element.Value.StartsWith('-') -or
+                $element.Value -eq $wordToComplete) {
+                break
+        }
+        $element.Value
+    }) -join ';'
+
+    $completions = @(switch ($command) {
+        'hd_fpv_video_tool' {
+            [CompletionResult]::new('-l', '-l', [CompletionResultType]::ParameterName, 'l')
+            [CompletionResult]::new('--log-level', '--log-level', [CompletionResultType]::ParameterName, 'log-level')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
+            [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
+            [CompletionResult]::new('display-osd-file-info', 'display-osd-file-info', [CompletionResultType]::ParameterValue, 'Display information about the specified OSD file')
+            [CompletionResult]::new('generate-overlay-frames', 'generate-overlay-frames', [CompletionResultType]::ParameterValue, 'Generate a transparent overlay frame sequence as PNG files from a .osd file')
+            [CompletionResult]::new('generate-overlay-video', 'generate-overlay-video', [CompletionResultType]::ParameterValue, 'Generate an OSD overlay video to be displayed over another video')
+            [CompletionResult]::new('cut-video', 'cut-video', [CompletionResultType]::ParameterValue, 'Cut a video file without transcoding by specifying the desired start and/or end timestamp')
+            [CompletionResult]::new('fix-video-audio', 'fix-video-audio', [CompletionResultType]::ParameterValue, 'Fix a DJI Air Unit video''s audio sync and/or volume')
+            [CompletionResult]::new('transcode-video', 'transcode-video', [CompletionResultType]::ParameterValue, 'Transcode a video file, optionally burning the OSD onto it')
+            [CompletionResult]::new('play-video-with-osd', 'play-video-with-osd', [CompletionResultType]::ParameterValue, 'Play a video with OSD by overlaying a transparent OSD video in real time')
+            [CompletionResult]::new('splice-videos', 'splice-videos', [CompletionResultType]::ParameterValue, 'Splice videos files together')
+            [CompletionResult]::new('add-audio-stream', 'add-audio-stream', [CompletionResultType]::ParameterValue, 'Add a silent audio stream to a video file')
+            [CompletionResult]::new('generate-shell-autocompletion-files', 'generate-shell-autocompletion-files', [CompletionResultType]::ParameterValue, 'generate-shell-autocompletion-files')
+            [CompletionResult]::new('generate-man-pages', 'generate-man-pages', [CompletionResultType]::ParameterValue, 'generate-man-pages')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'hd_fpv_video_tool;display-osd-file-info' {
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'hd_fpv_video_tool;generate-overlay-frames' {
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode')
+            [CompletionResult]::new('--target-video-file', '--target-video-file', [CompletionResultType]::ParameterName, 'use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode')
+            [CompletionResult]::new('--hide-regions', '--hide-regions', [CompletionResultType]::ParameterName, 'hide rectangular regions from the OSD')
+            [CompletionResult]::new('--hide-items', '--hide-items', [CompletionResultType]::ParameterName, 'hide items from the OSD  Available items (font variant: name list):   - Ardupilot: gpslat, gpslon, alt, short+code, long+code   - INAV: gpslat, gpslon, alt')
+            [CompletionResult]::new('--start', '--start', [CompletionResultType]::ParameterName, 'start timestamp')
+            [CompletionResult]::new('--end', '--end', [CompletionResultType]::ParameterName, 'end timestamp')
+            [CompletionResult]::new('-r', '-r', [CompletionResultType]::ParameterName, 'resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode')
+            [CompletionResult]::new('--target-resolution', '--target-resolution', [CompletionResultType]::ParameterName, 'resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode')
+            [CompletionResult]::new('--min-margins', '--min-margins', [CompletionResultType]::ParameterName, 'minimum margins to decide whether scaling should be used and how much to scale')
+            [CompletionResult]::new('--min-coverage', '--min-coverage', [CompletionResultType]::ParameterName, 'minimum percentage of OSD coverage under which scaling will be used if --scaling/--no-scaling options are not provided')
+            [CompletionResult]::new('-f', '-f', [CompletionResultType]::ParameterName, 'path to the directory containing font sets')
+            [CompletionResult]::new('--font-dir', '--font-dir', [CompletionResultType]::ParameterName, 'path to the directory containing font sets')
+            [CompletionResult]::new('-i', '-i', [CompletionResultType]::ParameterName, 'force using this font identifier when loading fonts, default is automatic')
+            [CompletionResult]::new('--font-ident', '--font-ident', [CompletionResultType]::ParameterName, 'force using this font identifier when loading fonts, default is automatic')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Shift the output by that number of frames. Use this option to sync the OSD to a particular video')
+            [CompletionResult]::new('--frame-shift', '--frame-shift', [CompletionResultType]::ParameterName, 'Shift the output by that number of frames. Use this option to sync the OSD to a particular video')
+            [CompletionResult]::new('-s', '-s', [CompletionResultType]::ParameterName, 'force using scaling, default is automatic')
+            [CompletionResult]::new('--scaling', '--scaling', [CompletionResultType]::ParameterName, 'force using scaling, default is automatic')
+            [CompletionResult]::new('-n', '-n', [CompletionResultType]::ParameterName, 'force disable scaling, default is automatic')
+            [CompletionResult]::new('--no-scaling', '--no-scaling', [CompletionResultType]::ParameterName, 'force disable scaling, default is automatic')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'hd_fpv_video_tool;generate-overlay-video' {
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode')
+            [CompletionResult]::new('--target-video-file', '--target-video-file', [CompletionResultType]::ParameterName, 'use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode')
+            [CompletionResult]::new('--hide-regions', '--hide-regions', [CompletionResultType]::ParameterName, 'hide rectangular regions from the OSD')
+            [CompletionResult]::new('--hide-items', '--hide-items', [CompletionResultType]::ParameterName, 'hide items from the OSD  Available items (font variant: name list):   - Ardupilot: gpslat, gpslon, alt, short+code, long+code   - INAV: gpslat, gpslon, alt')
+            [CompletionResult]::new('--start', '--start', [CompletionResultType]::ParameterName, 'start timestamp')
+            [CompletionResult]::new('--end', '--end', [CompletionResultType]::ParameterName, 'end timestamp')
+            [CompletionResult]::new('-r', '-r', [CompletionResultType]::ParameterName, 'resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode')
+            [CompletionResult]::new('--target-resolution', '--target-resolution', [CompletionResultType]::ParameterName, 'resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode')
+            [CompletionResult]::new('--min-margins', '--min-margins', [CompletionResultType]::ParameterName, 'minimum margins to decide whether scaling should be used and how much to scale')
+            [CompletionResult]::new('--min-coverage', '--min-coverage', [CompletionResultType]::ParameterName, 'minimum percentage of OSD coverage under which scaling will be used if --scaling/--no-scaling options are not provided')
+            [CompletionResult]::new('-f', '-f', [CompletionResultType]::ParameterName, 'path to the directory containing font sets')
+            [CompletionResult]::new('--font-dir', '--font-dir', [CompletionResultType]::ParameterName, 'path to the directory containing font sets')
+            [CompletionResult]::new('-i', '-i', [CompletionResultType]::ParameterName, 'force using this font identifier when loading fonts, default is automatic')
+            [CompletionResult]::new('--font-ident', '--font-ident', [CompletionResultType]::ParameterName, 'force using this font identifier when loading fonts, default is automatic')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Shift the output by that number of frames. Use this option to sync the OSD to a particular video')
+            [CompletionResult]::new('--frame-shift', '--frame-shift', [CompletionResultType]::ParameterName, 'Shift the output by that number of frames. Use this option to sync the OSD to a particular video')
+            [CompletionResult]::new('-c', '-c', [CompletionResultType]::ParameterName, 'c')
+            [CompletionResult]::new('--codec', '--codec', [CompletionResultType]::ParameterName, 'codec')
+            [CompletionResult]::new('-s', '-s', [CompletionResultType]::ParameterName, 'force using scaling, default is automatic')
+            [CompletionResult]::new('--scaling', '--scaling', [CompletionResultType]::ParameterName, 'force using scaling, default is automatic')
+            [CompletionResult]::new('-n', '-n', [CompletionResultType]::ParameterName, 'force disable scaling, default is automatic')
+            [CompletionResult]::new('--no-scaling', '--no-scaling', [CompletionResultType]::ParameterName, 'force disable scaling, default is automatic')
+            [CompletionResult]::new('-y', '-y', [CompletionResultType]::ParameterName, 'overwrite output file if it exists')
+            [CompletionResult]::new('--overwrite', '--overwrite', [CompletionResultType]::ParameterName, 'overwrite output file if it exists')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'hd_fpv_video_tool;cut-video' {
+            [CompletionResult]::new('-s', '-s', [CompletionResultType]::ParameterName, 'start timestamp')
+            [CompletionResult]::new('--start', '--start', [CompletionResultType]::ParameterName, 'start timestamp')
+            [CompletionResult]::new('-e', '-e', [CompletionResultType]::ParameterName, 'end timestamp')
+            [CompletionResult]::new('--end', '--end', [CompletionResultType]::ParameterName, 'end timestamp')
+            [CompletionResult]::new('-y', '-y', [CompletionResultType]::ParameterName, 'overwrite output file if it exists')
+            [CompletionResult]::new('--overwrite', '--overwrite', [CompletionResultType]::ParameterName, 'overwrite output file if it exists')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'hd_fpv_video_tool;fix-video-audio' {
+            [CompletionResult]::new('-s', '-s', [CompletionResultType]::ParameterName, 'fix audio sync only')
+            [CompletionResult]::new('--sync', '--sync', [CompletionResultType]::ParameterName, 'fix audio sync only')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'fix audio volume only')
+            [CompletionResult]::new('--volume', '--volume', [CompletionResultType]::ParameterName, 'fix audio volume only')
+            [CompletionResult]::new('-y', '-y', [CompletionResultType]::ParameterName, 'overwrite output file if it exists')
+            [CompletionResult]::new('--overwrite', '--overwrite', [CompletionResultType]::ParameterName, 'overwrite output file if it exists')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'hd_fpv_video_tool;transcode-video' {
+            [CompletionResult]::new('--min-osd-margins', '--min-osd-margins', [CompletionResultType]::ParameterName, 'minimum margins to decide whether scaling should be used and how much to scale')
+            [CompletionResult]::new('--min-osd-coverage', '--min-osd-coverage', [CompletionResultType]::ParameterName, 'minimum percentage of OSD coverage under which scaling will be used if --scaling/--no-scaling options are not provided')
+            [CompletionResult]::new('-d', '-d', [CompletionResultType]::ParameterName, 'path to the directory containing font sets')
+            [CompletionResult]::new('--osd-font-dir', '--osd-font-dir', [CompletionResultType]::ParameterName, 'path to the directory containing font sets')
+            [CompletionResult]::new('-i', '-i', [CompletionResultType]::ParameterName, 'force using this font identifier when loading fonts, default is automatic')
+            [CompletionResult]::new('--osd-font-ident', '--osd-font-ident', [CompletionResultType]::ParameterName, 'force using this font identifier when loading fonts, default is automatic')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'shift frames to sync OSD with video')
+            [CompletionResult]::new('--osd-frame-shift', '--osd-frame-shift', [CompletionResultType]::ParameterName, 'shift frames to sync OSD with video')
+            [CompletionResult]::new('--osd-hide-regions', '--osd-hide-regions', [CompletionResultType]::ParameterName, 'hide rectangular regions from the OSD')
+            [CompletionResult]::new('--osd-hide-items', '--osd-hide-items', [CompletionResultType]::ParameterName, 'hide items from the OSD  Available items (font variant: name list):   - Ardupilot: gpslat, gpslon, alt, short+code, long+code   - INAV: gpslat, gpslon, alt')
+            [CompletionResult]::new('--osd-overlay-video-codec', '--osd-overlay-video-codec', [CompletionResultType]::ParameterName, 'osd-overlay-video-codec')
+            [CompletionResult]::new('--osd-overlay-video-file', '--osd-overlay-video-file', [CompletionResultType]::ParameterName, 'path of the video file to generate')
+            [CompletionResult]::new('-F', '-F ', [CompletionResultType]::ParameterName, 'path to FPV.WTF .osd file to use to generate OSD frames to burn onto video')
+            [CompletionResult]::new('--osd-file', '--osd-file', [CompletionResultType]::ParameterName, 'path to FPV.WTF .osd file to use to generate OSD frames to burn onto video')
+            [CompletionResult]::new('--video-encoder', '--video-encoder', [CompletionResultType]::ParameterName, 'video encoder to use')
+            [CompletionResult]::new('--video-bitrate', '--video-bitrate', [CompletionResultType]::ParameterName, 'video max bitrate')
+            [CompletionResult]::new('--video-crf', '--video-crf', [CompletionResultType]::ParameterName, 'video constant quality setting')
+            [CompletionResult]::new('-r', '-r', [CompletionResultType]::ParameterName, '[possible values: 720p, 720p4:3, 1080p, 1080p4:3, <width>x<height>]')
+            [CompletionResult]::new('--video-resolution', '--video-resolution', [CompletionResultType]::ParameterName, '[possible values: 720p, 720p4:3, 1080p, 1080p4:3, <width>x<height>]')
+            [CompletionResult]::new('--remove-video-defects', '--remove-video-defects', [CompletionResultType]::ParameterName, 'remove video defects')
+            [CompletionResult]::new('--audio-encoder', '--audio-encoder', [CompletionResultType]::ParameterName, 'audio encoder to use')
+            [CompletionResult]::new('--audio-bitrate', '--audio-bitrate', [CompletionResultType]::ParameterName, 'max audio bitrate')
+            [CompletionResult]::new('--start', '--start', [CompletionResultType]::ParameterName, 'start timestamp')
+            [CompletionResult]::new('--end', '--end', [CompletionResultType]::ParameterName, 'end timestamp')
+            [CompletionResult]::new('--osd', '--osd', [CompletionResultType]::ParameterName, 'burn OSD onto video, try to find the OSD file automatically')
+            [CompletionResult]::new('-s', '-s', [CompletionResultType]::ParameterName, 'force using scaling, default is automatic')
+            [CompletionResult]::new('--osd-scaling', '--osd-scaling', [CompletionResultType]::ParameterName, 'force using scaling, default is automatic')
+            [CompletionResult]::new('-n', '-n', [CompletionResultType]::ParameterName, 'force disable scaling, default is automatic')
+            [CompletionResult]::new('--no-osd-scaling', '--no-osd-scaling', [CompletionResultType]::ParameterName, 'force disable scaling, default is automatic')
+            [CompletionResult]::new('-O', '-O ', [CompletionResultType]::ParameterName, 'generate OSD overlay video instead of burning it onto the video')
+            [CompletionResult]::new('--osd-overlay-video', '--osd-overlay-video', [CompletionResultType]::ParameterName, 'generate OSD overlay video instead of burning it onto the video')
+            [CompletionResult]::new('-a', '-a', [CompletionResultType]::ParameterName, 'add audio stream to the output video')
+            [CompletionResult]::new('--add-audio', '--add-audio', [CompletionResultType]::ParameterName, 'add audio stream to the output video')
+            [CompletionResult]::new('-f', '-f', [CompletionResultType]::ParameterName, 'fix DJI AU audio: fix sync + volume')
+            [CompletionResult]::new('--fix-audio', '--fix-audio', [CompletionResultType]::ParameterName, 'fix DJI AU audio: fix sync + volume')
+            [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'fix DJI AU audio volume')
+            [CompletionResult]::new('--fix-audio-volume', '--fix-audio-volume', [CompletionResultType]::ParameterName, 'fix DJI AU audio volume')
+            [CompletionResult]::new('-u', '-u', [CompletionResultType]::ParameterName, 'fix DJI AU audio sync')
+            [CompletionResult]::new('--fix-audio-sync', '--fix-audio-sync', [CompletionResultType]::ParameterName, 'fix DJI AU audio sync')
+            [CompletionResult]::new('-y', '-y', [CompletionResultType]::ParameterName, 'overwrite output file if it exists')
+            [CompletionResult]::new('--overwrite', '--overwrite', [CompletionResultType]::ParameterName, 'overwrite output file if it exists')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'hd_fpv_video_tool;play-video-with-osd' {
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'hd_fpv_video_tool;splice-videos' {
+            [CompletionResult]::new('-y', '-y', [CompletionResultType]::ParameterName, 'overwrite output file if it exists')
+            [CompletionResult]::new('--overwrite', '--overwrite', [CompletionResultType]::ParameterName, 'overwrite output file if it exists')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'hd_fpv_video_tool;add-audio-stream' {
+            [CompletionResult]::new('--audio-encoder', '--audio-encoder', [CompletionResultType]::ParameterName, 'audio encoder to use')
+            [CompletionResult]::new('--audio-bitrate', '--audio-bitrate', [CompletionResultType]::ParameterName, 'max audio bitrate')
+            [CompletionResult]::new('-y', '-y', [CompletionResultType]::ParameterName, 'overwrite output file if it exists')
+            [CompletionResult]::new('--overwrite', '--overwrite', [CompletionResultType]::ParameterName, 'overwrite output file if it exists')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'hd_fpv_video_tool;generate-shell-autocompletion-files' {
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'hd_fpv_video_tool;generate-man-pages' {
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'hd_fpv_video_tool;help' {
+            [CompletionResult]::new('display-osd-file-info', 'display-osd-file-info', [CompletionResultType]::ParameterValue, 'Display information about the specified OSD file')
+            [CompletionResult]::new('generate-overlay-frames', 'generate-overlay-frames', [CompletionResultType]::ParameterValue, 'Generate a transparent overlay frame sequence as PNG files from a .osd file')
+            [CompletionResult]::new('generate-overlay-video', 'generate-overlay-video', [CompletionResultType]::ParameterValue, 'Generate an OSD overlay video to be displayed over another video')
+            [CompletionResult]::new('cut-video', 'cut-video', [CompletionResultType]::ParameterValue, 'Cut a video file without transcoding by specifying the desired start and/or end timestamp')
+            [CompletionResult]::new('fix-video-audio', 'fix-video-audio', [CompletionResultType]::ParameterValue, 'Fix a DJI Air Unit video''s audio sync and/or volume')
+            [CompletionResult]::new('transcode-video', 'transcode-video', [CompletionResultType]::ParameterValue, 'Transcode a video file, optionally burning the OSD onto it')
+            [CompletionResult]::new('play-video-with-osd', 'play-video-with-osd', [CompletionResultType]::ParameterValue, 'Play a video with OSD by overlaying a transparent OSD video in real time')
+            [CompletionResult]::new('splice-videos', 'splice-videos', [CompletionResultType]::ParameterValue, 'Splice videos files together')
+            [CompletionResult]::new('add-audio-stream', 'add-audio-stream', [CompletionResultType]::ParameterValue, 'Add a silent audio stream to a video file')
+            [CompletionResult]::new('generate-shell-autocompletion-files', 'generate-shell-autocompletion-files', [CompletionResultType]::ParameterValue, 'generate-shell-autocompletion-files')
+            [CompletionResult]::new('generate-man-pages', 'generate-man-pages', [CompletionResultType]::ParameterValue, 'generate-man-pages')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'hd_fpv_video_tool;help;display-osd-file-info' {
+            break
+        }
+        'hd_fpv_video_tool;help;generate-overlay-frames' {
+            break
+        }
+        'hd_fpv_video_tool;help;generate-overlay-video' {
+            break
+        }
+        'hd_fpv_video_tool;help;cut-video' {
+            break
+        }
+        'hd_fpv_video_tool;help;fix-video-audio' {
+            break
+        }
+        'hd_fpv_video_tool;help;transcode-video' {
+            break
+        }
+        'hd_fpv_video_tool;help;play-video-with-osd' {
+            break
+        }
+        'hd_fpv_video_tool;help;splice-videos' {
+            break
+        }
+        'hd_fpv_video_tool;help;add-audio-stream' {
+            break
+        }
+        'hd_fpv_video_tool;help;generate-shell-autocompletion-files' {
+            break
+        }
+        'hd_fpv_video_tool;help;generate-man-pages' {
+            break
+        }
+        'hd_fpv_video_tool;help;help' {
+            break
+        }
+    })
+
+    $completions.Where{ $_.CompletionText -like "$wordToComplete*" } |
+        Sort-Object -Property ListItemText
+}

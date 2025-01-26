@@ -1,0 +1,227 @@
+
+use builtin;
+use str;
+
+set edit:completion:arg-completer[hd_fpv_video_tool] = {|@words|
+    fn spaces {|n|
+        builtin:repeat $n ' ' | str:join ''
+    }
+    fn cand {|text desc|
+        edit:complex-candidate $text &display=$text' '(spaces (- 14 (wcswidth $text)))$desc
+    }
+    var command = 'hd_fpv_video_tool'
+    for word $words[1..-1] {
+        if (str:has-prefix $word '-') {
+            break
+        }
+        set command = $command';'$word
+    }
+    var completions = [
+        &'hd_fpv_video_tool'= {
+            cand -l 'l'
+            cand --log-level 'log-level'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+            cand -V 'Print version'
+            cand --version 'Print version'
+            cand display-osd-file-info 'Display information about the specified OSD file'
+            cand generate-overlay-frames 'Generate a transparent overlay frame sequence as PNG files from a .osd file'
+            cand generate-overlay-video 'Generate an OSD overlay video to be displayed over another video'
+            cand cut-video 'Cut a video file without transcoding by specifying the desired start and/or end timestamp'
+            cand fix-video-audio 'Fix a DJI Air Unit video''s audio sync and/or volume'
+            cand transcode-video 'Transcode a video file, optionally burning the OSD onto it'
+            cand play-video-with-osd 'Play a video with OSD by overlaying a transparent OSD video in real time'
+            cand splice-videos 'Splice videos files together'
+            cand add-audio-stream 'Add a silent audio stream to a video file'
+            cand generate-shell-autocompletion-files 'generate-shell-autocompletion-files'
+            cand generate-man-pages 'generate-man-pages'
+            cand help 'Print this message or the help of the given subcommand(s)'
+        }
+        &'hd_fpv_video_tool;display-osd-file-info'= {
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'hd_fpv_video_tool;generate-overlay-frames'= {
+            cand -v 'use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode'
+            cand --target-video-file 'use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode'
+            cand --hide-regions 'hide rectangular regions from the OSD'
+            cand --hide-items 'hide items from the OSD  Available items (font variant: name list):   - Ardupilot: gpslat, gpslon, alt, short+code, long+code   - INAV: gpslat, gpslon, alt'
+            cand --start 'start timestamp'
+            cand --end 'end timestamp'
+            cand -r 'resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode'
+            cand --target-resolution 'resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode'
+            cand --min-margins 'minimum margins to decide whether scaling should be used and how much to scale'
+            cand --min-coverage 'minimum percentage of OSD coverage under which scaling will be used if --scaling/--no-scaling options are not provided'
+            cand -f 'path to the directory containing font sets'
+            cand --font-dir 'path to the directory containing font sets'
+            cand -i 'force using this font identifier when loading fonts, default is automatic'
+            cand --font-ident 'force using this font identifier when loading fonts, default is automatic'
+            cand -o 'Shift the output by that number of frames. Use this option to sync the OSD to a particular video'
+            cand --frame-shift 'Shift the output by that number of frames. Use this option to sync the OSD to a particular video'
+            cand -s 'force using scaling, default is automatic'
+            cand --scaling 'force using scaling, default is automatic'
+            cand -n 'force disable scaling, default is automatic'
+            cand --no-scaling 'force disable scaling, default is automatic'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'hd_fpv_video_tool;generate-overlay-video'= {
+            cand -v 'use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode'
+            cand --target-video-file 'use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode'
+            cand --hide-regions 'hide rectangular regions from the OSD'
+            cand --hide-items 'hide items from the OSD  Available items (font variant: name list):   - Ardupilot: gpslat, gpslon, alt, short+code, long+code   - INAV: gpslat, gpslon, alt'
+            cand --start 'start timestamp'
+            cand --end 'end timestamp'
+            cand -r 'resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode'
+            cand --target-resolution 'resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode'
+            cand --min-margins 'minimum margins to decide whether scaling should be used and how much to scale'
+            cand --min-coverage 'minimum percentage of OSD coverage under which scaling will be used if --scaling/--no-scaling options are not provided'
+            cand -f 'path to the directory containing font sets'
+            cand --font-dir 'path to the directory containing font sets'
+            cand -i 'force using this font identifier when loading fonts, default is automatic'
+            cand --font-ident 'force using this font identifier when loading fonts, default is automatic'
+            cand -o 'Shift the output by that number of frames. Use this option to sync the OSD to a particular video'
+            cand --frame-shift 'Shift the output by that number of frames. Use this option to sync the OSD to a particular video'
+            cand -c 'c'
+            cand --codec 'codec'
+            cand -s 'force using scaling, default is automatic'
+            cand --scaling 'force using scaling, default is automatic'
+            cand -n 'force disable scaling, default is automatic'
+            cand --no-scaling 'force disable scaling, default is automatic'
+            cand -y 'overwrite output file if it exists'
+            cand --overwrite 'overwrite output file if it exists'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'hd_fpv_video_tool;cut-video'= {
+            cand -s 'start timestamp'
+            cand --start 'start timestamp'
+            cand -e 'end timestamp'
+            cand --end 'end timestamp'
+            cand -y 'overwrite output file if it exists'
+            cand --overwrite 'overwrite output file if it exists'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'hd_fpv_video_tool;fix-video-audio'= {
+            cand -s 'fix audio sync only'
+            cand --sync 'fix audio sync only'
+            cand -v 'fix audio volume only'
+            cand --volume 'fix audio volume only'
+            cand -y 'overwrite output file if it exists'
+            cand --overwrite 'overwrite output file if it exists'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'hd_fpv_video_tool;transcode-video'= {
+            cand --min-osd-margins 'minimum margins to decide whether scaling should be used and how much to scale'
+            cand --min-osd-coverage 'minimum percentage of OSD coverage under which scaling will be used if --scaling/--no-scaling options are not provided'
+            cand -d 'path to the directory containing font sets'
+            cand --osd-font-dir 'path to the directory containing font sets'
+            cand -i 'force using this font identifier when loading fonts, default is automatic'
+            cand --osd-font-ident 'force using this font identifier when loading fonts, default is automatic'
+            cand -o 'shift frames to sync OSD with video'
+            cand --osd-frame-shift 'shift frames to sync OSD with video'
+            cand --osd-hide-regions 'hide rectangular regions from the OSD'
+            cand --osd-hide-items 'hide items from the OSD  Available items (font variant: name list):   - Ardupilot: gpslat, gpslon, alt, short+code, long+code   - INAV: gpslat, gpslon, alt'
+            cand --osd-overlay-video-codec 'osd-overlay-video-codec'
+            cand --osd-overlay-video-file 'path of the video file to generate'
+            cand -F 'path to FPV.WTF .osd file to use to generate OSD frames to burn onto video'
+            cand --osd-file 'path to FPV.WTF .osd file to use to generate OSD frames to burn onto video'
+            cand --video-encoder 'video encoder to use'
+            cand --video-bitrate 'video max bitrate'
+            cand --video-crf 'video constant quality setting'
+            cand -r '[possible values: 720p, 720p4:3, 1080p, 1080p4:3, <width>x<height>]'
+            cand --video-resolution '[possible values: 720p, 720p4:3, 1080p, 1080p4:3, <width>x<height>]'
+            cand --remove-video-defects 'remove video defects'
+            cand --audio-encoder 'audio encoder to use'
+            cand --audio-bitrate 'max audio bitrate'
+            cand --start 'start timestamp'
+            cand --end 'end timestamp'
+            cand --osd 'burn OSD onto video, try to find the OSD file automatically'
+            cand -s 'force using scaling, default is automatic'
+            cand --osd-scaling 'force using scaling, default is automatic'
+            cand -n 'force disable scaling, default is automatic'
+            cand --no-osd-scaling 'force disable scaling, default is automatic'
+            cand -O 'generate OSD overlay video instead of burning it onto the video'
+            cand --osd-overlay-video 'generate OSD overlay video instead of burning it onto the video'
+            cand -a 'add audio stream to the output video'
+            cand --add-audio 'add audio stream to the output video'
+            cand -f 'fix DJI AU audio: fix sync + volume'
+            cand --fix-audio 'fix DJI AU audio: fix sync + volume'
+            cand -v 'fix DJI AU audio volume'
+            cand --fix-audio-volume 'fix DJI AU audio volume'
+            cand -u 'fix DJI AU audio sync'
+            cand --fix-audio-sync 'fix DJI AU audio sync'
+            cand -y 'overwrite output file if it exists'
+            cand --overwrite 'overwrite output file if it exists'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'hd_fpv_video_tool;play-video-with-osd'= {
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'hd_fpv_video_tool;splice-videos'= {
+            cand -y 'overwrite output file if it exists'
+            cand --overwrite 'overwrite output file if it exists'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'hd_fpv_video_tool;add-audio-stream'= {
+            cand --audio-encoder 'audio encoder to use'
+            cand --audio-bitrate 'max audio bitrate'
+            cand -y 'overwrite output file if it exists'
+            cand --overwrite 'overwrite output file if it exists'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'hd_fpv_video_tool;generate-shell-autocompletion-files'= {
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'hd_fpv_video_tool;generate-man-pages'= {
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'hd_fpv_video_tool;help'= {
+            cand display-osd-file-info 'Display information about the specified OSD file'
+            cand generate-overlay-frames 'Generate a transparent overlay frame sequence as PNG files from a .osd file'
+            cand generate-overlay-video 'Generate an OSD overlay video to be displayed over another video'
+            cand cut-video 'Cut a video file without transcoding by specifying the desired start and/or end timestamp'
+            cand fix-video-audio 'Fix a DJI Air Unit video''s audio sync and/or volume'
+            cand transcode-video 'Transcode a video file, optionally burning the OSD onto it'
+            cand play-video-with-osd 'Play a video with OSD by overlaying a transparent OSD video in real time'
+            cand splice-videos 'Splice videos files together'
+            cand add-audio-stream 'Add a silent audio stream to a video file'
+            cand generate-shell-autocompletion-files 'generate-shell-autocompletion-files'
+            cand generate-man-pages 'generate-man-pages'
+            cand help 'Print this message or the help of the given subcommand(s)'
+        }
+        &'hd_fpv_video_tool;help;display-osd-file-info'= {
+        }
+        &'hd_fpv_video_tool;help;generate-overlay-frames'= {
+        }
+        &'hd_fpv_video_tool;help;generate-overlay-video'= {
+        }
+        &'hd_fpv_video_tool;help;cut-video'= {
+        }
+        &'hd_fpv_video_tool;help;fix-video-audio'= {
+        }
+        &'hd_fpv_video_tool;help;transcode-video'= {
+        }
+        &'hd_fpv_video_tool;help;play-video-with-osd'= {
+        }
+        &'hd_fpv_video_tool;help;splice-videos'= {
+        }
+        &'hd_fpv_video_tool;help;add-audio-stream'= {
+        }
+        &'hd_fpv_video_tool;help;generate-shell-autocompletion-files'= {
+        }
+        &'hd_fpv_video_tool;help;generate-man-pages'= {
+        }
+        &'hd_fpv_video_tool;help;help'= {
+        }
+    ]
+    $completions[$command]
+}
