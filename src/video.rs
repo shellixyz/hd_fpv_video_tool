@@ -407,12 +407,29 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 			.iter()
 			.map(|region| format!("delogo={}", region.to_ffmpeg_filter_string()))
 			.join(";");
-		let complex_filter = format!("[0]{}[vo]", defect_filter);
+		let complex_filter = if let Some(resolution) = args.video_resolution() {
+			let resolution_dimensions = resolution.dimensions();
+			format!(
+				"[0]{}[s1];[s1]scale={}x{}:flags=lanczos[vo]",
+				defect_filter,
+				resolution_dimensions.width(),
+				resolution_dimensions.height()
+			)
+		} else {
+			format!("[0]{}[vo]", defect_filter)
+		};
 		ffmpeg_command.add_complex_filter(&complex_filter).add_mapping("[vo]");
 		if video_info.has_audio() {
 			ffmpeg_command.add_mapping("0:a");
 		}
-	};
+	} else if let Some(resolution) = args.video_resolution() {
+		let resolution_dimensions = resolution.dimensions();
+		ffmpeg_command.add_video_filter(&format!(
+			"scale={}x{}:flags=lanczos",
+			resolution_dimensions.width(),
+			resolution_dimensions.height()
+		));
+	}
 
 	if let Some(video_audio_fix) = args.video_audio_fix() {
 		if video_info.has_audio() {

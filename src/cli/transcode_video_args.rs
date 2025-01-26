@@ -7,7 +7,7 @@ use thiserror::Error;
 use crate::{
 	osd::{self, file::find_associated_to_video_file, overlay::scaling::OSDScalingArgs},
 	prelude::OverlayVideoCodec,
-	video,
+	video::{self, resolution::TargetResolution},
 };
 
 use super::{font_options::OSDFontOptions, generate_overlay_args, start_end_args::StartEndArgs};
@@ -129,6 +129,13 @@ pub struct TranscodeVideoArgs {
 	#[getset(skip)]
 	#[getset(get_copy = "pub")]
 	video_crf: u8,
+
+	/// [possible values: 720p, 720p4:3, 1080p, 1080p4:3, <width>x<height>]
+	// TODO: does not work right now when burning the OSD onto the video
+	#[clap(short = 'r', long)]
+	#[getset(skip)]
+	#[getset(get_copy = "pub")]
+	video_resolution: Option<TargetResolution>,
 
 	/// remove video defects
 	///
