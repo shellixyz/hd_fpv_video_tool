@@ -401,6 +401,16 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		.set_output_file(output_video_file.clone())
 		.set_overwrite_output_file(true);
 
+	if args.add_audio() {
+		if video_info.has_audio() {
+			log::warn!("ignoring request to add audio stream to output video as input has one");
+		} else {
+			ffmpeg_command.add_input_filter("lavfi", "anullsrc=channel_layout=stereo:sample_rate=48000");
+			ffmpeg_command.add_arg("-shortest");
+			ffmpeg_command.set_output_audio_settings(Some(args.audio_encoder()), Some(args.audio_bitrate()));
+		}
+	}
+
 	if !args.remove_video_defects().is_empty() {
 		for rvd_arg in args.remove_video_defects() {
 			let x_range = 1..(video_info.resolution().width() as i32 - rvd_arg.dimensions().width() as i32);
@@ -553,6 +563,16 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 		osd_frames_generator.iter_advanced(first_frame_index, Some(last_frame_index), osd_frame_shift);
 
 	let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
+
+	if args.add_audio() {
+		if video_info.has_audio() {
+			log::warn!("ignoring request to add audio stream to output video as input has one");
+		} else {
+			ffmpeg_command.add_input_filter("lavfi", "anullsrc=channel_layout=stereo:sample_rate=48000");
+			ffmpeg_command.add_arg("-shortest");
+			ffmpeg_command.set_output_audio_settings(Some(args.audio_encoder()), Some(args.audio_bitrate()));
+		}
+	}
 
 	let complex_filter = if args.remove_video_defects().is_empty() {
 		"[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]".to_owned()

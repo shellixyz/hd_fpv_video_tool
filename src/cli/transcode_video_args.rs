@@ -95,6 +95,16 @@ impl TranscodeVideoOSDArgs {
 #[derive(Args, Getters, CopyGetters)]
 #[getset(get = "pub")]
 pub struct TranscodeVideoArgs {
+	/// add audio stream to the output video
+	///
+	/// This is useful when the input video does not have an audio stream
+	/// and you want to splice it with other videos that do have audio
+	/// and you want to keep the audio from the other videos
+	#[clap(short, long)]
+	#[getset(skip)]
+	#[getset(get_copy = "pub")]
+	add_audio: bool,
+
 	/// fix DJI AU audio: fix sync + volume
 	#[clap(short, long, value_parser)]
 	#[getset(skip)]

@@ -30,6 +30,10 @@ pub enum Input {
 		start: Option<Timestamp>,
 		end: Option<Timestamp>,
 	},
+	Filter {
+		name: String,
+		filter: String,
+	},
 	StdinPipedRaw {
 		resolution: Resolution,
 		frame_rate: u16,
@@ -63,6 +67,10 @@ impl Input {
 				args.push("-r".into());
 				args.push(frame_rate.to_string().into());
 				args.append(&mut ["-i", "pipe:0"].map(Into::into).into());
+			},
+
+			Input::Filter { name, filter } => {
+				args.append(&mut ["-f", name.as_str(), "-i", filter].map(Into::into).into());
 			},
 		}
 		args
@@ -201,6 +209,9 @@ pub struct CommandBuilder {
 	mappings: Vec<Mapping>,
 	video_output_settings: VideoOutputSettings,
 	audio_output_settings: AudioOutputSettings,
+	// #[getset(skip)]
+	// #[getset(get_copy = "pub")]
+	// shortest: bool,
 	args: Vec<String>,
 	output: Option<PathBuf>,
 	overwrite_output_file: bool,
@@ -228,6 +239,14 @@ impl CommandBuilder {
 
 	pub fn add_input_file<P: AsRef<Path>>(&mut self, file_path: P) -> &mut Self {
 		self.add_input_file_slice(file_path, None, None);
+		self
+	}
+
+	pub fn add_input_filter(&mut self, name: &str, filter: &str) -> &mut Self {
+		self.inputs.push(Input::Filter {
+			name: name.to_string(),
+			filter: filter.to_string(),
+		});
 		self
 	}
 
@@ -334,6 +353,11 @@ impl CommandBuilder {
 	pub fn set_output_audio_settings(&mut self, codec: Option<&str>, bitrate: Option<&str>) -> &mut Self {
 		self.set_output_audio_codec(codec).set_output_audio_bitrate(bitrate)
 	}
+
+	// pub fn set_shortest(&mut self, yes: bool) -> &mut Self {
+	// 	self.shortest = yes;
+	// 	self
+	// }
 
 	pub fn add_arg(&mut self, arg: &str) -> &mut Self {
 		self.args.push(arg.to_string());
