@@ -353,6 +353,19 @@ impl From<SendFramesToFFMpegError> for TranscodeVideoError {
 	}
 }
 
+fn remove_video_defects_regions_are_inside_video_frame(regions: &[Region], video_resolution: &Resolution) -> bool {
+	for rvd_arg in regions {
+		let x_range = 1..(video_resolution.width() as i32 - rvd_arg.dimensions().width() as i32);
+		let y_range = 1..(video_resolution.height() as i32 - rvd_arg.dimensions().height() as i32);
+		if !x_range.contains(&(rvd_arg.top_left_corner().x() as i32))
+			|| !y_range.contains(&(rvd_arg.top_left_corner().y() as i32))
+		{
+			return false;
+		}
+	}
+	true
+}
+
 pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVideoError> {
 	let output_video_file = args.output_video_file(false)?;
 	if !args.input_video_file().exists() {
@@ -412,16 +425,10 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 	}
 
 	if !args.remove_video_defects().is_empty() {
-		for rvd_arg in args.remove_video_defects() {
-			let x_range = 1..(video_info.resolution().width() as i32 - rvd_arg.dimensions().width() as i32);
-			let y_range = 1..(video_info.resolution().height() as i32 - rvd_arg.dimensions().height() as i32);
-			if !x_range.contains(&(rvd_arg.top_left_corner().x() as i32))
-				|| !y_range.contains(&(rvd_arg.top_left_corner().y() as i32))
-			{
-				return Err(TranscodeVideoError::IncompatibleArguments(
-					"cannot remove video defects that are outside the video frame".to_owned(),
-				));
-			}
+		if !remove_video_defects_regions_are_inside_video_frame(args.remove_video_defects(), &video_info.resolution()) {
+			return Err(TranscodeVideoError::IncompatibleArguments(
+				"cannot remove video defects that are outside the video frame".to_owned(),
+			));
 		}
 		let defect_filter = args
 			.remove_video_defects()
@@ -577,6 +584,11 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 	let complex_filter = if args.remove_video_defects().is_empty() {
 		"[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]".to_owned()
 	} else {
+		if !remove_video_defects_regions_are_inside_video_frame(args.remove_video_defects(), &video_info.resolution()) {
+			return Err(TranscodeVideoError::IncompatibleArguments(
+				"cannot remove video defects that are outside the video frame".to_owned(),
+			));
+		}
 		let defect_filter = args
 			.remove_video_defects()
 			.iter()

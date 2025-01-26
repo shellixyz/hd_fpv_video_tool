@@ -154,7 +154,6 @@ pub struct TranscodeVideoArgs {
 	/// The parameter is a `;` separated list of regions.{n}
 	/// The format for a region is: <left_x>,<top_y>[:<width>x<height>]{n}
 	/// If the size is not specified it will default to 1x1
-	// TODO: check regions are valid
 	#[clap(long, value_parser, value_delimiter = ';', value_name = "REGIONS")]
 	remove_video_defects: Vec<video::Region>,
 
