@@ -742,6 +742,8 @@ pub enum SpliceVideosError {
 	FailedSpawningFFMpegProcess(ffmpeg::SpawnError),
 	#[error(transparent)]
 	FFMpegExitedWithError(ffmpeg::ProcessError),
+	#[error("missing input video files: {0}")]
+	MissingInputVideoFiles(String),
 }
 
 pub async fn splice(
@@ -749,6 +751,19 @@ pub async fn splice(
 	output_file: impl AsRef<Path>,
 	overwrite: bool,
 ) -> Result<(), SpliceVideosError> {
+	let missing_input_files = input_files
+		.iter()
+		.filter(|file| !file.as_ref().exists())
+		.collect::<Vec<_>>();
+	if !missing_input_files.is_empty() {
+		return Err(SpliceVideosError::MissingInputVideoFiles(
+			missing_input_files
+				.iter()
+				.map(|file| file.as_ref().to_string_lossy())
+				.join(", "),
+		));
+	}
+
 	let output_file = output_file.as_ref();
 	if !overwrite && output_file.exists() {
 		return Err(SpliceVideosError::OutputVideoFileExists);
