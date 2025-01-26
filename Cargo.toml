@@ -45,6 +45,7 @@ ringbuffer = "0.10.0"
 fs-err = { git = "https://github.com/shellixyz/fs-err", branch = "custom", version = "3.0.0" }
 ambassador = "0.4.1"
 derive_builder = "0.20.2"
+tempfile = "3.15.0"
 
 [profile.release]
 panic = 'abort'

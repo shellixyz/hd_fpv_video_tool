@@ -675,3 +675,64 @@ pub fn play_with_osd<P: AsRef<Path>, Q: AsRef<Path>>(
 		_ => Ok(()),
 	}
 }
+
+#[derive(Debug, Error, From)]
+pub enum SpliceVideosError {
+	#[error("failed to get input video details")]
+	FailedToGetInputVideoDetails(VideoProbingError),
+	#[error("output video file exists")]
+	OutputVideoFileExists,
+	#[error("input video do not have the same resolution")]
+	IncompatibleResolutions,
+	#[error("failed to build ffmpeg command: {0}")]
+	FailedBuildingFFMpegCommand(ffmpeg::BuildCommandError),
+	#[error(transparent)]
+	FailedSpawningFFMpegProcess(ffmpeg::SpawnError),
+	#[error(transparent)]
+	FFMpegExitedWithError(ffmpeg::ProcessError),
+}
+
+pub async fn splice(
+	input_files: &[impl AsRef<Path>],
+	output_file: impl AsRef<Path>,
+	overwrite: bool,
+) -> Result<(), SpliceVideosError> {
+	let output_file = output_file.as_ref();
+	if !overwrite && output_file.exists() {
+		return Err(SpliceVideosError::OutputVideoFileExists);
+	}
+
+	log::info!(
+		"splicing videos: {} -> {}",
+		input_files
+			.iter()
+			.map(|file| file.as_ref().to_string_lossy())
+			.join(", "),
+		output_file.to_string_lossy()
+	);
+
+	let videos_info = input_files.iter().map(probe).try_collect::<_, Vec<_>, _>()?;
+
+	let first_video_resolution = videos_info.first().unwrap().resolution();
+	if videos_info
+		.iter()
+		.any(|info| info.resolution() != first_video_resolution)
+	{
+		return Err(SpliceVideosError::IncompatibleResolutions);
+	}
+
+	let some_file_has_audio = videos_info.iter().any(|info| info.has_audio());
+	let some_file_lacks_audio = videos_info.iter().any(|info| !info.has_audio());
+	if some_file_has_audio && some_file_lacks_audio {
+		log::warn!("some input files have audio streams while others do not, the result will not have audio");
+	}
+
+	let (_temp_list_file_path, ffmpeg_command) =
+		ffmpeg::CommandBuilder::concat(None, input_files, output_file, overwrite)?;
+
+	let total_frame_count = videos_info.iter().map(|info| info.frame_count()).sum::<u64>();
+	ffmpeg_command.spawn_with_progress(total_frame_count)?.wait().await?;
+
+	log::info!("videos spliced successfully, total {} frames", total_frame_count);
+	Ok(())
+}

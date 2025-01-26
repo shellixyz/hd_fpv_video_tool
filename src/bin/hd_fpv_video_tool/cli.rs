@@ -167,6 +167,21 @@ pub enum Commands {
 		osd_video_file: Option<PathBuf>,
 	},
 
+	/// Splice videos files together
+	#[clap(alias = "sv")]
+	SpliceVideos {
+		/// input video files
+		input_video_files: Vec<PathBuf>,
+
+		/// output video file path
+		// #[clap(short, long)]
+		output: PathBuf,
+
+		/// overwrite output file if it exists
+		#[clap(short = 'y', long, value_parser)]
+		overwrite: bool,
+	},
+
 	#[clap(hide(true))]
 	GenerateShellAutocompletionFiles {
 		#[clap(value_parser = generate_shell_autocompletion_files_arg_parser)]

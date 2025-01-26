@@ -319,6 +319,14 @@ async fn main() {
 			osd_video_file,
 		} => video::play_with_osd(video_file, osd_video_file).map_err(anyhow::Error::new),
 
+		Commands::SpliceVideos {
+			input_video_files,
+			output,
+			overwrite,
+		} => video::splice(input_video_files, output, *overwrite)
+			.await
+			.map_err(anyhow::Error::new),
+
 		Commands::GenerateShellAutocompletionFiles { shell } => generate_shell_autocompletion_files_command(shell),
 
 		Commands::GenerateManPages => generate_man_pages_command(),
