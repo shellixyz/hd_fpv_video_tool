@@ -647,6 +647,7 @@ impl Process {
 		}
 
 		if let Some(progress_bar) = progress_bar {
+			progress_bar.set_position(frame_count.unwrap());
 			progress_bar.finish_and_clear();
 		}
 
