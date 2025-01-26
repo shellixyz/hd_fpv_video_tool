@@ -182,6 +182,34 @@ pub enum Commands {
 		overwrite: bool,
 	},
 
+	/// Add a silent audio stream to a video file
+	///
+	/// Useful when the input video does not have an audio stream and you want to splice it with other videos
+	/// that do have audio and you want to keep the audio from the other videos
+	#[clap(alias = "aas")]
+	AddAudioStream {
+		/// audio encoder to use
+		///
+		/// This value is directly passed to the `-c:a` FFMpeg argument.{n}
+		/// Run `ffmpeg -encoders` for a list of available encoders
+		#[clap(long, value_parser, default_value = "aac")]
+		audio_encoder: String,
+
+		/// max audio bitrate
+		#[clap(long, value_parser, default_value = "93k")]
+		audio_bitrate: String,
+
+		/// input video file path
+		input_video_file: PathBuf,
+
+		/// output video file path
+		output_video_file: Option<PathBuf>,
+
+		/// overwrite output file if it exists
+		#[clap(short = 'y', long, value_parser)]
+		overwrite: bool,
+	},
+
 	#[clap(hide(true))]
 	GenerateShellAutocompletionFiles {
 		#[clap(value_parser = generate_shell_autocompletion_files_arg_parser)]

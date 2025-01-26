@@ -229,6 +229,46 @@ async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
 	Ok(())
 }
 
+async fn add_audio_stream_command(command: &Commands) -> anyhow::Result<()> {
+	if let Commands::AddAudioStream {
+		audio_encoder,
+		audio_bitrate,
+		input_video_file,
+		output_video_file,
+		overwrite,
+	} = command
+	{
+		let output_video_file = match output_video_file {
+			Some(output_video_file) => output_video_file.clone(),
+			None => {
+				let mut output_file_stem = Path::new(
+					input_video_file
+						.file_stem()
+						.ok_or_else(|| anyhow!("input file has no file name"))?,
+				)
+				.as_os_str()
+				.to_os_string();
+				output_file_stem.push("_with_audio");
+				let input_file_extension = input_video_file
+					.extension()
+					.ok_or_else(|| anyhow!("input file has no extension"))?;
+				input_video_file
+					.with_file_name(output_file_stem)
+					.with_extension(input_file_extension)
+			},
+		};
+		video::add_audio_stream(
+			input_video_file,
+			output_video_file,
+			*overwrite,
+			audio_encoder,
+			audio_bitrate,
+		)
+		.await?;
+	}
+	Ok(())
+}
+
 async fn fix_video_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(
 	input_video_file: P,
 	output_video_file: &Option<Q>,
@@ -295,8 +335,8 @@ async fn main() {
 		command @ Commands::GenerateOverlayFrames { .. } => generate_overlay_frames_command(command),
 		command @ Commands::GenerateOverlayVideo { .. } => generate_overlay_video_command(command).await,
 		command @ Commands::TranscodeVideo { .. } => transcode_video_command(command).await,
+		command @ Commands::AddAudioStream { .. } => add_audio_stream_command(command).await,
 		Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info_command(osd_file),
-
 		Commands::CutVideo {
 			start_end,
 			input_video_file,
@@ -305,7 +345,6 @@ async fn main() {
 		} => video::cut(input_video_file, output_video_file, *overwrite, start_end)
 			.await
 			.map_err(anyhow::Error::new),
-
 		Commands::FixVideoAudio {
 			input_video_file,
 			output_video_file,
@@ -313,12 +352,10 @@ async fn main() {
 			sync,
 			volume,
 		} => fix_video_audio_command(input_video_file, output_video_file, *overwrite, *sync, *volume).await,
-
 		Commands::PlayVideoWithOSD {
 			video_file,
 			osd_video_file,
 		} => video::play_with_osd(video_file, osd_video_file).map_err(anyhow::Error::new),
-
 		Commands::SpliceVideos {
 			input_video_files,
 			output,
@@ -326,9 +363,7 @@ async fn main() {
 		} => video::splice(input_video_files, output, *overwrite)
 			.await
 			.map_err(anyhow::Error::new),
-
 		Commands::GenerateShellAutocompletionFiles { shell } => generate_shell_autocompletion_files_command(shell),
-
 		Commands::GenerateManPages => generate_man_pages_command(),
 	};
 

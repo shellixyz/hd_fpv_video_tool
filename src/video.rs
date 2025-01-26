@@ -803,3 +803,70 @@ pub async fn splice(
 	log::info!("videos spliced successfully, total {} frames", total_frame_count);
 	Ok(())
 }
+
+#[derive(Debug, Error)]
+pub enum AddAudioStreamError {
+	#[error("input file does not exist: {0}")]
+	InputFileDoesNotExist(PathBuf),
+	#[error("output video file exists: {0}")]
+	OutputVideoFileExists(PathBuf),
+	#[error("input file already has an audio stream")]
+	InputFileAlreadyHasAudioStream,
+	#[error(transparent)]
+	FailedSpawningFFMpegProcess(#[from] ffmpeg::SpawnError),
+	#[error(transparent)]
+	FFMpegExitedWithError(#[from] ffmpeg::ProcessError),
+	#[error("failed to get input video details")]
+	FailedToGetInputVideoDetails(#[from] VideoProbingError),
+}
+
+pub async fn add_audio_stream(
+	input_file: impl AsRef<Path>,
+	output_file: impl AsRef<Path>,
+	overwrite: bool,
+	audio_encoder: &str,
+	audio_bitrate: &str,
+) -> Result<(), AddAudioStreamError> {
+	let input_file = input_file.as_ref();
+	if !input_file.exists() {
+		return Err(AddAudioStreamError::InputFileDoesNotExist(input_file.to_path_buf()));
+	}
+
+	let output_file = output_file.as_ref();
+	if !overwrite && output_file.exists() {
+		return Err(AddAudioStreamError::OutputVideoFileExists(output_file.to_path_buf()));
+	}
+
+	log::info!(
+		"adding audio stream to video: {} -> {}",
+		input_file.to_string_lossy(),
+		output_file.to_string_lossy()
+	);
+
+	let video_info = probe(input_file)?;
+	if video_info.has_audio() {
+		return Err(AddAudioStreamError::InputFileAlreadyHasAudioStream);
+	}
+
+	let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
+
+	ffmpeg_command
+		.add_input_file(input_file)
+		.add_input_filter("lavfi", "anullsrc=channel_layout=stereo:sample_rate=48000")
+		.add_arg("-shortest")
+		.set_output_video_codec(Some("copy"))
+		.set_output_audio_settings(Some(audio_encoder), Some(audio_bitrate))
+		.set_output_file(output_file)
+		.set_overwrite_output_file(true);
+
+	ffmpeg_command
+		.build()
+		.unwrap()
+		.spawn_with_progress(video_info.frame_count())?
+		.wait()
+		.await?;
+
+	log::info!("audio stream added successfully");
+
+	Ok(())
+}
