@@ -1,34 +1,32 @@
-
 use std::{
-    io::{
-        Error as IOError,
-        Write,
-    },
-    path::PathBuf,
+	io::{Error as IOError, Write},
+	path::PathBuf,
 };
 
-use clap::{ValueEnum, CommandFactory};
-use strum::EnumIter;
+use clap::{CommandFactory, ValueEnum};
 use clap_complete::generate as clap_complete_generate;
 use fs_err::File;
+use strum::EnumIter;
 
 use super::cli::Cli;
 
-
-const SHELL_COMPLETION_FILES_DIR: &str = "shell_completions";
-
+pub const SHELL_COMPLETION_FILES_DIR: &str = "shell_completions";
 
 #[derive(Debug, Clone)]
 pub enum GenerateShellAutoCompletionFilesArg {
-    All,
-    Shell(Shell)
+	All,
+	Shell(Shell),
 }
 
-pub fn generate_shell_autocompletion_files_arg_parser(value: &str) -> Result<GenerateShellAutoCompletionFilesArg, String> {
-    match value {
-        "all" => Ok(GenerateShellAutoCompletionFilesArg::All),
-        _ => Ok(GenerateShellAutoCompletionFilesArg::Shell(Shell::from_str(value, true)?))
-    }
+pub fn generate_shell_autocompletion_files_arg_parser(
+	value: &str,
+) -> Result<GenerateShellAutoCompletionFilesArg, String> {
+	match value {
+		"all" => Ok(GenerateShellAutoCompletionFilesArg::All),
+		_ => Ok(GenerateShellAutoCompletionFilesArg::Shell(Shell::from_str(
+			value, true,
+		)?)),
+	}
 }
 
 macro_rules! shell_enum_and_impl {
@@ -53,7 +51,7 @@ macro_rules! shell_enum_and_impl {
             }
 
             pub fn completion_file_path(&self, current_exe_name: &str) -> PathBuf {
-                [PathBuf::from(SHELL_COMPLETION_FILES_DIR), PathBuf::from(current_exe_name).with_extension(self.to_string())].iter().collect()
+                [PathBuf::from(SHELL_COMPLETION_FILES_DIR), PathBuf::from(current_exe_name).with_extension(self.to_string().to_lowercase())].iter().collect()
             }
         }
 

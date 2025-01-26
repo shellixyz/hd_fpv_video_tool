@@ -297,6 +297,14 @@ fn current_exe_name() -> anyhow::Result<String> {
 
 fn generate_shell_autocompletion_files_command(arg: &GenerateShellAutoCompletionFilesArg) -> anyhow::Result<()> {
 	let current_exe_name = current_exe_name()?;
+	let shell_completion_files_path = Path::new(SHELL_COMPLETION_FILES_DIR);
+	if shell_completion_files_path.exists() {
+		if shell_completion_files_path.is_dir() {
+			return Err(anyhow!("{} is not a directory", SHELL_COMPLETION_FILES_DIR));
+		}
+	} else {
+		std::fs::create_dir(SHELL_COMPLETION_FILES_DIR)?;
+	}
 	match arg {
 		GenerateShellAutoCompletionFilesArg::All => {
 			for shell in Shell::iter() {
