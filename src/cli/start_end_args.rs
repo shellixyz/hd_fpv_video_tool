@@ -35,3 +35,31 @@ impl StartEndArgs {
 		Ok(())
 	}
 }
+
+#[derive(Args, CopyGetters, Clone)]
+#[getset(get_copy = "pub")]
+pub struct CutVideoStartEndArgs {
+	/// start timestamp
+	#[clap(short, long, value_parser, value_name = "[HH:]MM:SS")]
+	start: Option<Timestamp>,
+
+	/// end timestamp
+	#[clap(short, long, value_parser, value_name = "[HH:]MM:SS")]
+	end: Option<Timestamp>,
+}
+
+impl CutVideoStartEndArgs {
+	pub fn are_valid(&self) -> bool {
+		if let (Some(start), Some(end)) = (self.start, self.end) {
+			return start < end;
+		}
+		true
+	}
+
+	pub fn check_valid(&self) -> Result<(), StartGreaterThanEndError> {
+		if !self.are_valid() {
+			return Err(StartGreaterThanEndError);
+		}
+		Ok(())
+	}
+}

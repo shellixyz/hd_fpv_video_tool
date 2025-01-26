@@ -11,7 +11,7 @@ use thiserror::Error;
 
 pub use self::probe::probe;
 use crate::cli::font_options::OSDFontDirError;
-use crate::cli::start_end_args::StartEndArgs;
+use crate::cli::start_end_args::CutVideoStartEndArgs;
 use crate::cli::transcode_video_args::OutputVideoFileError;
 use crate::ffmpeg;
 use crate::file::TouchError;
@@ -71,7 +71,7 @@ pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(
 	input_video_file: P,
 	output_video_file: &Option<Q>,
 	overwrite: bool,
-	start_end: &StartEndArgs,
+	start_end: &CutVideoStartEndArgs,
 ) -> Result<(), CutVideoError> {
 	let input_video_file = input_video_file.as_ref();
 
