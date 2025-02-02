@@ -81,7 +81,7 @@ impl TranscodeVideoOSDArgs {
 		&self,
 		video_file_path: P,
 	) -> Result<Option<PathBuf>, RequestedOSDButNoFileProvidedNorFound> {
-		let osd_file_path = match (self.osd, &self.osd_file) {
+		let osd_file_path = match (self.osd || self.osd_overlay_video, &self.osd_file) {
 			(true, None) => {
 				Some(find_associated_to_video_file(video_file_path).ok_or(RequestedOSDButNoFileProvidedNorFound)?)
 			},
