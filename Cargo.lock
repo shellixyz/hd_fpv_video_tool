@@ -899,6 +899,7 @@ dependencies = [
  "indoc",
  "itertools 0.14.0",
  "lazy_static",
+ "libc",
  "log",
  "path-absolutize",
  "rayon",

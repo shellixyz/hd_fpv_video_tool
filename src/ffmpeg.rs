@@ -486,6 +486,30 @@ pub struct Command {
 	has_stdin_input: bool,
 }
 
+#[derive(Debug, Default, Clone, CopyGetters)]
+#[getset(get_copy = "pub")]
+pub struct SpawnOptions {
+	output_type: ProcessOutputType,
+	priority: Option<i32>,
+}
+
+impl SpawnOptions {
+	pub fn no_output(mut self) -> Self {
+		self.output_type = ProcessOutputType::None;
+		self
+	}
+
+	pub fn with_progress(mut self, frame_count: u64) -> Self {
+		self.output_type = ProcessOutputType::Progress { frame_count };
+		self
+	}
+
+	pub fn with_priority(mut self, priority: Option<i32>) -> Self {
+		self.priority = priority;
+		self
+	}
+}
+
 #[derive(Debug, Error)]
 #[error("failed spawning ffmpeg process: {bin_path}: {error}")]
 pub struct SpawnError {
@@ -494,14 +518,14 @@ pub struct SpawnError {
 }
 
 impl Command {
-	fn spawn_base(mut self, output_type: ProcessOutputType) -> Result<Process, SpawnError> {
+	pub fn spawn(mut self, spawn_options: SpawnOptions) -> Result<Process, SpawnError> {
 		log::debug!("spawning process: {self}");
 		let stdin_stdio = if self.has_stdin_input() {
 			process::Stdio::piped()
 		} else {
 			process::Stdio::null()
 		};
-		let (stdout_stdio, stderr_stdio) = match output_type {
+		let (stdout_stdio, stderr_stdio) = match spawn_options.output_type {
 			ProcessOutputType::Inherited => (process::Stdio::inherit(), process::Stdio::inherit()),
 			ProcessOutputType::Progress { .. } | ProcessOutputType::None => {
 				(process::Stdio::null(), process::Stdio::piped())
@@ -517,36 +541,48 @@ impl Command {
 				error,
 				bin_path: self.command.get_program().to_string_lossy().to_string(),
 			})?;
+
+		if let Some(priority) = spawn_options.priority {
+			unsafe {
+				if libc::setpriority(libc::PRIO_PROCESS, process_handle.id(), priority) != 0 {
+					log::error!("failed to set ffmpeg process priority to {}", priority);
+				}
+			}
+		}
+
 		let process_stdin = if self.has_stdin_input() {
 			process_handle.stdin.take()
 		} else {
 			None
 		};
-		Ok(Process::new(process_handle, process_stdin, output_type))
+		Ok(Process::new(process_handle, process_stdin, spawn_options.output_type))
 	}
 
-	pub fn spawn(self) -> Result<Process, SpawnError> {
-		self.spawn_base(ProcessOutputType::Inherited)
-	}
+	// pub fn spawn(self) -> Result<Process, SpawnError> {
+	// 	self.spawn_base(ProcessOutputType::Inherited)
+	// }
 
-	pub fn spawn_no_output(self) -> Result<Process, SpawnError> {
-		self.spawn_base(ProcessOutputType::None)
-	}
+	// pub fn spawn_no_output(self) -> Result<Process, SpawnError> {
+	// 	self.spawn_base(ProcessOutputType::None)
+	// }
 
-	pub fn spawn_with_progress(self, frame_count: u64) -> Result<Process, SpawnError> {
-		let output_type = if frame_count == 0 {
-			ProcessOutputType::None
-		} else {
-			ProcessOutputType::Progress { frame_count }
-		};
-		self.spawn_base(output_type)
-	}
+	// pub fn spawn_with_progress(self, frame_count: u64) -> Result<Process, SpawnError> {
+	// 	let output_type = if frame_count == 0 {
+	// 		ProcessOutputType::None
+	// 	} else {
+	// 		ProcessOutputType::Progress { frame_count }
+	// 	};
+	// 	self.spawn_base(output_type)
+	// }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessOutputType {
+	#[default]
 	Inherited,
-	Progress { frame_count: u64 },
+	Progress {
+		frame_count: u64,
+	},
 	None,
 }
 

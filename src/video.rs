@@ -72,6 +72,7 @@ pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(
 	output_video_file: &Option<Q>,
 	overwrite: bool,
 	start_end: &CutVideoStartEndArgs,
+	ffmpeg_priority: Option<i32>,
 ) -> Result<(), CutVideoError> {
 	let input_video_file = input_video_file.as_ref();
 
@@ -139,12 +140,10 @@ pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(
 		ffmpeg_command.set_output_audio_codec(Some("copy"));
 	}
 
-	ffmpeg_command
-		.build()
-		.unwrap()
-		.spawn_with_progress(frame_count)?
-		.wait()
-		.await?;
+	let spawn_options = ffmpeg::SpawnOptions::default()
+		.with_progress(frame_count)
+		.with_priority(ffmpeg_priority);
+	ffmpeg_command.build().unwrap().spawn(spawn_options)?.wait().await?;
 
 	log::info!("video file cut successfully");
 	Ok(())
@@ -209,6 +208,7 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(
 	output_video_file: &Option<Q>,
 	overwrite: bool,
 	fix_type: AudioFixType,
+	ffmpeg_priority: Option<i32>,
 ) -> Result<(), FixVideoFileAudioError> {
 	let input_video_file = input_video_file.as_ref();
 
@@ -277,12 +277,10 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(
 		.set_output_file(output_video_file)
 		.set_overwrite_output_file(true);
 
-	ffmpeg_command
-		.build()
-		.unwrap()
-		.spawn_with_progress(video_info.frame_count())?
-		.wait()
-		.await?;
+	let spawn_options = ffmpeg::SpawnOptions::default()
+		.with_progress(video_info.frame_count())
+		.with_priority(ffmpeg_priority);
+	ffmpeg_command.build().unwrap().spawn(spawn_options)?.wait().await?;
 
 	log::info!("video file's audio stream fixed successfully");
 	Ok(())
@@ -467,12 +465,10 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		}
 	}
 
-	ffmpeg_command
-		.build()
-		.unwrap()
-		.spawn_with_progress(frame_count)?
-		.wait()
-		.await?;
+	let spawn_options = ffmpeg::SpawnOptions::default()
+		.with_progress(frame_count)
+		.with_priority(*args.ffmpeg_priority());
+	ffmpeg_command.build().unwrap().spawn(spawn_options)?.wait().await?;
 
 	log::info!("{frame_count} frames transcoded successfully");
 	Ok(output_video_file)
@@ -651,7 +647,10 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 		(false, Some(_)) => return Err(TranscodeVideoError::RequestedAudioFixingButInputHasNoAudio),
 	}
 
-	let ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_progress(frame_count)?;
+	let spawn_options = ffmpeg::SpawnOptions::default()
+		.with_progress(frame_count)
+		.with_priority(*args.ffmpeg_priority());
+	let ffmpeg_process = ffmpeg_command.build().unwrap().spawn(spawn_options)?;
 
 	osd_frames_iter.send_frames_to_ffmpeg_and_wait(ffmpeg_process).await?;
 
@@ -750,6 +749,7 @@ pub async fn splice(
 	input_files: &[impl AsRef<Path>],
 	output_file: impl AsRef<Path>,
 	overwrite: bool,
+	ffmpeg_priority: Option<i32>,
 ) -> Result<(), SpliceVideosError> {
 	let missing_input_files = input_files
 		.iter()
@@ -798,7 +798,11 @@ pub async fn splice(
 		ffmpeg::CommandBuilder::concat(None, input_files, output_file, overwrite)?;
 
 	let total_frame_count = videos_info.iter().map(|info| info.frame_count()).sum::<u64>();
-	ffmpeg_command.spawn_with_progress(total_frame_count)?.wait().await?;
+
+	let spawn_options = ffmpeg::SpawnOptions::default()
+		.with_progress(total_frame_count)
+		.with_priority(ffmpeg_priority);
+	ffmpeg_command.spawn(spawn_options)?.wait().await?;
 
 	log::info!("videos spliced successfully, total {} frames", total_frame_count);
 	Ok(())
@@ -826,6 +830,7 @@ pub async fn add_audio_stream(
 	overwrite: bool,
 	audio_encoder: &str,
 	audio_bitrate: &str,
+	ffmpeg_priority: Option<i32>,
 ) -> Result<(), AddAudioStreamError> {
 	let input_file = input_file.as_ref();
 	if !input_file.exists() {
@@ -859,12 +864,10 @@ pub async fn add_audio_stream(
 		.set_output_file(output_file)
 		.set_overwrite_output_file(true);
 
-	ffmpeg_command
-		.build()
-		.unwrap()
-		.spawn_with_progress(video_info.frame_count())?
-		.wait()
-		.await?;
+	let spawn_options = ffmpeg::SpawnOptions::default()
+		.with_progress(video_info.frame_count())
+		.with_priority(ffmpeg_priority);
+	ffmpeg_command.build().unwrap().spawn(spawn_options)?.wait().await?;
 
 	log::info!("audio stream added successfully");
 

@@ -81,6 +81,9 @@ pub enum Commands {
 		#[clap(flatten)]
 		common_args: GenerateOverlayArgs,
 
+		#[clap(short = 'P', long)]
+		ffmpeg_priority: Option<i32>,
+
 		#[clap(short, long, default_value = "vp8")]
 		codec: OverlayVideoCodec,
 
@@ -100,6 +103,9 @@ pub enum Commands {
 	CutVideo {
 		#[clap(flatten)]
 		start_end: CutVideoStartEndArgs,
+
+		#[clap(short = 'P', long)]
+		ffmpeg_priority: Option<i32>,
 
 		/// input video file path
 		input_video_file: PathBuf,
@@ -128,6 +134,9 @@ pub enum Commands {
 		/// fix audio volume only
 		#[clap(short, long, value_parser)]
 		volume: bool,
+
+		#[clap(short = 'P', long)]
+		ffmpeg_priority: Option<i32>,
 
 		/// input video file path
 		input_video_file: PathBuf,
@@ -170,6 +179,9 @@ pub enum Commands {
 	/// Splice videos files together
 	#[clap(alias = "sv")]
 	SpliceVideos {
+		#[clap(short = 'P', long)]
+		ffmpeg_priority: Option<i32>,
+
 		/// input video files
 		input_video_files: Vec<PathBuf>,
 
@@ -198,6 +210,9 @@ pub enum Commands {
 		/// max audio bitrate
 		#[clap(long, value_parser, default_value = "93k")]
 		audio_bitrate: String,
+
+		#[clap(short = 'P', long)]
+		ffmpeg_priority: Option<i32>,
 
 		/// input video file path
 		input_video_file: PathBuf,

@@ -140,6 +140,7 @@ async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()
 		video_file,
 		overwrite,
 		codec,
+		ffmpeg_priority,
 	} = command
 	{
 		common_args.check_valid()?;
@@ -176,6 +177,7 @@ async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()
 				output_video_path,
 				common_args.frame_shift()?,
 				*overwrite,
+				*ffmpeg_priority,
 			)
 			.await?;
 	}
@@ -217,6 +219,7 @@ async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
 					codec: osd_args.osd_overlay_video_codec(),
 					video_file: Some(osd_overlay_video_file_name),
 					overwrite: transcode_args.overwrite(),
+					ffmpeg_priority: *transcode_args.ffmpeg_priority(),
 				};
 				generate_overlay_video_command(&gov_command).await?;
 			},
@@ -236,6 +239,7 @@ async fn add_audio_stream_command(command: &Commands) -> anyhow::Result<()> {
 		input_video_file,
 		output_video_file,
 		overwrite,
+		ffmpeg_priority,
 	} = command
 	{
 		let output_video_file = match output_video_file {
@@ -263,6 +267,7 @@ async fn add_audio_stream_command(command: &Commands) -> anyhow::Result<()> {
 			*overwrite,
 			audio_encoder,
 			audio_bitrate,
+			*ffmpeg_priority,
 		)
 		.await?;
 	}
@@ -275,13 +280,21 @@ async fn fix_video_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(
 	overwrite: bool,
 	sync: bool,
 	volume: bool,
+	ffmpeg_priority: Option<i32>,
 ) -> anyhow::Result<()> {
 	let fix_type = match (sync, volume) {
 		(true, true) | (false, false) => VideoAudioFixType::SyncAndVolume,
 		(true, false) => VideoAudioFixType::Sync,
 		(false, true) => VideoAudioFixType::Volume,
 	};
-	video::fix_dji_air_unit_audio(input_video_file, output_video_file, overwrite, fix_type).await?;
+	video::fix_dji_air_unit_audio(
+		input_video_file,
+		output_video_file,
+		overwrite,
+		fix_type,
+		ffmpeg_priority,
+	)
+	.await?;
 	Ok(())
 }
 
@@ -350,16 +363,34 @@ async fn main() {
 			input_video_file,
 			output_video_file,
 			overwrite,
-		} => video::cut(input_video_file, output_video_file, *overwrite, start_end)
-			.await
-			.map_err(anyhow::Error::new),
+			ffmpeg_priority,
+		} => video::cut(
+			input_video_file,
+			output_video_file,
+			*overwrite,
+			start_end,
+			*ffmpeg_priority,
+		)
+		.await
+		.map_err(anyhow::Error::new),
 		Commands::FixVideoAudio {
 			input_video_file,
 			output_video_file,
 			overwrite,
 			sync,
 			volume,
-		} => fix_video_audio_command(input_video_file, output_video_file, *overwrite, *sync, *volume).await,
+			ffmpeg_priority,
+		} => {
+			fix_video_audio_command(
+				input_video_file,
+				output_video_file,
+				*overwrite,
+				*sync,
+				*volume,
+				*ffmpeg_priority,
+			)
+			.await
+		},
 		Commands::PlayVideoWithOSD {
 			video_file,
 			osd_video_file,
@@ -368,7 +399,8 @@ async fn main() {
 			input_video_files,
 			output,
 			overwrite,
-		} => video::splice(input_video_files, output, *overwrite)
+			ffmpeg_priority,
+		} => video::splice(input_video_files, output, *overwrite, *ffmpeg_priority)
 			.await
 			.map_err(anyhow::Error::new),
 		Commands::GenerateShellAutocompletionFiles { shell } => generate_shell_autocompletion_files_command(shell),

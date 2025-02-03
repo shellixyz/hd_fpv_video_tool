@@ -46,6 +46,7 @@ fs-err = { git = "https://github.com/shellixyz/fs-err", branch = "custom", versi
 ambassador = "0.4.1"
 derive_builder = "0.20.2"
 tempfile = "3.15.0"
+libc = "0.2.169"
 
 [profile.release]
 panic = 'abort'

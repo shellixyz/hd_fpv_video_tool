@@ -170,6 +170,9 @@ pub struct TranscodeVideoArgs {
 	#[clap(flatten)]
 	start_end: StartEndArgs,
 
+	#[clap(short = 'P', long)]
+	ffmpeg_priority: Option<i32>,
+
 	/// input video file path
 	input_video_file: PathBuf,
 

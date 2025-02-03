@@ -492,6 +492,7 @@ impl<'a> Generator<'a> {
 		Ok(())
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub async fn generate_overlay_video<P: AsRef<Path>>(
 		&mut self,
 		codec: OverlayVideoCodec,
@@ -500,6 +501,7 @@ impl<'a> Generator<'a> {
 		output_video_path: P,
 		frame_shift: i32,
 		overwrite_output: bool,
+		ffmpeg_priority: Option<i32>,
 	) -> Result<(), GenerateOverlayVideoError> {
 		let output_video_path = output_video_path.as_ref();
 
@@ -538,10 +540,10 @@ impl<'a> Generator<'a> {
 			.set_output_file(output_video_path)
 			.set_overwrite_output_file(true);
 
-		let ffmpeg_process = ffmpeg_command
-			.build()
-			.unwrap()
-			.spawn_with_progress(frame_count as u64)?;
+		let spawn_options = ffmpeg::SpawnOptions::default()
+			.with_progress(frame_count as u64)
+			.with_priority(ffmpeg_priority);
+		let ffmpeg_process = ffmpeg_command.build().unwrap().spawn(spawn_options)?;
 
 		frames_iter.send_frames_to_ffmpeg_and_wait(ffmpeg_process).await?;
 
