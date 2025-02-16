@@ -18,8 +18,10 @@ use tempfile::TempPath;
 use thiserror::Error;
 use tokio::task::JoinHandle;
 
-use crate::process::Command as ProcessCommand;
-use crate::video::{self, Resolution, Timestamp};
+use crate::{
+	process::Command as ProcessCommand,
+	video::{self, Resolution, Timestamp},
+};
 
 const DEFAULT_BINARY_PATH: &str = "ffmpeg";
 
@@ -458,10 +460,13 @@ impl CommandBuilder {
 		if overwrite {
 			pcommand.arg("-y");
 		}
-		Ok((temp_list_file_path, Command {
-			command: pcommand,
-			has_stdin_input: false,
-		}))
+		Ok((
+			temp_list_file_path,
+			Command {
+				command: pcommand,
+				has_stdin_input: false,
+			},
+		))
 	}
 }
 
@@ -639,6 +644,7 @@ impl Process {
 		let mut last_lines = ConstGenericRingBuffer::<_, 16>::new();
 
 		let progress_bar = frame_count.map(|frame_count| {
+			#[allow(clippy::literal_string_with_formatting_args)]
 			let progress_style = ProgressStyle::with_template("{wide_bar} {percent:>3}% [ETA {eta:>3}]").unwrap();
 			let progress_bar = ProgressBar::new(frame_count).with_style(progress_style);
 			progress_bar.set_position(0);

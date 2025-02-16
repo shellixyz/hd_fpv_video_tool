@@ -17,6 +17,17 @@ pub mod scaling;
 
 use hd_fpv_osd_font_tool::{dimensions::Dimensions as GenericDimensions, prelude::*};
 
+use self::scaling::Scaling;
+use super::{
+	FontDir, Region,
+	file::{
+		Frame as OSDFileFrame, ReadError, SortedUniqFrames as OSDFileSortedFrames,
+		sorted_frames::{GetFrames, GetFramesExt, VideoFramesIter},
+	},
+	font_variant::FontVariant,
+	tile_indices::UnknownOSDItem,
+	tile_resize::ResizeTiles,
+};
 use crate::{
 	create_path::{CreatePathError, create_path},
 	ffmpeg,
@@ -29,20 +40,6 @@ use crate::{
 		timestamp::{StartEndOverlayFrameIndex, Timestamp},
 	},
 };
-
-use super::{
-	FontDir, Region,
-	file::{Frame as OSDFileFrame, SortedUniqFrames as OSDFileSortedFrames},
-	file::{
-		ReadError,
-		sorted_frames::{GetFrames, GetFramesExt, VideoFramesIter},
-	},
-	font_variant::FontVariant,
-	tile_indices::UnknownOSDItem,
-	tile_resize::ResizeTiles,
-};
-
-use self::scaling::Scaling;
 
 pub type Dimensions = GenericDimensions<u32>;
 #[derive(Deref, Clone, CopyGetters)]
@@ -239,7 +236,8 @@ fn best_settings_for_requested_scaling(
 	Ok(match *scaling {
 		Scaling::No { target_resolution } => {
 			match target_resolution {
-				// no scaling requested but target resolution provided: use the tile kind best matching the target resolution
+				// no scaling requested but target resolution provided: use the tile kind best matching the target
+				// resolution
 				Some(target_resolution) => {
 					let tile_kind = osd_kind
 						.best_kind_of_tiles_to_use_without_scaling(target_resolution.dimensions())
@@ -310,7 +308,8 @@ fn best_settings_for_requested_scaling(
 				None => "no",
 			};
 			log::info!(
-				"calculated best approach: tile kind: {tile_kind} - scaling: {tile_scaling_yes_no} - overlay resolution: {overlay_resolution}"
+				"calculated best approach: tile kind: {tile_kind} - scaling: {tile_scaling_yes_no} - overlay \
+				 resolution: {overlay_resolution}"
 			);
 
 			(overlay_resolution, tile_kind, tile_scaling)
@@ -372,7 +371,8 @@ impl<'a> Generator<'a> {
 
 			if overlay_res_scale < 0.8 {
 				log::warn!(
-					"without scaling the overlay resolution is much smaller than the target video resolution, consider using scaling for better results"
+					"without scaling the overlay resolution is much smaller than the target video resolution, \
+					 consider using scaling for better results"
 				);
 			}
 		}
@@ -453,6 +453,7 @@ impl<'a> Generator<'a> {
 		let iter = osd_file_frames_slice.video_frames_rel_index_par_iter(EndOfFramesAction::ContinueToLastVideoFrame);
 		let frame_count = iter.len();
 
+		#[allow(clippy::literal_string_with_formatting_args)]
 		let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
 		let progress_bar = ProgressBar::new(frame_count as u64).with_style(progress_style);
 		progress_bar.enable_steady_tick(std::time::Duration::new(0, 100_000_000));
@@ -571,9 +572,8 @@ impl<'a> Generator<'a> {
 }
 
 impl<'a> IntoIterator for &'a Generator<'a> {
-	type Item = Result<Frame, UnknownOSDItem>;
-
 	type IntoIter = FramesIter<'a>;
+	type Item = Result<Frame, UnknownOSDItem>;
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.iter_advanced(0, None, 0)
