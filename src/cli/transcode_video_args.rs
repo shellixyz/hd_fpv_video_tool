@@ -1,24 +1,106 @@
-use std::path::{Path, PathBuf};
+use std::{
+	path::{Path, PathBuf},
+	str::FromStr,
+};
 
 use clap::Args;
+use derive_more::derive::IsVariant;
 use getset::{CopyGetters, Getters};
+use strum::IntoEnumIterator as _;
 use thiserror::Error;
 
+use super::{font_options::OSDFontOptions, generate_overlay_args, start_end_args::StartEndArgs};
 use crate::{
+	AsBool,
+	ffmpeg::{self, VideoQuality},
 	osd::{self, file::find_associated_to_video_file, overlay::scaling::OSDScalingArgs},
 	prelude::OverlayVideoCodec,
 	video::{self, resolution::TargetResolution},
 };
 
-use super::{font_options::OSDFontOptions, generate_overlay_args, start_end_args::StartEndArgs};
+impl FromStr for video::Codec {
+	type Err = String;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		use video::Codec::*;
+		Ok(match s.to_uppercase().as_str() {
+			"AV1" => AV1,
+			"H264" | "H.264" => H264,
+			"H265" | "H.265" => H265,
+			"VP8" => VP8,
+			"VP9" => VP9,
+			_ => return Err(format!("unknown video codec: {}", s)),
+		})
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, derive_more::Display, IsVariant)]
+pub enum HwAcceleratedEncoding {
+	Yes,
+	No,
+}
+
+// impl HwAcceleratedEncoding {
+// 	pub fn from_bool(b: bool) -> Self {
+// 		if b { Self::Yes } else { Self::No }
+// 	}
+
+// 	pub fn to_bool(self) -> bool {
+// 		self == Self::Yes
+// 	}
+// }
+
+impl From<bool> for HwAcceleratedEncoding {
+	fn from(b: bool) -> Self {
+		if b { Self::Yes } else { Self::No }
+	}
+}
+
+impl AsBool for HwAcceleratedEncoding {
+	fn as_bool(&self) -> bool {
+		*self == Self::Yes
+	}
+}
+
+impl video::Codec {
+	pub fn default_video_quality(&self, hw_accel: impl AsBool) -> ffmpeg::VideoQuality {
+		// let q = match self {
+		// 	video::Codec::AV1 => todo!(),
+		// 	video::Codec::H264 => todo!(),
+		// 	video::Codec::H265 => 27,
+		// 	video::Codec::VP8 => todo!(),
+		// 	video::Codec::VP9 => todo!(),
+		// };
+		// match hw_accel.as_bool() {
+		// 	true => VideoQuality::GlobalQuality(q),
+		// 	false => VideoQuality::ConstantRateFactor(q),
+		// }
+		match hw_accel.as_bool() {
+			true => match self {
+				video::Codec::AV1 => VideoQuality::GlobalQuality(30), // to figure out
+				video::Codec::H264 => VideoQuality::GlobalQuality(23), // to figure out
+				video::Codec::H265 => VideoQuality::GlobalQuality(22),
+				video::Codec::VP8 => VideoQuality::GlobalQuality(30), // to figure out
+				video::Codec::VP9 => VideoQuality::GlobalQuality(30), // to figure out
+			},
+			false => match self {
+				video::Codec::AV1 => VideoQuality::ConstantRateFactor(30), // to figure out
+				video::Codec::H264 => VideoQuality::ConstantRateFactor(23), // to figure out
+				video::Codec::H265 => VideoQuality::ConstantRateFactor(25),
+				video::Codec::VP8 => VideoQuality::ConstantRateFactor(30), // to figure out
+				video::Codec::VP9 => VideoQuality::ConstantRateFactor(30), // to figure out
+			},
+		}
+	}
+}
 
 #[derive(Args, Getters, CopyGetters)]
 pub struct TranscodeVideoOSDArgs {
 	/// burn OSD onto video, try to find the OSD file automatically.
 	///
-	/// First tries finding a file with the name <basename of the video file>.osd then if it does not exist
-	/// tries finding a file with same DJI prefix as the video file with G instead of U if it is starting with DJIU. Examples:{n}
-	/// DJIG0000.mp4 => DJIG0000.osd{n}
+	/// First tries finding a file with the name <basename of the video file>.osd then if it does
+	/// not exist tries finding a file with same DJI prefix as the video file with G instead of U
+	/// if it is starting with DJIU. Examples:{n} DJIG0000.mp4 => DJIG0000.osd{n}
 	/// DJIG0000_something.mp4 => DJIG0000.osd{n}
 	/// DJIU0000.mp4 => DJIG0000.osd{n}
 	/// DJIU0000_something.mp4 => DJIG0000.osd{n}
@@ -123,10 +205,20 @@ pub struct TranscodeVideoArgs {
 	#[getset(get_copy = "pub")]
 	fix_audio_sync: bool,
 
+	#[clap(short, long, default_value_t = false)]
+	#[getset(skip)]
+	#[getset(get_copy = "pub")]
+	no_hwaccel: bool,
+
+	#[clap(short, long, help = transcode_video_args_video_codec_help())]
+	#[getset(skip)]
+	video_codec: Option<video::Codec>,
+
 	/// video encoder to use
 	///
 	/// This value is directly passed to the `-c:v` FFMpeg argument.{n}
 	/// Run `ffmpeg -encoders` for a list of available encoders
+	// TODO: remove
 	#[clap(long, value_parser, default_value = "libx265")]
 	video_encoder: String,
 
@@ -135,6 +227,14 @@ pub struct TranscodeVideoArgs {
 	video_bitrate: String,
 
 	/// video constant quality setting
+	// TODO: add short option
+	#[clap(long)]
+	#[getset(skip)]
+	#[getset(get_copy = "pub")]
+	video_quality: Option<u8>,
+
+	/// video constant quality setting
+	// TODO: remove
 	#[clap(long, value_parser, default_value_t = 25)]
 	#[getset(skip)]
 	#[getset(get_copy = "pub")]
@@ -187,6 +287,14 @@ pub struct TranscodeVideoArgs {
 	overwrite: bool,
 }
 
+fn transcode_video_args_video_codec_help() -> String {
+	let video_codecs = video::Codec::iter()
+		.map(|video_codec| video_codec.to_string().to_uppercase())
+		.collect::<Vec<_>>()
+		.join(", ");
+	format!("video codec to use. Possible values: {}", video_codecs)
+}
+
 #[derive(Debug, Error)]
 pub enum OutputVideoFileError {
 	#[error("input has no file name")]
@@ -232,5 +340,39 @@ impl TranscodeVideoArgs {
 					.with_extension(input_file_extension)
 			},
 		})
+	}
+
+	fn hw_accel_cap() -> Option<video::HwAccelCap> {
+		let res = video::HwAccelCap::new();
+		if res.is_none() {
+			log::warn!("could not access VA-API through libva, hardware acceleration disabled");
+		}
+		res
+	}
+
+	pub fn video_codec(&self) -> (video::Codec, HwAcceleratedEncoding) {
+		const FALLBACK: (video::Codec, HwAcceleratedEncoding) = (video::Codec::H265, HwAcceleratedEncoding::No);
+		match self.video_codec {
+			Some(_) | None if self.no_hwaccel => FALLBACK,
+			Some(video_codec) => match Self::hw_accel_cap() {
+				Some(hw_accel_cap) => (
+					video_codec,
+					HwAcceleratedEncoding::from(hw_accel_cap.can_encode(video_codec)),
+				),
+				None => (video_codec, HwAcceleratedEncoding::No),
+			},
+			None => {
+				let hw_accel_codec = Self::hw_accel_cap().and_then(|hw_accel_cap| {
+					[video::Codec::AV1, video::Codec::H265]
+						.iter()
+						.find(|&video_codec| hw_accel_cap.can_encode(video_codec))
+				});
+				if let Some(hw_accel_codec) = hw_accel_codec {
+					(*hw_accel_codec, HwAcceleratedEncoding::Yes)
+				} else {
+					FALLBACK
+				}
+			},
+		}
 	}
 }

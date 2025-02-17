@@ -7,18 +7,18 @@ use std::{
 	process::exit,
 };
 
+use anyhow::anyhow;
 use clap::Parser;
 use env_logger::fmt::Color;
-use strum::IntoEnumIterator;
-
-use anyhow::anyhow;
-
 use hd_fpv_video_tool::{cli::generate_overlay_args::GenerateOverlayArgsBuilder, osd::file::GenericReader, prelude::*};
+use strum::IntoEnumIterator;
 mod cli;
 mod man_pages;
 mod shell_autocompletion;
 
-use {cli::*, man_pages::*, shell_autocompletion::*};
+use cli::*;
+use man_pages::*;
+use shell_autocompletion::*;
 
 fn display_osd_file_info_command<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
 	let mut reader = osd::file::open(path)?;
@@ -61,7 +61,8 @@ fn display_osd_file_info_command<P: AsRef<Path>>(path: P) -> anyhow::Result<()> 
 		};
 		let refresh_freq = 60.0 / refresh_interval_frames;
 		println!(
-			"OSD update rate: {refresh_percent_frames:.0}% of the video frames ({refresh_freq:.1}Hz or approximately {refresh_interval_frames_str})"
+			"OSD update rate: {refresh_percent_frames:.0}% of the video frames ({refresh_freq:.1}Hz or approximately \
+			 {refresh_interval_frames_str})"
 		);
 	}
 	Ok(())

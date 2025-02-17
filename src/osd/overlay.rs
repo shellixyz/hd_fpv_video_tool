@@ -30,7 +30,7 @@ use super::{
 };
 use crate::{
 	create_path::{CreatePathError, create_path},
-	ffmpeg,
+	ffmpeg::{self, VideoQuality},
 	file::{self, TouchError},
 	image::{WriteError as ImageWriteError, WriteImageFile},
 	osd::file::sorted_frames::EndOfFramesAction,
@@ -535,7 +535,7 @@ impl<'a> Generator<'a> {
 			.set_output_video_settings(
 				Some(codec.params().encoder()),
 				codec.params().bitrate(),
-				codec.params().crf(),
+				codec.params().crf().map(VideoQuality::ConstantRateFactor),
 			)
 			.add_args(codec.params().additional_args())
 			.set_output_file(output_video_path)

@@ -1,31 +1,37 @@
-use std::ffi::OsString;
-use std::path::Path;
-use std::path::PathBuf;
-use std::process::ExitStatus;
+use std::{
+	ffi::OsString,
+	io::Error as IOError,
+	path::{Path, PathBuf},
+	process::ExitStatus,
+};
 
 use derive_more::From;
 use ffmpeg_next::Rational;
 use itertools::Itertools;
-use std::io::Error as IOError;
 use thiserror::Error;
 
-pub use self::probe::probe;
-use crate::cli::font_options::OSDFontDirError;
-use crate::cli::start_end_args::CutVideoStartEndArgs;
-use crate::cli::transcode_video_args::OutputVideoFileError;
-use crate::ffmpeg;
-use crate::file::TouchError;
-use crate::osd::file::{GenericReader, ReadError as OSDFileReadError, UnrecognizedOSDFile};
-use crate::osd::overlay::SendFramesToFFMpegError;
-use crate::osd::tile_indices::UnknownOSDItem;
-use crate::process::Command as ProcessCommand;
+pub use self::{codec::Codec, hw_accel_cap::HwAccelCap, probe::probe};
 use crate::{
-	cli::transcode_video_args::TranscodeVideoOSDArgs,
-	prelude::{Scaling, TranscodeVideoArgs},
+	AsBool,
+	cli::{
+		font_options::OSDFontDirError,
+		start_end_args::CutVideoStartEndArgs,
+		transcode_video_args::{HwAcceleratedEncoding, OutputVideoFileError, TranscodeVideoOSDArgs},
+	},
+	ffmpeg::{self, VideoQuality},
+	file::TouchError,
+	osd::{
+		file::{GenericReader, ReadError as OSDFileReadError, UnrecognizedOSDFile},
+		overlay::{SendFramesToFFMpegError, scaling::ScalingArgsError},
+		tile_indices::UnknownOSDItem,
+	},
+	prelude::{Scaling, TranscodeVideoArgs, *},
+	process::Command as ProcessCommand,
 };
-use crate::{osd::overlay::scaling::ScalingArgsError, prelude::*};
 
+pub mod codec;
 pub mod coordinates;
+pub mod hw_accel_cap;
 pub mod probe;
 pub mod region;
 pub mod resolution;
@@ -364,6 +370,53 @@ fn remove_video_defects_regions_are_inside_video_frame(regions: &[Region], video
 	true
 }
 
+fn transcode_video_filter_parts(
+	args: &TranscodeVideoArgs,
+	video_info: &video::probe::Result,
+	hw_acceleration: HwAcceleratedEncoding,
+) -> Result<Vec<String>, TranscodeVideoError> {
+	let mut video_filter_parts = Vec::new();
+
+	if !args.remove_video_defects().is_empty() {
+		if !remove_video_defects_regions_are_inside_video_frame(args.remove_video_defects(), &video_info.resolution()) {
+			return Err(TranscodeVideoError::IncompatibleArguments(
+				"cannot remove video defects that are outside the video frame".to_owned(),
+			));
+		}
+		let mut defect_filters = args
+			.remove_video_defects()
+			.iter()
+			.map(|region| format!("delogo={}", region.to_ffmpeg_filter_string()))
+			.collect_vec();
+		video_filter_parts.append(&mut defect_filters);
+	}
+
+	if hw_acceleration.is_no() {
+		if let Some(resolution) = args.video_resolution() {
+			let resolution_dimensions = resolution.dimensions();
+			video_filter_parts.push(format!(
+				"scale={}x{}:flags=lanczos",
+				resolution_dimensions.width(),
+				resolution_dimensions.height()
+			));
+		}
+	}
+
+	if hw_acceleration.is_yes() {
+		video_filter_parts.push("format=nv12,hwupload".to_string());
+		if let Some(resolution) = args.video_resolution() {
+			let resolution_dimensions = resolution.dimensions();
+			video_filter_parts.push(format!(
+				"scale_vaapi={}:{}",
+				resolution_dimensions.width(),
+				resolution_dimensions.height()
+			));
+		}
+	}
+
+	Ok(video_filter_parts)
+}
+
 pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVideoError> {
 	let output_video_file = args.output_video_file(false)?;
 	if !args.input_video_file().exists() {
@@ -388,6 +441,14 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		output_video_file.to_string_lossy()
 	);
 
+	let (video_codec, hw_acceleration) = args.video_codec();
+
+	log::info!(
+		"using codec: {} (hw accel: {})",
+		video_codec,
+		hw_acceleration.to_string().to_lowercase()
+	);
+
 	let video_info = probe(args.input_video_file())?;
 	let frame_count = frame_count_for_interval(
 		video_info.frame_count(),
@@ -398,6 +459,14 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 
 	let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
 
+	let video_quality = match args.video_quality() {
+		Some(quality) => match hw_acceleration {
+			HwAcceleratedEncoding::No => VideoQuality::ConstantRateFactor(quality),
+			HwAcceleratedEncoding::Yes => VideoQuality::GlobalQuality(quality),
+		},
+		None => video_codec.default_video_quality(hw_acceleration),
+	};
+
 	ffmpeg_command
 		.add_input_file_slice(
 			args.input_video_file(),
@@ -405,9 +474,10 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 			args.start_end().end(),
 		)
 		.set_output_video_settings(
-			Some(args.video_encoder()),
+			Some(video_codec.ffmpeg_string(hw_acceleration.as_bool())),
 			Some(args.video_bitrate()),
-			Some(args.video_crf()),
+			Some(video_quality),
+			// Some(VideoQuality::GlobalQuality(22)),
 		)
 		.set_output_file(output_video_file.clone())
 		.set_overwrite_output_file(true);
@@ -419,42 +489,61 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 			ffmpeg_command.add_input_filter("lavfi", "anullsrc=channel_layout=stereo:sample_rate=48000");
 			ffmpeg_command.add_arg("-shortest");
 			ffmpeg_command.set_output_audio_settings(Some(args.audio_encoder()), Some(args.audio_bitrate()));
+			ffmpeg_command.add_mapping("1:a");
 		}
 	}
 
-	if !args.remove_video_defects().is_empty() {
-		if !remove_video_defects_regions_are_inside_video_frame(args.remove_video_defects(), &video_info.resolution()) {
-			return Err(TranscodeVideoError::IncompatibleArguments(
-				"cannot remove video defects that are outside the video frame".to_owned(),
-			));
-		}
-		let defect_filter = args
-			.remove_video_defects()
-			.iter()
-			.map(|region| format!("delogo={}", region.to_ffmpeg_filter_string()))
-			.join(";");
-		let complex_filter = if let Some(resolution) = args.video_resolution() {
-			let resolution_dimensions = resolution.dimensions();
-			format!(
-				"[0]{}[s1];[s1]scale={}x{}:flags=lanczos[vo]",
-				defect_filter,
-				resolution_dimensions.width(),
-				resolution_dimensions.height()
-			)
-		} else {
-			format!("[0]{}[vo]", defect_filter)
-		};
-		ffmpeg_command.add_complex_filter(&complex_filter).add_mapping("[vo]");
-		if video_info.has_audio() {
-			ffmpeg_command.add_mapping("0:a");
-		}
-	} else if let Some(resolution) = args.video_resolution() {
-		let resolution_dimensions = resolution.dimensions();
-		ffmpeg_command.add_video_filter(&format!(
-			"scale={}x{}:flags=lanczos",
-			resolution_dimensions.width(),
-			resolution_dimensions.height()
-		));
+	let video_filter_parts = transcode_video_filter_parts(args, &video_info, hw_acceleration)?;
+
+	// let mut video_filter_parts = Vec::new();
+
+	// if !args.remove_video_defects().is_empty() {
+	// 	if !remove_video_defects_regions_are_inside_video_frame(args.remove_video_defects(),
+	// &video_info.resolution()) { 		return Err(TranscodeVideoError::IncompatibleArguments(
+	// 			"cannot remove video defects that are outside the video frame".to_owned(),
+	// 		));
+	// 	}
+	// 	let mut defect_filters = args
+	// 		.remove_video_defects()
+	// 		.iter()
+	// 		.map(|region| format!("delogo={}", region.to_ffmpeg_filter_string()))
+	// 		.collect_vec();
+	// 	video_filter_parts.append(&mut defect_filters);
+	// }
+
+	// if hw_acceleration.is_no() {
+	// 	if let Some(resolution) = args.video_resolution() {
+	// 		let resolution_dimensions = resolution.dimensions();
+	// 		video_filter_parts.push(format!(
+	// 			"scale={}x{}:flags=lanczos",
+	// 			resolution_dimensions.width(),
+	// 			resolution_dimensions.height()
+	// 		));
+	// 	}
+	// }
+
+	// if hw_acceleration.is_yes() {
+	// 	ffmpeg_command.add_prefix_arg("-hwaccel").add_prefix_arg("vaapi");
+	// 	video_filter_parts.push("format=nv12,hwupload".to_string());
+	// 	if let Some(resolution) = args.video_resolution() {
+	// 		let resolution_dimensions = resolution.dimensions();
+	// 		video_filter_parts.push(format!(
+	// 			"scale_vaapi={}:{}",
+	// 			resolution_dimensions.width(),
+	// 			resolution_dimensions.height()
+	// 		));
+	// 	}
+	// }
+
+	if hw_acceleration.is_yes() {
+		ffmpeg_command.add_prefix_arg("-hwaccel").add_prefix_arg("vaapi");
+	}
+
+	let video_filter = format!("[0:v]{}[vo]", video_filter_parts.join(","));
+	ffmpeg_command.add_complex_filter(&video_filter).add_mapping("[vo]");
+
+	if video_info.has_audio() {
+		ffmpeg_command.add_mapping("0:a");
 	}
 
 	if let Some(video_audio_fix) = args.video_audio_fix() {
@@ -520,6 +609,14 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 		output_video_file.to_string_lossy()
 	);
 
+	let (video_codec, hw_acceleration) = args.video_codec();
+
+	log::info!(
+		"using codec: {} (hw accel: {})",
+		video_codec,
+		hw_acceleration.to_string().to_lowercase()
+	);
+
 	if video_info.frame_rate().numerator() != 60 || video_info.frame_rate().denominator() != 1 {
 		return Err(TranscodeVideoError::CanOnlyBurnOSDOn60FPSVideo(
 			video_info.frame_rate().numerator() as f64 / video_info.frame_rate().denominator() as f64,
@@ -567,43 +664,59 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 
 	let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
 
-	let complex_filter = if args.remove_video_defects().is_empty() {
-		if let Some(resolution) = args.video_resolution() {
-			let resolution_dimensions = resolution.dimensions();
-			format!(
-				"[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[s1];[s1]scale={}x{}:flags=lanczos[vo]",
-				resolution_dimensions.width(),
-				resolution_dimensions.height()
-			)
-		} else {
-			"[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]".to_owned()
-		}
-	} else {
-		if !remove_video_defects_regions_are_inside_video_frame(args.remove_video_defects(), &video_info.resolution()) {
-			return Err(TranscodeVideoError::IncompatibleArguments(
-				"cannot remove video defects that are outside the video frame".to_owned(),
-			));
-		}
-		let defect_filter = args
-			.remove_video_defects()
-			.iter()
-			.map(|region| format!("delogo={}", region.to_ffmpeg_filter_string()))
-			.join(";");
-		if let Some(resolution) = args.video_resolution() {
-			let resolution_dimensions = resolution.dimensions();
-			format!(
-				"[0]{}[s1];[s1][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[s2];[s2]scale={}x{}:flags=lanczos[vo]",
-				defect_filter,
-				resolution_dimensions.width(),
-				resolution_dimensions.height()
-			)
-		} else {
-			format!(
-				"[0]{}[s1];[s1][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]",
-				defect_filter
-			)
-		}
+	let video_quality = match args.video_quality() {
+		Some(quality) => match hw_acceleration {
+			HwAcceleratedEncoding::No => VideoQuality::ConstantRateFactor(quality),
+			HwAcceleratedEncoding::Yes => VideoQuality::GlobalQuality(quality),
+		},
+		None => video_codec.default_video_quality(hw_acceleration),
 	};
+
+	let overlay_filter = "[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2";
+	let video_filter_parts = transcode_video_filter_parts(args, &video_info, hw_acceleration)?;
+	let video_filter = if video_filter_parts.is_empty() {
+		format!("{}[vo]", overlay_filter)
+	} else {
+		format!("{}[s1];[s1]{}[vo]", overlay_filter, video_filter_parts.join(","))
+	};
+
+	// let complex_filter = if args.remove_video_defects().is_empty() {
+	// 	if let Some(resolution) = args.video_resolution() {
+	// 		let resolution_dimensions = resolution.dimensions();
+	// 		format!(
+	// 			"[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[s1];[s1]scale={}x{}:flags=lanczos[vo]",
+	// 			resolution_dimensions.width(),
+	// 			resolution_dimensions.height()
+	// 		)
+	// 	} else {
+	// 		"[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]".to_owned()
+	// 	}
+	// } else {
+	// 	if !remove_video_defects_regions_are_inside_video_frame(args.remove_video_defects(),
+	// &video_info.resolution()) { 		return Err(TranscodeVideoError::IncompatibleArguments(
+	// 			"cannot remove video defects that are outside the video frame".to_owned(),
+	// 		));
+	// 	}
+	// 	let defect_filter = args
+	// 		.remove_video_defects()
+	// 		.iter()
+	// 		.map(|region| format!("delogo={}", region.to_ffmpeg_filter_string()))
+	// 		.join(";");
+	// 	if let Some(resolution) = args.video_resolution() {
+	// 		let resolution_dimensions = resolution.dimensions();
+	// 		format!(
+	// 			"[0]{}[s1];[s1][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[s2];[s2]scale={}x{}:
+	// flags=lanczos[vo]", 			defect_filter,
+	// 			resolution_dimensions.width(),
+	// 			resolution_dimensions.height()
+	// 		)
+	// 	} else {
+	// 		format!(
+	// 			"[0]{}[s1];[s1][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]",
+	// 			defect_filter
+	// 		)
+	// 	}
+	// };
 
 	ffmpeg_command
 		.add_input_file_slice(
@@ -613,15 +726,19 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 		)
 		.add_stdin_input(osd_overlay_resolution, 60)
 		.unwrap()
-		.add_complex_filter(&complex_filter)
+		.add_complex_filter(&video_filter)
 		.add_mapping("[vo]")
 		.set_output_video_settings(
-			Some(args.video_encoder()),
+			Some(video_codec.ffmpeg_string(hw_acceleration.as_bool())),
 			Some(args.video_bitrate()),
-			Some(args.video_crf()),
+			Some(video_quality),
 		)
 		.set_output_file(output_video_file)
 		.set_overwrite_output_file(true);
+
+	if hw_acceleration.is_yes() {
+		ffmpeg_command.add_prefix_arg("-hwaccel").add_prefix_arg("vaapi");
+	}
 
 	if args.add_audio() {
 		if video_info.has_audio() {

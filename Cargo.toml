@@ -22,7 +22,7 @@ clap = { version = "4.5.27", features = ["derive", "string"] }
 image = { version = "0.24.9", features = ["rgb", "png"], default-features = false }
 log = "0.4.25"
 strum = { version = "0.26.3", features = ["derive"] }
-derive_more = { version = "1.0.0", features = ["deref", "deref_mut", "from", "constructor", "error"] }
+derive_more = { version = "1.0.0", features = ["deref", "deref_mut", "from", "constructor", "error", "is_variant"] }
 byte_struct = "0.9.0"
 hd_fpv_osd_font_tool = { version = "~1", git = "https://github.com/shellixyz/hd_fpv_osd_font_tool" }
 getset = "0.1.4"
@@ -47,6 +47,7 @@ ambassador = "0.4.1"
 derive_builder = "0.20.2"
 tempfile = "3.15.0"
 libc = "0.2.169"
+cros-libva = "0.0.13"
 
 [profile.release]
 panic = 'abort'

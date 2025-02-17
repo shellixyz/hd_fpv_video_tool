@@ -125,13 +125,35 @@ impl AudioOutputSettings {
 	}
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VideoQuality {
+	GlobalQuality(u8),
+	ConstantRateFactor(u8),
+}
+
+impl VideoQuality {
+	fn into_args(self) -> Vec<OsString> {
+		match self {
+			VideoQuality::GlobalQuality(quality) => vec![
+				"-rc_mode".into(),
+				"CQP".into(),
+				"-global_quality".into(),
+				quality.to_string().into(),
+				"-compression_level".into(),
+				"1".into(),
+			],
+			VideoQuality::ConstantRateFactor(crf) => vec!["-crf".into(), crf.to_string().into()],
+		}
+	}
+}
+
 #[derive(Debug, Clone, Deref, DerefMut, Default, Getters, Setters)]
 pub struct VideoOutputSettings {
 	#[deref]
 	#[deref_mut]
 	common: CommonOutputStreamSettings,
 	#[getset(get = "pub", set = "pub(self)")]
-	crf: Option<u8>,
+	video_quality: Option<VideoQuality>,
 }
 
 impl VideoOutputSettings {
@@ -145,13 +167,47 @@ impl VideoOutputSettings {
 			args.push("-b:v".into());
 			args.push(bitrate.to_string().into());
 		}
-		if let Some(crf) = self.crf() {
-			args.push("-crf".into());
-			args.push(crf.to_string().into());
+		if let Some(video_quality) = self.video_quality() {
+			args.append(&mut video_quality.into_args());
 		}
 		args
 	}
 }
+
+// pub struct ComplexFilterBuilder<'a> {
+// 	input_label: &'a str,
+// 	output_label: &'a str,
+// 	filters: Vec<String>,
+// }
+
+// impl<'a> ComplexFilterBuilder<'a> {
+// 	pub fn new(input_label: &'a str, output_label: &'a str) -> ComplexFilterBuilder<'a> {
+// 		ComplexFilterBuilder {
+// 			input_label,
+// 			output_label,
+// 			filters: vec![],
+// 		}
+// 	}
+
+// 	pub fn add_filter(&mut self, filter: &str) -> &mut Self {
+// 		self.filters.push(filter.to_string());
+// 		self
+// 	}
+
+// 	pub fn build(&self) -> String {
+// 		let mut filter_parts = vec![];
+// 		for (i, filter) in self.filters.iter().enumerate() {
+// 			let input_label = if i == 0 { self.input_label } else { &format!("s{}", i) };
+// 			let output_label = if i == self.filters.len() - 1 {
+// 				self.output_label
+// 			} else {
+// 				&format!("s{}", i + 1)
+// 			};
+// 			filter_parts.push(format!("[{}]{}[{}]", input_label, filter, output_label));
+// 		}
+// 		filter_parts.join(";")
+// 	}
+// }
 
 #[derive(Debug, Clone)]
 pub enum Mapping {
@@ -214,6 +270,7 @@ pub struct CommandBuilder {
 	// #[getset(skip)]
 	// #[getset(get_copy = "pub")]
 	// shortest: bool,
+	prefix_args: Vec<String>,
 	args: Vec<String>,
 	output: Option<PathBuf>,
 	overwrite_output_file: bool,
@@ -326,8 +383,8 @@ impl CommandBuilder {
 		self
 	}
 
-	pub fn set_output_video_crf(&mut self, crf: Option<u8>) -> &mut Self {
-		self.video_output_settings.set_crf(crf);
+	pub fn set_output_video_quality(&mut self, video_quality: Option<VideoQuality>) -> &mut Self {
+		self.video_output_settings.set_video_quality(video_quality);
 		self
 	}
 
@@ -335,11 +392,11 @@ impl CommandBuilder {
 		&mut self,
 		codec: Option<&str>,
 		bitrate: Option<&str>,
-		crf: Option<u8>,
+		video_quality: Option<VideoQuality>,
 	) -> &mut Self {
 		self.set_output_video_codec(codec)
 			.set_output_video_bitrate(bitrate)
-			.set_output_video_crf(crf)
+			.set_output_video_quality(video_quality)
 	}
 
 	pub fn set_output_audio_codec(&mut self, codec: Option<&str>) -> &mut Self {
@@ -372,6 +429,17 @@ impl CommandBuilder {
 		self
 	}
 
+	pub fn add_prefix_arg(&mut self, arg: &str) -> &mut Self {
+		self.prefix_args.push(arg.to_string());
+		self
+	}
+
+	pub fn add_prefix_args(&mut self, args: &[&str]) -> &mut Self {
+		self.prefix_args
+			.append(&mut args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>());
+		self
+	}
+
 	pub fn set_overwrite_output_file(&mut self, yes: bool) -> &mut Self {
 		self.overwrite_output_file = yes;
 		self
@@ -388,6 +456,8 @@ impl CommandBuilder {
 			.clone()
 			.unwrap_or_else(|| PathBuf::from(DEFAULT_BINARY_PATH));
 		let mut pcommand = ProcessCommand::new(binary_path);
+
+		pcommand.args(self.prefix_args.iter().map(OsString::from).collect::<Vec<_>>());
 
 		if self.inputs.is_empty() {
 			return Err(BuildCommandError("no input"));
