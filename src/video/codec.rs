@@ -1,5 +1,7 @@
 use strum::EnumIter;
 
+use crate::prelude::OverlayVideoCodec;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, derive_more::derive::Display, EnumIter)]
 pub enum Codec {
 	AV1,
@@ -26,6 +28,16 @@ impl Codec {
 				Self::VP8 => "libvpx",
 				Self::VP9 => "libvpx-vp9",
 			},
+		}
+	}
+}
+
+impl From<OverlayVideoCodec> for Codec {
+	fn from(codec: OverlayVideoCodec) -> Self {
+		match codec {
+			OverlayVideoCodec::VP8 => Self::VP8,
+			OverlayVideoCodec::VP9 => Self::VP9,
+			OverlayVideoCodec::HEVC => Self::H265,
 		}
 	}
 }

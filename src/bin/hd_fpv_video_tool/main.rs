@@ -10,7 +10,10 @@ use std::{
 use anyhow::anyhow;
 use clap::Parser;
 use env_logger::fmt::Color;
-use hd_fpv_video_tool::{cli::generate_overlay_args::GenerateOverlayArgsBuilder, osd::file::GenericReader, prelude::*};
+use ffmpeg_next::codec;
+use hd_fpv_video_tool::{
+	AsBool, cli::generate_overlay_args::GenerateOverlayArgsBuilder, osd::file::GenericReader, prelude::*,
+};
 use strum::IntoEnumIterator;
 mod cli;
 mod man_pages;
@@ -140,8 +143,8 @@ async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()
 		common_args,
 		video_file,
 		overwrite,
-		codec,
 		ffmpeg_priority,
+		codec_args,
 	} = command
 	{
 		common_args.check_valid()?;
@@ -170,9 +173,11 @@ async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()
 			},
 		};
 		let mut overlay_generator = generate_overlay_prepare_generator(common_args)?;
+		let (codec, hw_acceleration) = codec_args.codec();
 		overlay_generator
 			.generate_overlay_video(
-				*codec,
+				codec,
+				hw_acceleration,
 				common_args.start_end().start(),
 				common_args.start_end().end(),
 				output_video_path,
@@ -217,7 +222,8 @@ async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
 						.osd_file(osd_file_path)
 						.build()
 						.unwrap(),
-					codec: osd_args.osd_overlay_video_codec(),
+					// codec: osd_args.osd_overlay_video_codec(),
+					codec_args: todo!(),
 					video_file: Some(osd_overlay_video_file_name),
 					overwrite: transcode_args.overwrite(),
 					ffmpeg_priority: *transcode_args.ffmpeg_priority(),

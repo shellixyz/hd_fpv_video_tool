@@ -4,7 +4,7 @@ use std::{
 };
 
 use derive_more::{Deref, From};
-use getset::{CopyGetters, Getters};
+use getset::CopyGetters;
 use image::{GenericImage, ImageBuffer, ImageResult, Rgba};
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
 use path_absolutize::Absolutize;
@@ -35,7 +35,7 @@ use crate::{
 	image::{WriteError as ImageWriteError, WriteImageFile},
 	osd::file::sorted_frames::EndOfFramesAction,
 	video::{
-		FrameIndex as VideoFrameIndex,
+		FrameIndex as VideoFrameIndex, HwAcceleratedEncoding,
 		resolution::Resolution as VideoResolution,
 		timestamp::{StartEndOverlayFrameIndex, Timestamp},
 	},
@@ -135,47 +135,90 @@ pub fn make_overlay_frame_file_path<P: AsRef<Path>>(dir_path: P, frame_index: Vi
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub enum OverlayVideoCodec {
-	Vp8,
-	Vp9,
-}
-
-#[derive(Debug, Clone, Getters, CopyGetters)]
-#[getset(get_copy = "pub")]
-pub struct OverlayVideoCodecParams {
-	encoder: &'static str,
-	bitrate: Option<&'static str>,
-	crf: Option<u8>,
-
-	#[getset(skip)]
-	#[getset(get = "pub")]
-	additional_args: Vec<&'static str>,
-}
-
-impl OverlayVideoCodecParams {
-	pub fn new(
-		encoder: &'static str,
-		bitrate: Option<&'static str>,
-		crf: Option<u8>,
-		additional_args: &[&'static str],
-	) -> Self {
-		Self {
-			encoder,
-			bitrate,
-			crf,
-			additional_args: additional_args.to_vec(),
-		}
-	}
+	VP8,
+	VP9,
+	HEVC,
 }
 
 impl OverlayVideoCodec {
-	pub fn params(&self) -> OverlayVideoCodecParams {
-		use OverlayVideoCodec::*;
-		match self {
-			Vp8 => OverlayVideoCodecParams::new("libvpx", Some("1M"), Some(40), &["-auto-alt-ref", "0"]),
-			Vp9 => OverlayVideoCodecParams::new("libvpx-vp9", Some("0"), Some(40), &[]),
+	pub fn ffmpeg_string(&self, hw_accel: bool) -> &'static str {
+		match hw_accel {
+			true => match self {
+				Self::VP8 => "vp8_vaapi",
+				Self::VP9 => "vp9_vaapi",
+				Self::HEVC => "hevc_vaapi",
+			},
+			false => match self {
+				Self::VP8 => "libvpx",
+				Self::VP9 => "libvpx-vp9",
+				Self::HEVC => "libx265",
+			},
 		}
 	}
+
+	pub fn bitrate(&self) -> Option<&'static str> {
+		match self {
+			Self::VP8 => Some("1M"),
+			Self::VP9 => Some("0"),
+			Self::HEVC => Some("25M"),
+		}
+	}
+
+	pub fn quality(&self, hw_accel: bool) -> VideoQuality {
+		match hw_accel {
+			true => match self {
+				OverlayVideoCodec::VP8 => VideoQuality::GlobalQuality(100),
+				OverlayVideoCodec::VP9 => VideoQuality::GlobalQuality(100),
+				OverlayVideoCodec::HEVC => VideoQuality::GlobalQuality(25),
+			},
+			false => VideoQuality::ConstantRateFactor(40),
+		}
+	}
+
+	pub fn additional_args(&self) -> &'static [&'static str] {
+		match self {
+			Self::VP8 => &["-auto-alt-ref", "0"],
+			Self::VP9 => &[],
+			Self::HEVC => &[],
+		}
+	}
+
+	// pub fn params(&self) -> OverlayVideoCodecParams {
+	// 	use OverlayVideoCodec::*;
+	// 	match self {
+	// 		VP8 => OverlayVideoCodecParams::new("libvpx", Some("1M"), Some(40), &["-auto-alt-ref", "0"]),
+	// 		VP9 => OverlayVideoCodecParams::new("libvpx-vp9", Some("0"), Some(40), &[]),
+	// 	}
+	// }
 }
+
+// #[derive(Debug, Clone, Getters, CopyGetters)]
+// #[getset(get_copy = "pub")]
+// pub struct OverlayVideoCodecParams {
+// 	encoder: &'static str,
+// 	bitrate: Option<&'static str>,
+// 	crf: Option<u8>,
+
+// 	#[getset(skip)]
+// 	#[getset(get = "pub")]
+// 	additional_args: Vec<&'static str>,
+// }
+
+// impl OverlayVideoCodecParams {
+// 	pub fn new(
+// 		encoder: &'static str,
+// 		bitrate: Option<&'static str>,
+// 		crf: Option<u8>,
+// 		additional_args: &[&'static str],
+// 	) -> Self {
+// 		Self {
+// 			encoder,
+// 			bitrate,
+// 			crf,
+// 			additional_args: additional_args.to_vec(),
+// 		}
+// 	}
+// }
 
 #[derive(Debug, Error, From)]
 pub enum SaveFramesToDirError {
@@ -453,7 +496,6 @@ impl<'a> Generator<'a> {
 		let iter = osd_file_frames_slice.video_frames_rel_index_par_iter(EndOfFramesAction::ContinueToLastVideoFrame);
 		let frame_count = iter.len();
 
-		#[allow(clippy::literal_string_with_formatting_args)]
 		let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
 		let progress_bar = ProgressBar::new(frame_count as u64).with_style(progress_style);
 		progress_bar.enable_steady_tick(std::time::Duration::new(0, 100_000_000));
@@ -497,6 +539,7 @@ impl<'a> Generator<'a> {
 	pub async fn generate_overlay_video<P: AsRef<Path>>(
 		&mut self,
 		codec: OverlayVideoCodec,
+		hw_acceleration: HwAcceleratedEncoding,
 		start: Option<Timestamp>,
 		end: Option<Timestamp>,
 		output_video_path: P,
@@ -506,9 +549,9 @@ impl<'a> Generator<'a> {
 	) -> Result<(), GenerateOverlayVideoError> {
 		let output_video_path = output_video_path.as_ref();
 
-		if !matches!(output_video_path.extension(), Some(extension) if extension == "webm") {
-			return Err(GenerateOverlayVideoError::OutputFileExtensionNotWebm);
-		}
+		// if !matches!(output_video_path.extension(), Some(extension) if extension == "webm") {
+		// 	return Err(GenerateOverlayVideoError::OutputFileExtensionNotWebm);
+		// }
 
 		if !overwrite_output && output_video_path.exists() {
 			return Err(GenerateOverlayVideoError::TargetVideoFileExists(
@@ -529,15 +572,20 @@ impl<'a> Generator<'a> {
 
 		let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
 
+		if hw_acceleration.is_yes() {
+			ffmpeg_command.add_prefix_arg("-hwaccel").add_prefix_arg("vaapi");
+			ffmpeg_command.add_video_filter("format=yuva420p,hwupload");
+		}
+
 		ffmpeg_command
 			.add_stdin_input(self.frame_dimensions, 60)
 			.unwrap()
 			.set_output_video_settings(
-				Some(codec.params().encoder()),
-				codec.params().bitrate(),
-				codec.params().crf().map(VideoQuality::ConstantRateFactor),
+				Some(codec.ffmpeg_string(hw_acceleration.is_yes())),
+				codec.bitrate(),
+				Some(codec.quality(hw_acceleration.is_yes())),
 			)
-			.add_args(codec.params().additional_args())
+			.add_args(codec.additional_args())
 			.set_output_file(output_video_path)
 			.set_overwrite_output_file(true);
 

@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use getset::CopyGetters;
-use hd_fpv_video_tool::{cli::start_end_args::CutVideoStartEndArgs, prelude::*};
+use hd_fpv_video_tool::{
+	cli::{overlay_video_codec_args::OverlayVideoCodecArgs, start_end_args::CutVideoStartEndArgs},
+	prelude::*,
+};
 
 use crate::shell_autocompletion::*;
 
@@ -84,8 +87,8 @@ pub enum Commands {
 		#[clap(short = 'P', long)]
 		ffmpeg_priority: Option<i32>,
 
-		#[clap(short, long, default_value = "vp8")]
-		codec: OverlayVideoCodec,
+		#[clap(flatten)]
+		codec_args: OverlayVideoCodecArgs,
 
 		/// path of the video file to generate
 		video_file: Option<PathBuf>,
