@@ -77,7 +77,7 @@ impl video::Codec {
 		// }
 		match hw_accel.as_bool() {
 			true => match self {
-				video::Codec::AV1 => VideoQuality::GlobalQuality(30), // to figure out
+				video::Codec::AV1 => VideoQuality::GlobalQuality(140), // to figure out
 				video::Codec::H264 => VideoQuality::GlobalQuality(23), // to figure out
 				video::Codec::H265 => VideoQuality::GlobalQuality(22),
 				video::Codec::VP8 => VideoQuality::GlobalQuality(30), // to figure out
