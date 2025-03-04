@@ -2,11 +2,11 @@ use std::{borrow::Borrow, env, rc::Rc};
 
 use cros_libva::{VAEntrypoint, VAProfile};
 
-use super::Codec;
+use crate::video::Codec;
 
-pub struct HwAccelCap(Rc<cros_libva::Display>);
+pub struct VaapiCapFinder(Rc<cros_libva::Display>);
 
-impl HwAccelCap {
+impl VaapiCapFinder {
 	pub fn new() -> Option<Self> {
 		env::set_var("LIBVA_MESSAGING_LEVEL", "0");
 		let display = cros_libva::Display::open()?;
@@ -28,4 +28,12 @@ impl HwAccelCap {
 			Err(_) => false,
 		}
 	}
+}
+
+pub fn vaapi_cap_finder() -> Option<VaapiCapFinder> {
+	let res = VaapiCapFinder::new();
+	if res.is_none() {
+		log::warn!("could not access VA-API through libva, hardware acceleration disabled");
+	}
+	res
 }

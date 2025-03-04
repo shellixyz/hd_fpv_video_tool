@@ -4,7 +4,6 @@ use std::{
 };
 
 use clap::Args;
-use derive_more::derive::IsVariant;
 use getset::{CopyGetters, Getters};
 use strum::IntoEnumIterator as _;
 use thiserror::Error;
@@ -15,7 +14,7 @@ use crate::{
 	ffmpeg::{self, VideoQuality},
 	osd::{self, file::find_associated_to_video_file, overlay::scaling::OSDScalingArgs},
 	prelude::OverlayVideoCodec,
-	video::{self, resolution::TargetResolution},
+	video::{self, HwAcceleratedEncoding, resolution::TargetResolution},
 };
 
 impl FromStr for video::Codec {
@@ -34,34 +33,6 @@ impl FromStr for video::Codec {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, derive_more::Display, IsVariant)]
-pub enum HwAcceleratedEncoding {
-	Yes,
-	No,
-}
-
-// impl HwAcceleratedEncoding {
-// 	pub fn from_bool(b: bool) -> Self {
-// 		if b { Self::Yes } else { Self::No }
-// 	}
-
-// 	pub fn to_bool(self) -> bool {
-// 		self == Self::Yes
-// 	}
-// }
-
-impl From<bool> for HwAcceleratedEncoding {
-	fn from(b: bool) -> Self {
-		if b { Self::Yes } else { Self::No }
-	}
-}
-
-impl AsBool for HwAcceleratedEncoding {
-	fn as_bool(&self) -> bool {
-		*self == Self::Yes
-	}
-}
-
 impl video::Codec {
 	pub fn default_video_quality(&self, hw_accel: impl AsBool) -> ffmpeg::VideoQuality {
 		// let q = match self {
@@ -77,7 +48,7 @@ impl video::Codec {
 		// }
 		match hw_accel.as_bool() {
 			true => match self {
-				video::Codec::AV1 => VideoQuality::GlobalQuality(140), // to figure out
+				video::Codec::AV1 => VideoQuality::GlobalQuality(120),
 				video::Codec::H264 => VideoQuality::GlobalQuality(23), // to figure out
 				video::Codec::H265 => VideoQuality::GlobalQuality(22),
 				video::Codec::VP8 => VideoQuality::GlobalQuality(30), // to figure out
@@ -214,31 +185,15 @@ pub struct TranscodeVideoArgs {
 	#[getset(skip)]
 	video_codec: Option<video::Codec>,
 
-	/// video encoder to use
-	///
-	/// This value is directly passed to the `-c:v` FFMpeg argument.{n}
-	/// Run `ffmpeg -encoders` for a list of available encoders
-	// TODO: remove
-	#[clap(long, value_parser, default_value = "libx265")]
-	video_encoder: String,
-
 	/// video max bitrate
 	#[clap(long, value_parser, default_value = "25M")]
 	video_bitrate: String,
 
 	/// video constant quality setting
-	// TODO: add short option
-	#[clap(long)]
+	#[clap(short = 'q', long)]
 	#[getset(skip)]
 	#[getset(get_copy = "pub")]
 	video_quality: Option<u8>,
-
-	/// video constant quality setting
-	// TODO: remove
-	#[clap(long, value_parser, default_value_t = 25)]
-	#[getset(skip)]
-	#[getset(get_copy = "pub")]
-	video_crf: u8,
 
 	/// [possible values: 720p, 720p4:3, 1080p, 1080p4:3, <width>x<height>]
 	#[clap(short = 'r', long)]
@@ -342,19 +297,11 @@ impl TranscodeVideoArgs {
 		})
 	}
 
-	fn hw_accel_cap() -> Option<video::HwAccelCap> {
-		let res = video::HwAccelCap::new();
-		if res.is_none() {
-			log::warn!("could not access VA-API through libva, hardware acceleration disabled");
-		}
-		res
-	}
-
 	pub fn video_codec(&self) -> (video::Codec, HwAcceleratedEncoding) {
 		const FALLBACK: (video::Codec, HwAcceleratedEncoding) = (video::Codec::H265, HwAcceleratedEncoding::No);
 		match self.video_codec {
 			Some(_) | None if self.no_hwaccel => FALLBACK,
-			Some(video_codec) => match Self::hw_accel_cap() {
+			Some(video_codec) => match video::hw_accel::vaapi_cap_finder() {
 				Some(hw_accel_cap) => (
 					video_codec,
 					HwAcceleratedEncoding::from(hw_accel_cap.can_encode(video_codec)),
@@ -362,7 +309,7 @@ impl TranscodeVideoArgs {
 				None => (video_codec, HwAcceleratedEncoding::No),
 			},
 			None => {
-				let hw_accel_codec = Self::hw_accel_cap().and_then(|hw_accel_cap| {
+				let hw_accel_codec = video::hw_accel::vaapi_cap_finder().and_then(|hw_accel_cap| {
 					[video::Codec::AV1, video::Codec::H265]
 						.iter()
 						.find(|&video_codec| hw_accel_cap.can_encode(video_codec))

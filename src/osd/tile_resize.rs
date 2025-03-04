@@ -15,7 +15,6 @@ impl ResizeTiles for &[Tile] {
 			tile_dimensions.0,
 			tile_dimensions.1
 		);
-		#[allow(clippy::literal_string_with_formatting_args)]
 		let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
 		self.par_iter()
 			.progress_with_style(progress_style)

@@ -288,7 +288,6 @@ async fn download_file_with_progress(url: &str, dest_path: &str) -> anyhow::Resu
 
 	let mut dest_file = File::create(dest_path)?;
 	let mut downloaded = 0;
-	#[allow(clippy::literal_string_with_formatting_args)]
 	let progress_style = ProgressStyle::with_template("{wide_bar} {percent:>3}% [ETA {eta:>3}]").unwrap();
 	let progress_bar = ProgressBar::new(total_size).with_style(progress_style);
 

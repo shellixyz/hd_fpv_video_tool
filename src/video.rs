@@ -10,13 +10,13 @@ use ffmpeg_next::Rational;
 use itertools::Itertools;
 use thiserror::Error;
 
-pub use self::{codec::Codec, hw_accel_cap::HwAccelCap, probe::probe};
+pub use self::{codec::Codec, probe::probe};
 use crate::{
 	AsBool,
 	cli::{
 		font_options::OSDFontDirError,
 		start_end_args::CutVideoStartEndArgs,
-		transcode_video_args::{HwAcceleratedEncoding, OutputVideoFileError, TranscodeVideoOSDArgs},
+		transcode_video_args::{OutputVideoFileError, TranscodeVideoOSDArgs},
 	},
 	ffmpeg::{self, VideoQuality},
 	file::TouchError,
@@ -28,10 +28,11 @@ use crate::{
 	prelude::{Scaling, TranscodeVideoArgs, *},
 	process::Command as ProcessCommand,
 };
+pub use hw_accel::HwAcceleratedEncoding;
 
 pub mod codec;
 pub mod coordinates;
-pub mod hw_accel_cap;
+pub mod hw_accel;
 pub mod probe;
 pub mod region;
 pub mod resolution;
