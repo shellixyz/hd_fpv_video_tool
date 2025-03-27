@@ -176,12 +176,12 @@ pub struct TranscodeVideoArgs {
 	#[getset(get_copy = "pub")]
 	fix_audio_sync: bool,
 
-	#[clap(short, long, default_value_t = false)]
+	#[clap(short = 'N', long, default_value_t = false)]
 	#[getset(skip)]
 	#[getset(get_copy = "pub")]
 	no_hwaccel: bool,
 
-	#[clap(short, long, help = transcode_video_args_video_codec_help())]
+	#[clap(short = 'V', long, help = transcode_video_args_video_codec_help())]
 	#[getset(skip)]
 	video_codec: Option<video::Codec>,
 

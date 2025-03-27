@@ -4,7 +4,7 @@
 .SH NAME
 fix\-video\-audio \- Fix a DJI Air Unit video\*(Aqs audio sync and/or volume
 .SH SYNOPSIS
-\fBfix\-video\-audio\fR [\fB\-s\fR|\fB\-\-sync\fR] [\fB\-v\fR|\fB\-\-volume\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT_VIDEO_FILE\fR> [\fIOUTPUT_VIDEO_FILE\fR] 
+\fBfix\-video\-audio\fR [\fB\-s\fR|\fB\-\-sync\fR] [\fB\-v\fR|\fB\-\-volume\fR] [\fB\-P\fR|\fB\-\-ffmpeg\-priority\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT_VIDEO_FILE\fR> [\fIOUTPUT_VIDEO_FILE\fR] 
 .SH DESCRIPTION
 Fix a DJI Air Unit video\*(Aqs audio sync and/or volume
 .PP
@@ -18,6 +18,9 @@ fix audio sync only
 .TP
 \fB\-v\fR, \fB\-\-volume\fR
 fix audio volume only
+.TP
+\fB\-P\fR, \fB\-\-ffmpeg\-priority\fR=\fIFFMPEG_PRIORITY\fR
+
 .TP
 \fB\-y\fR, \fB\-\-overwrite\fR
 overwrite output file if it exists

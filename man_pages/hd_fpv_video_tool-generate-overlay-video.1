@@ -4,7 +4,7 @@
 .SH NAME
 generate\-overlay\-video \- Generate an OSD overlay video to be displayed over another video
 .SH SYNOPSIS
-\fBgenerate\-overlay\-video\fR [\fB\-v\fR|\fB\-\-target\-video\-file\fR] [\fB\-\-hide\-regions\fR] [\fB\-\-hide\-items\fR] [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-r\fR|\fB\-\-target\-resolution\fR] [\fB\-s\fR|\fB\-\-scaling\fR] [\fB\-n\fR|\fB\-\-no\-scaling\fR] [\fB\-\-min\-margins\fR] [\fB\-\-min\-coverage\fR] [\fB\-f\fR|\fB\-\-font\-dir\fR] [\fB\-i\fR|\fB\-\-font\-ident\fR] [\fB\-o\fR|\fB\-\-frame\-shift\fR] [\fB\-c\fR|\fB\-\-codec\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIOSD_FILE\fR> [\fIVIDEO_FILE\fR] 
+\fBgenerate\-overlay\-video\fR [\fB\-v\fR|\fB\-\-target\-video\-file\fR] [\fB\-\-hide\-regions\fR] [\fB\-\-hide\-items\fR] [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-r\fR|\fB\-\-target\-resolution\fR] [\fB\-s\fR|\fB\-\-scaling\fR] [\fB\-n\fR|\fB\-\-no\-scaling\fR] [\fB\-\-min\-margins\fR] [\fB\-\-min\-coverage\fR] [\fB\-f\fR|\fB\-\-font\-dir\fR] [\fB\-i\fR|\fB\-\-font\-ident\fR] [\fB\-o\fR|\fB\-\-frame\-shift\fR] [\fB\-P\fR|\fB\-\-ffmpeg\-priority\fR] [\fB\-c\fR|\fB\-\-codec\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIOSD_FILE\fR> [\fIVIDEO_FILE\fR] 
 .SH DESCRIPTION
 Generate an OSD overlay video to be displayed over another video
 .PP
@@ -65,6 +65,9 @@ force using this font identifier when loading fonts, default is automatic
 .TP
 \fB\-o\fR, \fB\-\-frame\-shift\fR=\fIframes\fR
 Shift the output by that number of frames. Use this option to sync the OSD to a particular video
+.TP
+\fB\-P\fR, \fB\-\-ffmpeg\-priority\fR=\fIFFMPEG_PRIORITY\fR
+
 .TP
 \fB\-c\fR, \fB\-\-codec\fR=\fICODEC\fR [default: vp8]
 

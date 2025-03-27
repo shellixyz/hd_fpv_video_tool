@@ -182,9 +182,6 @@ pub enum Commands {
 		#[clap(short = 'P', long)]
 		ffmpeg_priority: Option<i32>,
 
-		/// input video files
-		input_video_files: Vec<PathBuf>,
-
 		/// output video file path
 		// #[clap(short, long)]
 		output: PathBuf,
@@ -192,6 +189,9 @@ pub enum Commands {
 		/// overwrite output file if it exists
 		#[clap(short = 'y', long, value_parser)]
 		overwrite: bool,
+
+		/// input video files
+		input_video_files: Vec<PathBuf>,
 	},
 
 	/// Add a silent audio stream to a video file

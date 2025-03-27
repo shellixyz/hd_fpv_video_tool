@@ -4,10 +4,13 @@
 .SH NAME
 splice\-videos \- Splice videos files together
 .SH SYNOPSIS
-\fBsplice\-videos\fR [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fIINPUT_VIDEO_FILES\fR] <\fIOUTPUT\fR> 
+\fBsplice\-videos\fR [\fB\-P\fR|\fB\-\-ffmpeg\-priority\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIOUTPUT\fR> [\fIINPUT_VIDEO_FILES\fR] 
 .SH DESCRIPTION
 Splice videos files together
 .SH OPTIONS
+.TP
+\fB\-P\fR, \fB\-\-ffmpeg\-priority\fR=\fIFFMPEG_PRIORITY\fR
+
 .TP
 \fB\-y\fR, \fB\-\-overwrite\fR
 overwrite output file if it exists
@@ -15,8 +18,8 @@ overwrite output file if it exists
 \fB\-h\fR, \fB\-\-help\fR
 Print help
 .TP
-[\fIINPUT_VIDEO_FILES\fR]
-input video files
-.TP
 <\fIOUTPUT\fR>
 output video file path
+.TP
+[\fIINPUT_VIDEO_FILES\fR]
+input video files

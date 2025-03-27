@@ -4,7 +4,7 @@
 .SH NAME
 cut\-video \- Cut a video file without transcoding by specifying the desired start and/or end timestamp
 .SH SYNOPSIS
-\fBcut\-video\fR [\fB\-s\fR|\fB\-\-start\fR] [\fB\-e\fR|\fB\-\-end\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT_VIDEO_FILE\fR> [\fIOUTPUT_VIDEO_FILE\fR] 
+\fBcut\-video\fR [\fB\-s\fR|\fB\-\-start\fR] [\fB\-e\fR|\fB\-\-end\fR] [\fB\-P\fR|\fB\-\-ffmpeg\-priority\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT_VIDEO_FILE\fR> [\fIOUTPUT_VIDEO_FILE\fR] 
 .SH DESCRIPTION
 Cut a video file without transcoding by specifying the desired start and/or end timestamp
 .PP
@@ -16,6 +16,9 @@ start timestamp
 .TP
 \fB\-e\fR, \fB\-\-end\fR=\fI[HH:]MM:SS\fR
 end timestamp
+.TP
+\fB\-P\fR, \fB\-\-ffmpeg\-priority\fR=\fIFFMPEG_PRIORITY\fR
+
 .TP
 \fB\-y\fR, \fB\-\-overwrite\fR
 overwrite output file if it exists
