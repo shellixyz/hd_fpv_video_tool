@@ -185,7 +185,10 @@ impl Reader {
 		match self.file.read(&mut frame_header_bytes)? {
 			0 => Ok(None),
 			FrameHeader::BYTE_LEN => Ok(Some(FrameHeader::read_bytes(&frame_header_bytes))),
-			_ => Err(ReadError::unexpected_eof(self.file.path())),
+			_ => {
+				log::warn!("unexpected end of file while reading frame header");
+				Ok(None)
+			},
 		}
 	}
 
@@ -257,7 +260,14 @@ impl GenericReader for Reader {
 			None => return Ok(None),
 		};
 		let mut data_bytes = vec![0; header.data_len() as usize * 2];
-		self.file.read_exact(&mut data_bytes)?;
+		match self.file.read_exact(&mut data_bytes) {
+			Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+				log::warn!("unexpected end of file while reading frame data");
+				return Ok(None);
+			},
+			Err(e) => return Err(ReadError::FileError(e)),
+			Ok(_) => {},
+		}
 		let tile_indices = TileIndices::new(
 			data_bytes
 				.chunks_exact(u16::BYTE_LEN)
