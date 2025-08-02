@@ -409,7 +409,7 @@ async fn main() {
 	};
 
 	if let Err(error) = command_result {
-		log::error!("{}", error);
+		log::error!("{error}");
 		exit(1);
 	}
 }

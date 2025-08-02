@@ -121,7 +121,7 @@ pub enum DrawFrameOverlayError {
 }
 
 pub fn format_overlay_frame_file_index(frame_index: VideoFrameIndex) -> String {
-	format!("{:010}.png", frame_index)
+	format!("{frame_index:010}.png")
 }
 
 pub fn make_overlay_frame_file_path<P: AsRef<Path>>(dir_path: P, frame_index: VideoFrameIndex) -> PathBuf {
@@ -407,8 +407,7 @@ impl<'a> Generator<'a> {
 				.collect::<Vec<_>>()
 				.join(", ");
 			log::warn!(
-				"the OSD file contains invalid tile indices, it is probably corrupted: {}",
-				invalid_tile_indices_str
+				"the OSD file contains invalid tile indices, it is probably corrupted: {invalid_tile_indices_str}"
 			);
 		}
 	}
@@ -477,7 +476,7 @@ impl<'a> Generator<'a> {
 					prev_rel_index,
 					rel_index,
 				} => {
-					log::debug!("non existing {} -> {}", rel_index, prev_rel_index);
+					log::debug!("non existing {rel_index} -> {prev_rel_index}");
 					let prev_path = make_overlay_frame_file_path(&abs_output_dir_path, prev_rel_index);
 					let link_path = make_overlay_frame_file_path(&path, rel_index);
 					fs_err::os::unix::fs::symlink(prev_path, link_path).map_err(SaveFramesToDirError::SymlinkError)?;
@@ -487,8 +486,7 @@ impl<'a> Generator<'a> {
 		})?;
 
 		log::info!(
-			"overlay frames generation completed: {} frame files written",
-			frame_count
+			"overlay frames generation completed: {frame_count} frame files written"
 		);
 		Ok(())
 	}
@@ -548,7 +546,7 @@ impl<'a> Generator<'a> {
 
 		frames_iter.send_frames_to_ffmpeg_and_wait(ffmpeg_process).await?;
 
-		log::info!("overlay video generation completed: {} frames", frame_count);
+		log::info!("overlay video generation completed: {frame_count} frames");
 		Ok(())
 	}
 

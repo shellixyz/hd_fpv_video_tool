@@ -676,7 +676,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 	let overlay_filter = "[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2";
 	let video_filter_parts = transcode_video_filter_parts(args, &video_info, hw_acceleration)?;
 	let video_filter = if video_filter_parts.is_empty() {
-		format!("{}[vo]", overlay_filter)
+		format!("{overlay_filter}[vo]")
 	} else {
 		format!("{}[s1];[s1]{}[vo]", overlay_filter, video_filter_parts.join(","))
 	};
@@ -922,7 +922,7 @@ pub async fn splice(
 		.with_priority(ffmpeg_priority);
 	ffmpeg_command.spawn(spawn_options)?.wait().await?;
 
-	log::info!("videos spliced successfully, total {} frames", total_frame_count);
+	log::info!("videos spliced successfully, total {total_frame_count} frames");
 	Ok(())
 }
 

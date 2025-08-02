@@ -687,7 +687,7 @@ mod tests {
 	impl VideoFramesRelIndexIterItems<'_> {
 		fn display(&self) {
 			println!("count: {}", self.len());
-			println!("items: {}", self);
+			println!("items: {self}");
 		}
 	}
 
@@ -752,8 +752,7 @@ mod tests {
 						println!("----------------------------");
 						for split in 0..frames_slice.len() {
 							println!(
-								"first_video_frame: {}, last_video_frame: {:?}, eof_action: {eof_action}, video_frame_shift: {}, split: {}",
-								first_video_frame, last_video_frame, video_frame_shift, split
+								"first_video_frame: {first_video_frame}, last_video_frame: {last_video_frame:?}, eof_action: {eof_action}, video_frame_shift: {video_frame_shift}, split: {split}"
 							);
 							let iter = ParallelVideoFramesRelIndexIter::from(
 								frames_slice.video_frames_rel_index_iter(eof_action),

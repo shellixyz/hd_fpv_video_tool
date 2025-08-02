@@ -617,7 +617,7 @@ impl Command {
 		if let Some(priority) = spawn_options.priority {
 			unsafe {
 				if libc::setpriority(libc::PRIO_PROCESS, process_handle.id(), priority) != 0 {
-					log::error!("failed to set ffmpeg process priority to {}", priority);
+					log::error!("failed to set ffmpeg process priority to {priority}");
 				}
 			}
 		}

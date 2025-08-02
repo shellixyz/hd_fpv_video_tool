@@ -28,7 +28,7 @@ impl FromStr for video::Codec {
 			"H265" | "H.265" => H265,
 			"VP8" => VP8,
 			"VP9" => VP9,
-			_ => return Err(format!("unknown video codec: {}", s)),
+			_ => return Err(format!("unknown video codec: {s}")),
 		})
 	}
 }
@@ -247,7 +247,7 @@ fn transcode_video_args_video_codec_help() -> String {
 		.map(|video_codec| video_codec.to_string().to_uppercase())
 		.collect::<Vec<_>>()
 		.join(", ");
-	format!("video codec to use. Possible values: {}", video_codecs)
+	format!("video codec to use. Possible values: {video_codecs}")
 }
 
 #[derive(Debug, Error)]
