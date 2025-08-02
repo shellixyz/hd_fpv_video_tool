@@ -630,7 +630,12 @@ impl Command {
 		} else {
 			None
 		};
-		Ok(Process::new(process_handle, process_stdin, spawn_options.output_type))
+		Ok(Process::new(
+			self.command.to_string(),
+			process_handle,
+			process_stdin,
+			spawn_options.output_type,
+		))
 	}
 
 	// pub fn spawn(self) -> Result<Process, SpawnError> {
@@ -670,6 +675,7 @@ impl Display for Command {
 #[derive(Debug, Getters, Error)]
 #[getset(get = "pub")]
 pub struct ProcessError {
+	command: String,
 	exit_status: process::ExitStatus,
 	stderr_content: Option<String>,
 }
@@ -677,6 +683,7 @@ pub struct ProcessError {
 impl Display for ProcessError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "ffmpeg process exited with an error: {}", self.exit_status)?;
+		write!(f, "\nCommand: {}", self.command)?;
 		if let Some(stderr_content) = &self.stderr_content {
 			f.write_str("\n\nFFMpeg last lines:\n\n")?;
 			f.write_str(stderr_content)?;
@@ -686,13 +693,19 @@ impl Display for ProcessError {
 }
 
 pub struct Process {
+	command: String,
 	handle: process::Child,
 	monitor_handle: Option<JoinHandle<Vec<String>>>,
 	stdin: Option<process::ChildStdin>,
 }
 
 impl Process {
-	fn new(mut handle: process::Child, stdin: Option<process::ChildStdin>, output_type: ProcessOutputType) -> Self {
+	fn new(
+		command: String,
+		mut handle: process::Child,
+		stdin: Option<process::ChildStdin>,
+		output_type: ProcessOutputType,
+	) -> Self {
 		let monitor_handle = match output_type {
 			ProcessOutputType::Inherited => None,
 			ProcessOutputType::Progress { frame_count } => Some(tokio::spawn(Self::monitor(
@@ -702,6 +715,7 @@ impl Process {
 			ProcessOutputType::None => Some(tokio::spawn(Self::monitor(handle.stderr.take().unwrap(), None))),
 		};
 		Process {
+			command,
 			handle,
 			monitor_handle,
 			stdin,
@@ -787,6 +801,7 @@ impl Process {
 					Ok(true)
 				} else {
 					Err(ProcessError {
+						command: self.command.clone(),
 						exit_status,
 						stderr_content: self.last_output_lines().await,
 					})
@@ -800,6 +815,7 @@ impl Process {
 		match self.handle.wait().unwrap() {
 			exit_status if exit_status.success() => Ok(()),
 			exit_status => Err(ProcessError {
+				command: self.command.clone(),
 				exit_status,
 				stderr_content: self.last_output_lines().await,
 			}),
