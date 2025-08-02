@@ -530,10 +530,13 @@ impl CommandBuilder {
 		if overwrite {
 			pcommand.arg("-y");
 		}
-		Ok((temp_list_file_path, Command {
-			command: pcommand,
-			has_stdin_input: false,
-		}))
+		Ok((
+			temp_list_file_path,
+			Command {
+				command: pcommand,
+				has_stdin_input: false,
+			},
+		))
 	}
 }
 
