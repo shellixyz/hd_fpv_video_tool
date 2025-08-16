@@ -18,10 +18,10 @@ jobs:
           args: >
             bash -lc "
               apt-get update &&
-              apt-get install -y
-                ffmpeg libavformat-dev libavutil-dev libavfilter-dev
-                libavdevice-dev libva-dev clang pkg-config &&
-              cargo build --verbose &&
+              apt-get install -y --no-install-recommends \
+                ffmpeg libavformat-dev libavutil-dev libavfilter-dev \
+                libavdevice-dev libva-dev clang pkg-config && \
+              cargo build --verbose && \
               cargo test --verbose
             "
 
