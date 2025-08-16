@@ -1,8 +1,5 @@
 name: Cargo Build & Test
-
-on:
-  push:
-  pull_request:
+on: [push, pull_request]
 
 env:
   CARGO_TERM_COLOR: always
@@ -10,12 +7,11 @@ env:
 jobs:
   build_and_test:
     runs-on: ubuntu-latest
-
     steps:
-      # Required on GitHub; wrkflw will emulate it locally (you'll see that log line)
+      # Required on GitHub; wrkflw will emulate this
       - uses: actions/checkout@v4
 
-      # Everything below runs inside the Rust image with a real shell
+      # Everything else happens inside the Rust container
       - name: Build & test in Rust container
         uses: docker://rust:1-bookworm
         with:
