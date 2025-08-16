@@ -17,6 +17,7 @@ jobs:
         with:
           args: >
             bash -lc "
+		      export PATH='/usr/local/cargo/bin:$HOME/.cargo/bin:$PATH'
               apt-get update &&
               apt-get install -y --no-install-recommends \
                 ffmpeg libavformat-dev libavutil-dev libavfilter-dev \
