@@ -485,9 +485,7 @@ impl<'a> Generator<'a> {
 			Ok::<(), SaveFramesToDirError>(())
 		})?;
 
-		log::info!(
-			"overlay frames generation completed: {frame_count} frame files written"
-		);
+		log::info!("overlay frames generation completed: {frame_count} frame files written");
 		Ok(())
 	}
 
@@ -550,11 +548,11 @@ impl<'a> Generator<'a> {
 		Ok(())
 	}
 
-	pub fn iter(&self) -> FramesIter {
+	pub fn iter(&self) -> FramesIter<'_> {
 		self.into_iter()
 	}
 
-	pub fn iter_advanced(&self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> FramesIter {
+	pub fn iter_advanced(&self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> FramesIter<'_> {
 		FramesIter {
 			frame_dimensions: self.frame_dimensions,
 			font_variant: self.font_variant,

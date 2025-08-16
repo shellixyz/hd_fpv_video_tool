@@ -48,11 +48,11 @@ impl TileIndices {
 		)
 	}
 
-	pub fn enumerate(&self) -> TileIndicesEnumeratorIter {
+	pub fn enumerate(&self) -> TileIndicesEnumeratorIter<'_> {
 		TileIndicesEnumeratorIter(self.iter().enumerate())
 	}
 
-	fn enumerate_mut(&mut self) -> TileIndicesEnumeratorIterMut {
+	fn enumerate_mut(&mut self) -> TileIndicesEnumeratorIterMut<'_> {
 		TileIndicesEnumeratorIterMut(self.0.iter_mut().enumerate())
 	}
 

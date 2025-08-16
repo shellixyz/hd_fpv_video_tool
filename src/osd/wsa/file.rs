@@ -44,7 +44,7 @@ pub struct FileHeaderRaw {
 }
 
 impl FileHeaderRaw {
-	pub fn font_variant_id(&self) -> Cow<str> {
+	pub fn font_variant_id(&self) -> Cow<'_, str> {
 		String::from_utf8_lossy(&self.font_variant_id)
 	}
 
@@ -136,7 +136,7 @@ impl Reader {
 		return_value
 	}
 
-	pub fn iter(&mut self) -> Iter {
+	pub fn iter(&mut self) -> Iter<'_> {
 		self.into_iter()
 	}
 }

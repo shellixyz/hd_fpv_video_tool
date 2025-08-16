@@ -75,23 +75,26 @@ impl<'a> SortedUniqFramesForVideoSlice<'a> {
 		}
 	}
 
-	pub fn video_frames_rel_index_iter(&self, eof_action: EndOfFramesAction) -> VideoFramesRelIndexIter {
+	pub fn video_frames_rel_index_iter(&self, eof_action: EndOfFramesAction) -> VideoFramesRelIndexIter<'_> {
 		let index_shift = self.video_frame_shift - self.first_video_frame as i32;
 		VideoFramesRelIndexIter::new(self.frames, index_shift, eof_action, self.last_video_frame)
 	}
 
-	pub fn video_frames_rel_index_par_iter(&self, eof_action: EndOfFramesAction) -> ParallelVideoFramesRelIndexIter {
+	pub fn video_frames_rel_index_par_iter(
+		&self,
+		eof_action: EndOfFramesAction,
+	) -> ParallelVideoFramesRelIndexIter<'_> {
 		let index_shift = self.video_frame_shift - self.first_video_frame as i32;
 		ParallelVideoFramesRelIndexIter::new(self.frames, index_shift, eof_action, self.last_video_frame)
 	}
 }
 
 pub trait AsSortedFramesForVideoSlice {
-	fn as_sorted_frames_slice(&self) -> SortedUniqFramesForVideoSlice;
+	fn as_sorted_frames_slice(&self) -> SortedUniqFramesForVideoSlice<'_>;
 }
 
 impl AsSortedFramesForVideoSlice for SortedUniqFrames {
-	fn as_sorted_frames_slice(&self) -> SortedUniqFramesForVideoSlice {
+	fn as_sorted_frames_slice(&self) -> SortedUniqFramesForVideoSlice<'_> {
 		SortedUniqFramesForVideoSlice {
 			kind: self.kind(),
 			font_variant: self.font_variant(),
@@ -104,7 +107,7 @@ impl AsSortedFramesForVideoSlice for SortedUniqFrames {
 }
 
 impl AsSortedFramesForVideoSlice for SortedUniqFramesForVideoSlice<'_> {
-	fn as_sorted_frames_slice(&self) -> SortedUniqFramesForVideoSlice {
+	fn as_sorted_frames_slice(&self) -> SortedUniqFramesForVideoSlice<'_> {
 		self.clone()
 	}
 }
@@ -133,9 +136,9 @@ pub trait GetFramesExt {
 	fn highest_used_tile_index(&self) -> Option<TileIndex>;
 	fn first_video_frame_index(&self, first_video_frame: u32, video_frame_shift: i32) -> Option<u32>;
 	fn video_frame_indices(&self, video_frame_shift: i32) -> SortedUniqFrameIndices;
-	fn shift_iter(&self, video_frame_shift: i32) -> ShiftIter;
-	fn par_shift_iter(&self, video_frame_shift: i32) -> ParallelShiftIter;
-	fn video_frames_iter(&self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> VideoFramesIter;
+	fn shift_iter(&self, video_frame_shift: i32) -> ShiftIter<'_>;
+	fn par_shift_iter(&self, video_frame_shift: i32) -> ParallelShiftIter<'_>;
+	fn video_frames_iter(&self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> VideoFramesIter<'_>;
 }
 
 impl<T> GetFramesExt for T
@@ -173,18 +176,18 @@ where
 		)
 	}
 
-	fn shift_iter(&self, video_frame_shift: i32) -> ShiftIter {
+	fn shift_iter(&self, video_frame_shift: i32) -> ShiftIter<'_> {
 		ShiftIter::new(self.frames(), video_frame_shift)
 	}
 
-	fn par_shift_iter(&self, video_frame_shift: i32) -> ParallelShiftIter {
+	fn par_shift_iter(&self, video_frame_shift: i32) -> ParallelShiftIter<'_> {
 		ParallelShiftIter {
 			frames: self.frames(),
 			video_frame_shift,
 		}
 	}
 
-	fn video_frames_iter(&self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> VideoFramesIter {
+	fn video_frames_iter(&self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> VideoFramesIter<'_> {
 		let first_video_frame_index = first_frame as i32 - frame_shift;
 		let first_frame_index = self
 			.frames()
@@ -208,7 +211,7 @@ impl SortedUniqFrames {
 		first_video_frame: u32,
 		last_video_frame: Option<u32>,
 		video_frame_shift: i32,
-	) -> SortedUniqFramesForVideoSlice {
+	) -> SortedUniqFramesForVideoSlice<'_> {
 		let first_video_frame_index = first_video_frame as i32 - video_frame_shift;
 		let first_frame_index = self
 			.frames()

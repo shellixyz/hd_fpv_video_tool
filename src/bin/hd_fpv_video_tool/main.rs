@@ -68,7 +68,7 @@ fn display_osd_file_info_command<P: AsRef<Path>>(path: P) -> anyhow::Result<()> 
 	Ok(())
 }
 
-fn generate_overlay_prepare_generator(common_args: &GenerateOverlayArgs) -> anyhow::Result<OverlayGenerator> {
+fn generate_overlay_prepare_generator(common_args: &GenerateOverlayArgs) -> anyhow::Result<OverlayGenerator<'_>> {
 	let scaling = Scaling::try_from_scaling_args(common_args.scaling_args(), common_args.target_video_file())?;
 	let mut osd_file_reader = osd::file::open(common_args.osd_file())?;
 	let font_dir = FontDir::new(common_args.font_options().font_dir()?);

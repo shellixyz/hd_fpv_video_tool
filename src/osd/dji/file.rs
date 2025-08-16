@@ -248,7 +248,7 @@ impl Reader {
 	//     })
 	// }
 
-	pub fn iter(&mut self) -> Iter {
+	pub fn iter(&mut self) -> Iter<'_> {
 		self.into_iter()
 	}
 }
