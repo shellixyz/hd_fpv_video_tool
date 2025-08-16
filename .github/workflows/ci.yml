@@ -15,14 +15,15 @@ jobs:
       - name: Build & test in Rust container
         uses: docker://rust:1-bookworm
         with:
-          args: >-
-            bash -lc 'set -euo pipefail;
-            export PATH="/usr/local/cargo/bin:$HOME/.cargo/bin:$PATH";
-            apt-get update &&
-            apt-get install -y --no-install-recommends
-              ffmpeg libavformat-dev libavutil-dev libavfilter-dev
-              libavdevice-dev libva-dev clang pkg-config &&
-            cargo --version &&
-            cargo build --verbose &&
-            cargo test --verbose'
-
+    		args: |
+      		bash -lc "
+        		set -euo pipefail
+        		export PATH='/usr/local/cargo/bin:$HOME/.cargo/bin:$PATH'
+        		apt-get update &&
+        		apt-get install -y --no-install-recommends \
+          		ffmpeg libavformat-dev libavutil-dev libavfilter-dev \
+          		libavdevice-dev libva-dev clang pkg-config
+        		cargo --version
+        		cargo build --verbose
+        		cargo test --verbose
+      		"
