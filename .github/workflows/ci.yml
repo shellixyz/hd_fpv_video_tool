@@ -16,9 +16,9 @@ jobs:
         uses: docker://rust:1-bookworm
         with:
           args: |
-            bash -lc "
+            bash -lc '
               set -euo pipefail
-              export PATH='/usr/local/cargo/bin:$HOME/.cargo/bin:$PATH'
+              export PATH="/usr/local/cargo/bin:$HOME/.cargo/bin:$PATH"
               apt-get update
               apt-get install -y --no-install-recommends \
                 ffmpeg libavformat-dev libavutil-dev libavfilter-dev \
@@ -26,5 +26,5 @@ jobs:
               cargo --version
               cargo build --verbose
               cargo test --verbose
-            "
+            '
 
