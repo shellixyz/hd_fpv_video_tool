@@ -19,28 +19,28 @@ Fonts are loaded either from the directory specified with the \-\-font\-dir opti
 NOTE: unfortunately this is very slow right now because only a handful of video formats support transparency and their encoders are very slow
 .SH OPTIONS
 .TP
-\fB\-v\fR, \fB\-\-target\-video\-file\fR=\fITARGET_VIDEO_FILE\fR
+\fB\-v\fR, \fB\-\-target\-video\-file\fR \fI<TARGET_VIDEO_FILE>\fR
 use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
 .TP
-\fB\-\-hide\-regions\fR=\fIREGIONS\fR
+\fB\-\-hide\-regions\fR \fI<REGIONS>\fR
 hide rectangular regions from the OSD
 
 The parameter is a `;` separated list of regions.{n} The format for a region is: <left_x>,<top_y>[:<width>x<height>]{n} If the size is not specified it will default to 1x1
 .TP
-\fB\-\-hide\-items\fR=\fIITEM_NAMES\fR
+\fB\-\-hide\-items\fR \fI<ITEM_NAMES>\fR
 hide items from the OSD
 
 Available items (font variant: name list):
   \- Ardupilot: gpslat, gpslon, alt, short+code, long+code
   \- INAV: gpslat, gpslon, alt
 .TP
-\fB\-\-start\fR=\fI[HH:]MM:SS\fR
+\fB\-\-start\fR \fI<[HH:]MM:SS>\fR
 start timestamp
 .TP
-\fB\-\-end\fR=\fI[HH:]MM:SS\fR
+\fB\-\-end\fR \fI<[HH:]MM:SS>\fR
 end timestamp
 .TP
-\fB\-r\fR, \fB\-\-target\-resolution\fR=\fITARGET_RESOLUTION\fR
+\fB\-r\fR, \fB\-\-target\-resolution\fR \fI<TARGET_RESOLUTION>\fR
 resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
 
 [possible values: 720p, 720p4:3, 1080p, 1080p4:3, <width>x<height>]
@@ -51,25 +51,25 @@ force using scaling, default is automatic
 \fB\-n\fR, \fB\-\-no\-scaling\fR
 force disable scaling, default is automatic
 .TP
-\fB\-\-min\-margins\fR=\fIhorizontal:vertical\fR [default: 20:20]
+\fB\-\-min\-margins\fR \fI<horizontal:vertical>\fR [default: 20:20]
 minimum margins to decide whether scaling should be used and how much to scale
 .TP
-\fB\-\-min\-coverage\fR=\fIpercent\fR [default: 90]
+\fB\-\-min\-coverage\fR \fI<percent>\fR [default: 90]
 minimum percentage of OSD coverage under which scaling will be used if \-\-scaling/\-\-no\-scaling options are not provided
 .TP
-\fB\-f\fR, \fB\-\-font\-dir\fR=\fIdirpath\fR
+\fB\-f\fR, \fB\-\-font\-dir\fR \fI<dirpath>\fR
 path to the directory containing font sets
 .TP
-\fB\-i\fR, \fB\-\-font\-ident\fR=\fIident\fR
+\fB\-i\fR, \fB\-\-font\-ident\fR \fI<ident>\fR
 force using this font identifier when loading fonts, default is automatic
 .TP
-\fB\-o\fR, \fB\-\-frame\-shift\fR=\fIframes\fR
+\fB\-o\fR, \fB\-\-frame\-shift\fR \fI<frames>\fR
 Shift the output by that number of frames. Use this option to sync the OSD to a particular video
 .TP
-\fB\-P\fR, \fB\-\-ffmpeg\-priority\fR=\fIFFMPEG_PRIORITY\fR
+\fB\-P\fR, \fB\-\-ffmpeg\-priority\fR \fI<FFMPEG_PRIORITY>\fR
 
 .TP
-\fB\-c\fR, \fB\-\-codec\fR=\fICODEC\fR [default: vp8]
+\fB\-c\fR, \fB\-\-codec\fR \fI<CODEC>\fR [default: vp8]
 
 .br
 [\fIpossible values: \fRvp8, vp9]

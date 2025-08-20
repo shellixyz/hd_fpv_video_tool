@@ -1,6 +1,6 @@
 use strum::EnumIter;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, derive_more::derive::Display, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, derive_more::Display, EnumIter)]
 pub enum Codec {
 	AV1,
 	H264,

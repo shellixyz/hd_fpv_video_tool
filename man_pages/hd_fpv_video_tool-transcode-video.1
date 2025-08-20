@@ -22,27 +22,27 @@ force using scaling, default is automatic
 \fB\-n\fR, \fB\-\-no\-osd\-scaling\fR
 force disable scaling, default is automatic
 .TP
-\fB\-\-min\-osd\-margins\fR=\fIhorizontal:vertical\fR [default: 20:20]
+\fB\-\-min\-osd\-margins\fR \fI<horizontal:vertical>\fR [default: 20:20]
 minimum margins to decide whether scaling should be used and how much to scale
 .TP
-\fB\-\-min\-osd\-coverage\fR=\fIpercent\fR [default: 90]
+\fB\-\-min\-osd\-coverage\fR \fI<percent>\fR [default: 90]
 minimum percentage of OSD coverage under which scaling will be used if \-\-scaling/\-\-no\-scaling options are not provided
 .TP
-\fB\-d\fR, \fB\-\-osd\-font\-dir\fR=\fIdirpath\fR
+\fB\-d\fR, \fB\-\-osd\-font\-dir\fR \fI<dirpath>\fR
 path to the directory containing font sets
 .TP
-\fB\-i\fR, \fB\-\-osd\-font\-ident\fR=\fIident\fR
+\fB\-i\fR, \fB\-\-osd\-font\-ident\fR \fI<ident>\fR
 force using this font identifier when loading fonts, default is automatic
 .TP
-\fB\-o\fR, \fB\-\-osd\-frame\-shift\fR=\fIframes\fR
+\fB\-o\fR, \fB\-\-osd\-frame\-shift\fR \fI<frames>\fR
 shift frames to sync OSD with video
 .TP
-\fB\-\-osd\-hide\-regions\fR=\fIREGIONS\fR
+\fB\-\-osd\-hide\-regions\fR \fI<REGIONS>\fR
 hide rectangular regions from the OSD
 
 The parameter is a `;` separated list of regions.{n} The format for a region is: <left_x>,<top_y>[:<width>x<height>]{n} If the size is not specified it will default to 1x1
 .TP
-\fB\-\-osd\-hide\-items\fR=\fIOSD_ITEM_NAMES\fR
+\fB\-\-osd\-hide\-items\fR \fI<OSD_ITEM_NAMES>\fR
 hide items from the OSD
 
 Available items (font variant: name list):
@@ -52,15 +52,15 @@ Available items (font variant: name list):
 \fB\-O\fR, \fB\-\-osd\-overlay\-video\fR
 generate OSD overlay video instead of burning it onto the video
 .TP
-\fB\-\-osd\-overlay\-video\-codec\fR=\fIOSD_OVERLAY_VIDEO_CODEC\fR [default: vp8]
+\fB\-\-osd\-overlay\-video\-codec\fR \fI<OSD_OVERLAY_VIDEO_CODEC>\fR [default: vp8]
 
 .br
 [\fIpossible values: \fRvp8, vp9]
 .TP
-\fB\-\-osd\-overlay\-video\-file\fR=\fIOSD_OVERLAY_VIDEO_FILE\fR
+\fB\-\-osd\-overlay\-video\-file\fR \fI<OSD_OVERLAY_VIDEO_FILE>\fR
 path of the video file to generate
 .TP
-\fB\-F\fR, \fB\-\-osd\-file\fR=\fIOSD file path\fR
+\fB\-F\fR, \fB\-\-osd\-file\fR \fI<OSD file path>\fR
 path to FPV.WTF .osd file to use to generate OSD frames to burn onto video
 .TP
 \fB\-a\fR, \fB\-\-add\-audio\fR
@@ -80,40 +80,40 @@ fix DJI AU audio sync
 \fB\-N\fR, \fB\-\-no\-hwaccel\fR
 disable hardware acceleration
 .TP
-\fB\-V\fR, \fB\-\-video\-codec\fR=\fIVIDEO_CODEC\fR
+\fB\-V\fR, \fB\-\-video\-codec\fR \fI<VIDEO_CODEC>\fR
 video codec to use. Possible values: AV1, H264, H265, VP8, VP9
 .TP
-\fB\-\-video\-bitrate\fR=\fIVIDEO_BITRATE\fR [default: 25M]
+\fB\-\-video\-bitrate\fR \fI<VIDEO_BITRATE>\fR [default: 25M]
 video max bitrate
 .TP
-\fB\-q\fR, \fB\-\-video\-quality\fR=\fIVIDEO_QUALITY\fR
+\fB\-q\fR, \fB\-\-video\-quality\fR \fI<VIDEO_QUALITY>\fR
 video constant quality setting
 .TP
-\fB\-r\fR, \fB\-\-video\-resolution\fR=\fIVIDEO_RESOLUTION\fR
+\fB\-r\fR, \fB\-\-video\-resolution\fR \fI<VIDEO_RESOLUTION>\fR
 [possible values: 720p, 720p4:3, 1080p, 1080p4:3, <width>x<height>]
 .TP
-\fB\-\-remove\-video\-defects\fR=\fIREGIONS\fR
+\fB\-\-remove\-video\-defects\fR \fI<REGIONS>\fR
 remove video defects
 
 uses the FFMpeg delogo filter to remove small video defects
 
 The parameter is a `;` separated list of regions.{n} The format for a region is: <left_x>,<top_y>[:<width>x<height>]{n} If the size is not specified it will default to 1x1
 .TP
-\fB\-\-audio\-encoder\fR=\fIAUDIO_ENCODER\fR [default: aac]
+\fB\-\-audio\-encoder\fR \fI<AUDIO_ENCODER>\fR [default: aac]
 audio encoder to use
 
 This value is directly passed to the `\-c:a` FFMpeg argument.{n} Run `ffmpeg \-encoders` for a list of available encoders
 .TP
-\fB\-\-audio\-bitrate\fR=\fIAUDIO_BITRATE\fR [default: 93k]
+\fB\-\-audio\-bitrate\fR \fI<AUDIO_BITRATE>\fR [default: 93k]
 max audio bitrate
 .TP
-\fB\-\-start\fR=\fI[HH:]MM:SS\fR
+\fB\-\-start\fR \fI<[HH:]MM:SS>\fR
 start timestamp
 .TP
-\fB\-\-end\fR=\fI[HH:]MM:SS\fR
+\fB\-\-end\fR \fI<[HH:]MM:SS>\fR
 end timestamp
 .TP
-\fB\-P\fR, \fB\-\-ffmpeg\-priority\fR=\fIPRIORITY\fR
+\fB\-P\fR, \fB\-\-ffmpeg\-priority\fR \fI<PRIORITY>\fR
 process scheduling priority to give to FFMpeg from \-20 to 19
 .TP
 \fB\-y\fR, \fB\-\-overwrite\fR

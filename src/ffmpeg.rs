@@ -2,12 +2,12 @@ use std::{
 	ffi::OsString,
 	fmt::Display,
 	io::{Error as IOError, Read, Write},
+	ops::Deref,
 	os::unix::ffi::OsStrExt,
 	path::{Path, PathBuf},
 	process,
 };
 
-use derive_more::{Deref, DerefMut};
 use getset::{CopyGetters, Getters, Setters};
 use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
@@ -107,7 +107,7 @@ pub struct CommonOutputStreamSettings {
 	bitrate: Option<String>,
 }
 
-#[derive(Debug, Clone, Deref, DerefMut, Default)]
+#[derive(Debug, Clone, derive_more::Deref, derive_more::DerefMut, Default)]
 pub struct AudioOutputSettings(CommonOutputStreamSettings);
 
 impl AudioOutputSettings {
@@ -147,7 +147,7 @@ impl VideoQuality {
 	}
 }
 
-#[derive(Debug, Clone, Deref, DerefMut, Default, Getters, Setters)]
+#[derive(Debug, Clone, derive_more::Deref, derive_more::DerefMut, Default, Getters, Setters)]
 pub struct VideoOutputSettings {
 	#[deref]
 	#[deref_mut]

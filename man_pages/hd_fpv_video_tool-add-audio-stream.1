@@ -11,15 +11,15 @@ Add a silent audio stream to a video file
 Useful when the input video does not have an audio stream and you want to splice it with other videos that do have audio and you want to keep the audio from the other videos
 .SH OPTIONS
 .TP
-\fB\-\-audio\-encoder\fR=\fIAUDIO_ENCODER\fR [default: aac]
+\fB\-\-audio\-encoder\fR \fI<AUDIO_ENCODER>\fR [default: aac]
 audio encoder to use
 
 This value is directly passed to the `\-c:a` FFMpeg argument.{n} Run `ffmpeg \-encoders` for a list of available encoders
 .TP
-\fB\-\-audio\-bitrate\fR=\fIAUDIO_BITRATE\fR [default: 93k]
+\fB\-\-audio\-bitrate\fR \fI<AUDIO_BITRATE>\fR [default: 93k]
 max audio bitrate
 .TP
-\fB\-P\fR, \fB\-\-ffmpeg\-priority\fR=\fIFFMPEG_PRIORITY\fR
+\fB\-P\fR, \fB\-\-ffmpeg\-priority\fR \fI<FFMPEG_PRIORITY>\fR
 
 .TP
 \fB\-y\fR, \fB\-\-overwrite\fR
