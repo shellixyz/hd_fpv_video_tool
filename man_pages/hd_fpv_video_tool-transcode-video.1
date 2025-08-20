@@ -78,7 +78,7 @@ fix DJI AU audio volume
 fix DJI AU audio sync
 .TP
 \fB\-N\fR, \fB\-\-no\-hwaccel\fR
-
+disable hardware acceleration
 .TP
 \fB\-V\fR, \fB\-\-video\-codec\fR=\fIVIDEO_CODEC\fR
 video codec to use. Possible values: AV1, H264, H265, VP8, VP9
@@ -113,8 +113,8 @@ start timestamp
 \fB\-\-end\fR=\fI[HH:]MM:SS\fR
 end timestamp
 .TP
-\fB\-P\fR, \fB\-\-ffmpeg\-priority\fR=\fIFFMPEG_PRIORITY\fR
-
+\fB\-P\fR, \fB\-\-ffmpeg\-priority\fR=\fIPRIORITY\fR
+process scheduling priority to give to FFMpeg from \-20 to 19
 .TP
 \fB\-y\fR, \fB\-\-overwrite\fR
 overwrite output file if it exists

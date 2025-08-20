@@ -166,6 +166,7 @@ pub struct TranscodeVideoArgs {
 	fix_audio_sync: bool,
 
 	#[cfg(feature = "hwaccel")]
+	/// disable hardware acceleration
 	#[clap(short = 'N', long, default_value_t = false)]
 	#[getset(skip)]
 	#[getset(get_copy = "pub")]
@@ -215,7 +216,8 @@ pub struct TranscodeVideoArgs {
 	#[clap(flatten)]
 	start_end: StartEndArgs,
 
-	#[clap(short = 'P', long)]
+	/// process scheduling priority to give to FFMpeg from -20 to 19
+	#[clap(short = 'P', long, value_parser = clap::value_parser!(i32).range(-20..=19), value_name = "PRIORITY")]
 	ffmpeg_priority: Option<i32>,
 
 	/// input video file path
