@@ -35,17 +35,6 @@ impl FromStr for video::Codec {
 
 impl video::Codec {
 	pub fn default_video_quality(&self, hw_accel: impl AsBool) -> ffmpeg::VideoQuality {
-		// let q = match self {
-		// 	video::Codec::AV1 => todo!(),
-		// 	video::Codec::H264 => todo!(),
-		// 	video::Codec::H265 => 27,
-		// 	video::Codec::VP8 => todo!(),
-		// 	video::Codec::VP9 => todo!(),
-		// };
-		// match hw_accel.as_bool() {
-		// 	true => VideoQuality::GlobalQuality(q),
-		// 	false => VideoQuality::ConstantRateFactor(q),
-		// }
 		match hw_accel.as_bool() {
 			true => match self {
 				video::Codec::AV1 => VideoQuality::GlobalQuality(120),

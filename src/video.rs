@@ -494,46 +494,6 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		}
 	}
 
-	// let mut video_filter_parts = Vec::new();
-
-	// if !args.remove_video_defects().is_empty() {
-	// 	if !remove_video_defects_regions_are_inside_video_frame(args.remove_video_defects(),
-	// &video_info.resolution()) { 		return Err(TranscodeVideoError::IncompatibleArguments(
-	// 			"cannot remove video defects that are outside the video frame".to_owned(),
-	// 		));
-	// 	}
-	// 	let mut defect_filters = args
-	// 		.remove_video_defects()
-	// 		.iter()
-	// 		.map(|region| format!("delogo={}", region.to_ffmpeg_filter_string()))
-	// 		.collect_vec();
-	// 	video_filter_parts.append(&mut defect_filters);
-	// }
-
-	// if hw_acceleration.is_no() {
-	// 	if let Some(resolution) = args.video_resolution() {
-	// 		let resolution_dimensions = resolution.dimensions();
-	// 		video_filter_parts.push(format!(
-	// 			"scale={}x{}:flags=lanczos",
-	// 			resolution_dimensions.width(),
-	// 			resolution_dimensions.height()
-	// 		));
-	// 	}
-	// }
-
-	// if hw_acceleration.is_yes() {
-	// 	ffmpeg_command.add_prefix_arg("-hwaccel").add_prefix_arg("vaapi");
-	// 	video_filter_parts.push("format=nv12,hwupload".to_string());
-	// 	if let Some(resolution) = args.video_resolution() {
-	// 		let resolution_dimensions = resolution.dimensions();
-	// 		video_filter_parts.push(format!(
-	// 			"scale_vaapi={}:{}",
-	// 			resolution_dimensions.width(),
-	// 			resolution_dimensions.height()
-	// 		));
-	// 	}
-	// }
-
 	if hw_acceleration.is_yes() {
 		ffmpeg_command.add_prefix_arg("-hwaccel").add_prefix_arg("vaapi");
 	}
@@ -681,44 +641,6 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 	} else {
 		format!("{}[s1];[s1]{}[vo]", overlay_filter, video_filter_parts.join(","))
 	};
-
-	// let complex_filter = if args.remove_video_defects().is_empty() {
-	// 	if let Some(resolution) = args.video_resolution() {
-	// 		let resolution_dimensions = resolution.dimensions();
-	// 		format!(
-	// 			"[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[s1];[s1]scale={}x{}:flags=lanczos[vo]",
-	// 			resolution_dimensions.width(),
-	// 			resolution_dimensions.height()
-	// 		)
-	// 	} else {
-	// 		"[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]".to_owned()
-	// 	}
-	// } else {
-	// 	if !remove_video_defects_regions_are_inside_video_frame(args.remove_video_defects(),
-	// &video_info.resolution()) { 		return Err(TranscodeVideoError::IncompatibleArguments(
-	// 			"cannot remove video defects that are outside the video frame".to_owned(),
-	// 		));
-	// 	}
-	// 	let defect_filter = args
-	// 		.remove_video_defects()
-	// 		.iter()
-	// 		.map(|region| format!("delogo={}", region.to_ffmpeg_filter_string()))
-	// 		.join(";");
-	// 	if let Some(resolution) = args.video_resolution() {
-	// 		let resolution_dimensions = resolution.dimensions();
-	// 		format!(
-	// 			"[0]{}[s1];[s1][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[s2];[s2]scale={}x{}:
-	// flags=lanczos[vo]", 			defect_filter,
-	// 			resolution_dimensions.width(),
-	// 			resolution_dimensions.height()
-	// 		)
-	// 	} else {
-	// 		format!(
-	// 			"[0]{}[s1];[s1][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2[vo]",
-	// 			defect_filter
-	// 		)
-	// 	}
-	// };
 
 	ffmpeg_command
 		.add_input_file_slice(
