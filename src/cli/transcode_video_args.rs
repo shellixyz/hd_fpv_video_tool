@@ -300,7 +300,8 @@ impl TranscodeVideoArgs {
 	pub fn video_codec(&self) -> (video::Codec, HwAcceleratedEncoding) {
 		const FALLBACK: (video::Codec, HwAcceleratedEncoding) = (video::Codec::H265, HwAcceleratedEncoding::No);
 		match self.video_codec {
-			Some(_) | None if self.no_hwaccel => FALLBACK,
+			None if self.no_hwaccel => FALLBACK,
+			Some(video_codec) if self.no_hwaccel => (video_codec, HwAcceleratedEncoding::No),
 			Some(video_codec) => match video::hw_accel::vaapi_cap_finder() {
 				Some(hw_accel_cap) => (
 					video_codec,
