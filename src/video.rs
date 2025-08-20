@@ -494,8 +494,6 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		}
 	}
 
-	let video_filter_parts = transcode_video_filter_parts(args, &video_info, hw_acceleration)?;
-
 	// let mut video_filter_parts = Vec::new();
 
 	// if !args.remove_video_defects().is_empty() {
@@ -540,8 +538,11 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		ffmpeg_command.add_prefix_arg("-hwaccel").add_prefix_arg("vaapi");
 	}
 
-	let video_filter = format!("[0:v]{}[vo]", video_filter_parts.join(","));
-	ffmpeg_command.add_complex_filter(&video_filter).add_mapping("[vo]");
+	let video_filter_parts = transcode_video_filter_parts(args, &video_info, hw_acceleration)?;
+	if !video_filter_parts.is_empty() {
+		let video_filter = format!("[0:v]{}[vo]", video_filter_parts.join(","));
+		ffmpeg_command.add_complex_filter(&video_filter).add_mapping("[vo]");
+	}
 
 	if video_info.has_audio() {
 		ffmpeg_command.add_mapping("0:a");
