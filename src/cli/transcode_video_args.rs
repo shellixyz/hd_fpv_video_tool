@@ -176,6 +176,7 @@ pub struct TranscodeVideoArgs {
 	#[getset(get_copy = "pub")]
 	fix_audio_sync: bool,
 
+	#[cfg(feature = "hwaccel")]
 	#[clap(short = 'N', long, default_value_t = false)]
 	#[getset(skip)]
 	#[getset(get_copy = "pub")]
@@ -297,6 +298,15 @@ impl TranscodeVideoArgs {
 		})
 	}
 
+	#[cfg(not(feature = "hwaccel"))]
+	pub fn video_codec(&self) -> (video::Codec, HwAcceleratedEncoding) {
+		(
+			self.video_codec.unwrap_or(video::Codec::H265),
+			HwAcceleratedEncoding::No,
+		)
+	}
+
+	#[cfg(feature = "hwaccel")]
 	pub fn video_codec(&self) -> (video::Codec, HwAcceleratedEncoding) {
 		const FALLBACK: (video::Codec, HwAcceleratedEncoding) = (video::Codec::H265, HwAcceleratedEncoding::No);
 		match self.video_codec {
