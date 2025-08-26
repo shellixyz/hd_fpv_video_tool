@@ -7,6 +7,7 @@ use derive_more::{Deref, From};
 use getset::{CopyGetters, Getters};
 use image::{GenericImage, ImageBuffer, ImageResult, Rgba};
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
+use itertools::Itertools;
 use path_absolutize::Absolutize;
 use rayon::prelude::{IndexedParallelIterator, ParallelIterator};
 use thiserror::Error;
@@ -404,6 +405,7 @@ impl<'a> Generator<'a> {
 			let invalid_tile_indices_str = invalid_tile_indices
 				.iter()
 				.map(u16::to_string)
+				.unique()
 				.collect::<Vec<_>>()
 				.join(", ");
 			log::warn!(
