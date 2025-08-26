@@ -12,9 +12,9 @@ Fonts are loaded either from the directory specified with the \-\-font\-dir opti
 .SH OPTIONS
 .TP
 \fB\-\-osd\fR
-burn OSD onto video, try to find the OSD file automatically.
+burn OSD onto video.
 
-First tries finding a file with the name <basename of the video file>.osd then if it does not exist tries finding a file with same DJI prefix as the video file with G instead of U if it is starting with DJIU. Examples:{n} DJIG0000.mp4 => DJIG0000.osd{n} DJIG0000_something.mp4 => DJIG0000.osd{n} DJIU0000.mp4 => DJIG0000.osd{n} DJIU0000_something.mp4 => DJIG0000.osd{n}
+If \-\-osd\-file is not provided, the tool will try to find the OSD file automatically. First tries finding a file with the name <basename of the video file>.osd then if it does not exist tries finding a file with same DJI prefix as the video file with G instead of U if it is starting with DJIU. Examples:{n} DJIG0000.mp4 => DJIG0000.osd{n} DJIG0000_something.mp4 => DJIG0000.osd{n} DJIU0000.mp4 => DJIG0000.osd{n} DJIU0000_something.mp4 => DJIG0000.osd{n}
 .TP
 \fB\-s\fR, \fB\-\-osd\-scaling\fR
 force using scaling, default is automatic

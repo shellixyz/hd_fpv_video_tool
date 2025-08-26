@@ -56,8 +56,9 @@ impl video::Codec {
 
 #[derive(Args, Getters, CopyGetters)]
 pub struct TranscodeVideoOSDArgs {
-	/// burn OSD onto video, try to find the OSD file automatically.
+	/// burn OSD onto video.
 	///
+	/// If --osd-file is not provided, the tool will try to find the OSD file automatically.
 	/// First tries finding a file with the name <basename of the video file>.osd then if it does
 	/// not exist tries finding a file with same DJI prefix as the video file with G instead of U
 	/// if it is starting with DJIU. Examples:{n} DJIG0000.mp4 => DJIG0000.osd{n}
