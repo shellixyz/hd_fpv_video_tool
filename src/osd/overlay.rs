@@ -409,7 +409,7 @@ impl<'a> Generator<'a> {
 				.collect::<Vec<_>>()
 				.join(", ");
 			log::warn!(
-				"the OSD file contains invalid tile indices, it is probably corrupted: {invalid_tile_indices_str}"
+				"the OSD file contains invalid tile indices, it is probably corrupted or the font you are trying to render this OSD file does not have that many tiles: {invalid_tile_indices_str}"
 			);
 		}
 	}
