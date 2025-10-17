@@ -4,6 +4,8 @@ set -e
 
 MAN_PAGES_DIR="man_pages"
 
+git stash save -qk
+
 echo -e "\e[1m\e[33mRunning tests\e[0m\e[0m\n"
 cargo nextest run
 
@@ -11,5 +13,7 @@ echo -e "\n\e[1m\e[33mUpdating man pages\e[0m\e[0m\n"
 rm -f "$MAN_PAGES_DIR"/*
 cargo run -- generate-man-pages
 git add "$MAN_PAGES_DIR"
+
+git stash pop -q
 
 echo
