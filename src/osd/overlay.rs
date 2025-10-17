@@ -337,8 +337,8 @@ impl<'a> Generator<'a> {
 		font_dir: &FontDir,
 		font_ident: &Option<Option<&str>>,
 		scaling: Scaling,
-		hidden_regions: &'a [Region],
-		hidden_items: &'a [String],
+		hide_regions: &'a [Region],
+		hide_items: &'a [String],
 	) -> Result<Self, DrawFrameOverlayError> {
 		if osd_file_frames.is_empty() {
 			return Err(DrawFrameOverlayError::OSDFileIsEmpty);
@@ -380,13 +380,13 @@ impl<'a> Generator<'a> {
 
 		Self::check_osd_file_frames_tile_indices(&osd_file_frames, &tile_images);
 
-		let hidden_items = hidden_items.iter().map(String::as_str).collect();
+		let hidden_items = hide_items.iter().map(String::as_str).collect();
 
 		Ok(Self {
 			osd_file_frames,
 			tile_images,
 			frame_dimensions: overlay_resolution,
-			hidden_regions,
+			hidden_regions: hide_regions,
 			hidden_items,
 			font_variant,
 		})
