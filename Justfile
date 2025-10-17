@@ -2,6 +2,9 @@
 test:
     cargo nextest run
 
+wrkflw-ci-test:
+    wrkflw run --verbose --runtime podman .github/workflows/ci.yml
+
 build-appimage:
     (cd appimage_builder && cargo run --release)
 
