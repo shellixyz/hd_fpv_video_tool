@@ -233,6 +233,11 @@ pub struct TranscodeVideoArgs {
 	#[getset(skip)]
 	#[getset(get_copy = "pub")]
 	overwrite: bool,
+
+	#[clap(short = 'S', long, value_parser)]
+	#[getset(skip)]
+	#[getset(get_copy = "pub")]
+	speedup: Option<f32>,
 }
 
 fn transcode_video_args_video_codec_help() -> String {

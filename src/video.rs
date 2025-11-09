@@ -415,6 +415,16 @@ fn transcode_video_filter_parts(
 		}
 	}
 
+	if let Some(speedup) = args.speedup() {
+		if speedup <= 0.0 {
+			return Err(TranscodeVideoError::IncompatibleArguments(
+				"speedup factor must be greater than 0".to_owned(),
+			));
+		}
+		let pts_factor = 1.0 / speedup;
+		video_filter_parts.push(format!("setpts={:.6}*PTS", pts_factor));
+	}
+
 	Ok(video_filter_parts)
 }
 
