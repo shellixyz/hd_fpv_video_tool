@@ -237,7 +237,7 @@ pub struct TranscodeVideoArgs {
 	#[clap(short = 'S', long, value_parser)]
 	#[getset(skip)]
 	#[getset(get_copy = "pub")]
-	speedup: Option<f32>,
+	speed: Option<f64>,
 }
 
 fn transcode_video_args_video_codec_help() -> String {

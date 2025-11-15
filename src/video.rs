@@ -50,6 +50,9 @@ pub type Dimension = u16;
 pub type Dimensions = GenericDimensions<Dimension>;
 pub type FrameIndex = u32;
 
+const DJI_AUDIO_FIX_ATEMPO: f64 = 1.001_480;
+const DJI_AUDIO_FIX_VOLUME: isize = 20;
+
 #[derive(Debug, Error, From)]
 pub enum CutVideoError {
 	#[error("failed to get input video details")]
@@ -203,8 +206,8 @@ impl AudioFixType {
 	fn ffmpeg_audio_filter_string(&self) -> String {
 		use AudioFixType::*;
 		match self {
-			Sync => "atempo=1.001480".to_owned(),
-			Volume => "volume=20".to_owned(),
+			Sync => format!("atempo={}", DJI_AUDIO_FIX_ATEMPO),
+			Volume => format!("volume={}", DJI_AUDIO_FIX_VOLUME),
 			SyncAndVolume => [Sync.ffmpeg_audio_filter_string(), Volume.ffmpeg_audio_filter_string()].join(","),
 		}
 	}
@@ -415,13 +418,13 @@ fn transcode_video_filter_parts(
 		}
 	}
 
-	if let Some(speedup) = args.speedup() {
-		if speedup <= 0.0 {
+	if let Some(speed) = args.speed() {
+		if speed <= 0.0 {
 			return Err(TranscodeVideoError::IncompatibleArguments(
 				"speedup factor must be greater than 0".to_owned(),
 			));
 		}
-		let pts_factor = 1.0 / speedup;
+		let pts_factor = 1.0 / speed;
 		video_filter_parts.push(format!("setpts={:.6}*PTS", pts_factor));
 	}
 
@@ -516,13 +519,38 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 
 	if video_info.has_audio() {
 		ffmpeg_command.add_mapping("0:a");
-	}
-
-	if let Some(video_audio_fix) = args.video_audio_fix() {
-		if video_info.has_audio() {
-			ffmpeg_command
-				.add_audio_filter(&video_audio_fix.ffmpeg_audio_filter_string())
-				.set_output_audio_settings(Some(args.audio_encoder()), Some(args.audio_bitrate()));
+		let mut using_audio_filters = false;
+		let mut atempo_filter_value = None;
+		if let Some(video_audio_fix) = args.video_audio_fix() {
+			if video_audio_fix.volume() {
+				ffmpeg_command.add_audio_filter(&AudioFixType::Volume.ffmpeg_audio_filter_string());
+				using_audio_filters = true;
+			}
+			if video_audio_fix.sync() {
+				let mut atempo = DJI_AUDIO_FIX_ATEMPO;
+				if let Some(speed) = args.speed() {
+					atempo *= speed;
+				}
+				atempo_filter_value = Some(atempo);
+			}
+		} else if let Some(speed) = args.speed() {
+			atempo_filter_value = Some(speed);
+		}
+		if let Some(atempo_filter_value) = atempo_filter_value {
+			// atempo filter only supports between 0.5 and 100.0, so chain multiple filters if needed
+			let mut remaining_atempo = atempo_filter_value;
+			let mut filters = vec![];
+			while !(0.5..=100.0).contains(&remaining_atempo) {
+				let next_atempo = remaining_atempo.clamp(0.5, 100.0);
+				filters.push(format!("atempo={:.6}", next_atempo));
+				remaining_atempo /= next_atempo;
+			}
+			filters.push(format!("atempo={:.6}", remaining_atempo));
+			ffmpeg_command.add_audio_filter(&filters.join(","));
+			using_audio_filters = true;
+		}
+		if using_audio_filters {
+			ffmpeg_command.set_output_audio_settings(Some(args.audio_encoder()), Some(args.audio_bitrate()));
 		}
 	}
 

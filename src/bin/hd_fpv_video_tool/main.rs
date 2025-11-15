@@ -193,8 +193,8 @@ async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
 	{
 		transcode_args.start_end().check_valid()?;
 
-		if osd_args.osd() && transcode_args.speedup().is_some() {
-			return Err(anyhow!("OSD overlay and speedup options cannot be used together"));
+		if osd_args.osd() && transcode_args.speed().is_some() {
+			return Err(anyhow!("OSD overlay and speed options cannot be used together"));
 		}
 
 		match osd_args.osd_file_path(transcode_args.input_video_file())? {
