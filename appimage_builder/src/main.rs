@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 use std::{
 	env::set_current_dir,
 	fs::{self, File},
@@ -281,7 +283,7 @@ async fn download_file_with_progress(url: &str, dest_path: &str) -> anyhow::Resu
 
 	let status_code = response.status();
 	if !status_code.is_success() {
-		return Err(anyhow!("failed to download: {}", status_code));
+		return Err(anyhow!("failed to download: {status_code}"));
 	}
 
 	let total_size = response.content_length().unwrap_or(0);
@@ -392,7 +394,7 @@ async fn main() -> anyhow::Result<()> {
 	for binary_path in DEP_BINARIES {
 		let Ok(binary_path) = which(binary_path) else {
 			let err_msg = format!("binary dependency not found: {binary_path}");
-			log::error!("{}", err_msg);
+			log::error!("{err_msg}");
 			return Err(anyhow!(err_msg));
 		};
 		install_binary_dependency(binary_path, &bin_dir_path, &lib_dir_path)?;
