@@ -77,6 +77,13 @@ pub enum CutVideoError {
 	WriteToFileError(TouchError),
 }
 
+/// Cut a video file between the given start and end timestamps.
+///
+/// # Errors
+/// Returns an error if the cutting process fails.
+///
+/// # Panics
+/// Panics if the ffmpeg command cannot be built.
 pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(
 	input_video_file: P,
 	output_video_file: &Option<Q>,
@@ -90,32 +97,28 @@ pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(
 		return Err(CutVideoError::InputVideoFileDoesNotExist);
 	}
 
-	let output_video_file = match output_video_file {
-		Some(output_video_file) => {
-			let output_video_file = output_video_file.as_ref();
-			if input_video_file == output_video_file {
-				return Err(CutVideoError::InputAndOutputFileIsTheSame);
-			}
-			let (input_file_extension, output_file_extension) =
-				(input_video_file.extension(), output_video_file.extension());
-			if input_file_extension.is_none() != output_file_extension.is_none()
-				|| matches!((input_file_extension, output_file_extension), (Some(i), Some(o)) if !i.eq_ignore_ascii_case(o))
-			{
-				return Err(CutVideoError::OutputHasADifferentExtensionThanInput);
-			}
-			output_video_file.to_path_buf()
-		},
-		None => {
-			let mut output_file_stem =
-				Path::new(input_video_file.file_stem().ok_or(CutVideoError::InputHasNoFileName)?)
-					.as_os_str()
-					.to_os_string();
-			output_file_stem.push("_cut");
-			let input_file_extension = input_video_file.extension().ok_or(CutVideoError::InputHasNoExtension)?;
-			input_video_file
-				.with_file_name(output_file_stem)
-				.with_extension(input_file_extension)
-		},
+	let output_video_file = if let Some(output_video_file) = output_video_file {
+		let output_video_file = output_video_file.as_ref();
+		if input_video_file == output_video_file {
+			return Err(CutVideoError::InputAndOutputFileIsTheSame);
+		}
+		let (input_file_extension, output_file_extension) =
+			(input_video_file.extension(), output_video_file.extension());
+		if input_file_extension.is_none() != output_file_extension.is_none()
+			|| matches!((input_file_extension, output_file_extension), (Some(i), Some(o)) if !i.eq_ignore_ascii_case(o))
+		{
+			return Err(CutVideoError::OutputHasADifferentExtensionThanInput);
+		}
+		output_video_file.to_path_buf()
+	} else {
+		let mut output_file_stem = Path::new(input_video_file.file_stem().ok_or(CutVideoError::InputHasNoFileName)?)
+			.as_os_str()
+			.to_os_string();
+		output_file_stem.push("_cut");
+		let input_file_extension = input_video_file.extension().ok_or(CutVideoError::InputHasNoExtension)?;
+		input_video_file
+			.with_file_name(output_file_stem)
+			.with_extension(input_file_extension)
 	};
 
 	if !overwrite && output_video_file.exists() {
@@ -134,8 +137,8 @@ pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(
 	let frame_count = frame_count_for_interval(
 		video_info.frame_count(),
 		video_info.frame_rate(),
-		&start_end.start(),
-		&start_end.end(),
+		start_end.start().as_ref(),
+		start_end.end().as_ref(),
 	);
 
 	let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
@@ -153,7 +156,7 @@ pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(
 	let spawn_options = ffmpeg::SpawnOptions::default()
 		.with_progress(frame_count)
 		.with_priority(ffmpeg_priority);
-	ffmpeg_command.build().unwrap().spawn(spawn_options)?.wait().await?;
+	ffmpeg_command.build().unwrap().spawn(&spawn_options)?.wait().await?;
 
 	log::info!("video file cut successfully");
 	Ok(())
@@ -193,29 +196,38 @@ pub enum AudioFixType {
 }
 
 impl AudioFixType {
+	#[must_use]
 	pub fn sync(&self) -> bool {
-		use AudioFixType::*;
+		use AudioFixType::{Sync, SyncAndVolume};
 		matches!(self, Sync | SyncAndVolume)
 	}
 
+	#[must_use]
 	pub fn volume(&self) -> bool {
-		use AudioFixType::*;
+		use AudioFixType::{SyncAndVolume, Volume};
 		matches!(self, Volume | SyncAndVolume)
 	}
 
 	fn ffmpeg_audio_filter_string(&self) -> String {
-		use AudioFixType::*;
+		use AudioFixType::{Sync, SyncAndVolume, Volume};
 		match self {
-			Sync => format!("atempo={}", DJI_AUDIO_FIX_ATEMPO),
-			Volume => format!("volume={}", DJI_AUDIO_FIX_VOLUME),
+			Sync => format!("atempo={DJI_AUDIO_FIX_ATEMPO}"),
+			Volume => format!("volume={DJI_AUDIO_FIX_VOLUME}"),
 			SyncAndVolume => [Sync.ffmpeg_audio_filter_string(), Volume.ffmpeg_audio_filter_string()].join(","),
 		}
 	}
 }
 
+/// Fix the audio stream of a DJI Air Unit video file.
+///
+/// # Errors
+/// Returns an error if the process fails.
+///
+/// # Panics
+/// Panics if the ffmpeg command cannot be built.
 pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(
 	input_video_file: P,
-	output_video_file: &Option<Q>,
+	output_video_file: Option<&Q>,
 	overwrite: bool,
 	fix_type: AudioFixType,
 	ffmpeg_priority: Option<i32>,
@@ -226,37 +238,34 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(
 		return Err(FixVideoFileAudioError::InputVideoFileDoesNotExist);
 	}
 
-	let output_video_file = match output_video_file {
-		Some(output_video_file) => {
-			let output_video_file = output_video_file.as_ref();
-			if input_video_file == output_video_file {
-				return Err(FixVideoFileAudioError::InputAndOutputFileIsTheSame);
-			}
-			let (input_file_extension, output_file_extension) =
-				(input_video_file.extension(), output_video_file.extension());
-			if input_file_extension.is_none() != output_file_extension.is_none()
-				|| matches!((input_file_extension, output_file_extension), (Some(i), Some(o)) if !i.eq_ignore_ascii_case(o))
-			{
-				return Err(FixVideoFileAudioError::OutputHasADifferentExtensionThanInput);
-			}
-			output_video_file.to_path_buf()
-		},
-		None => {
-			let mut output_file_stem = Path::new(
-				input_video_file
-					.file_stem()
-					.ok_or(FixVideoFileAudioError::InputHasNoFileName)?,
-			)
-			.as_os_str()
-			.to_os_string();
-			output_file_stem.push("_fixed_audio");
-			let input_file_extension = input_video_file
-				.extension()
-				.ok_or(FixVideoFileAudioError::InputHasNoExtension)?;
+	let output_video_file = if let Some(output_video_file) = output_video_file {
+		let output_video_file = output_video_file.as_ref();
+		if input_video_file == output_video_file {
+			return Err(FixVideoFileAudioError::InputAndOutputFileIsTheSame);
+		}
+		let (input_file_extension, output_file_extension) =
+			(input_video_file.extension(), output_video_file.extension());
+		if input_file_extension.is_none() != output_file_extension.is_none()
+			|| matches!((input_file_extension, output_file_extension), (Some(i), Some(o)) if !i.eq_ignore_ascii_case(o))
+		{
+			return Err(FixVideoFileAudioError::OutputHasADifferentExtensionThanInput);
+		}
+		output_video_file.to_path_buf()
+	} else {
+		let mut output_file_stem = Path::new(
 			input_video_file
-				.with_file_name(output_file_stem)
-				.with_extension(input_file_extension)
-		},
+				.file_stem()
+				.ok_or(FixVideoFileAudioError::InputHasNoFileName)?,
+		)
+		.as_os_str()
+		.to_os_string();
+		output_file_stem.push("_fixed_audio");
+		let input_file_extension = input_video_file
+			.extension()
+			.ok_or(FixVideoFileAudioError::InputHasNoExtension)?;
+		input_video_file
+			.with_file_name(output_file_stem)
+			.with_extension(input_file_extension)
 	};
 
 	if !overwrite && output_video_file.exists() {
@@ -290,7 +299,7 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(
 	let spawn_options = ffmpeg::SpawnOptions::default()
 		.with_progress(video_info.frame_count())
 		.with_priority(ffmpeg_priority);
-	ffmpeg_command.build().unwrap().spawn(spawn_options)?.wait().await?;
+	ffmpeg_command.build().unwrap().spawn(&spawn_options)?.wait().await?;
 
 	log::info!("video file's audio stream fixed successfully");
 	Ok(())
@@ -299,8 +308,8 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(
 fn frame_count_for_interval(
 	total_frames: u64,
 	frame_rate: Rational,
-	start: &Option<Timestamp>,
-	end: &Option<Timestamp>,
+	start: Option<&Timestamp>,
+	end: Option<&Timestamp>,
 ) -> u64 {
 	match (start, end) {
 		(None, None) => total_frames,
@@ -352,21 +361,20 @@ pub enum TranscodeVideoError {
 
 impl From<SendFramesToFFMpegError> for TranscodeVideoError {
 	fn from(error: SendFramesToFFMpegError) -> Self {
-		use SendFramesToFFMpegError::*;
 		match error {
-			PipeError(error) => Self::FailedSendingOSDFramesToFFMpeg(error),
-			UnknownOSDItem(error) => Self::UnknownOSDItem(error),
-			FFMpegExitedWithError(error) => Self::FFMpegExitedWithError(error),
+			SendFramesToFFMpegError::PipeError(error) => Self::FailedSendingOSDFramesToFFMpeg(error),
+			SendFramesToFFMpegError::UnknownOSDItem(error) => Self::UnknownOSDItem(error),
+			SendFramesToFFMpegError::FFMpegExitedWithError(error) => Self::FFMpegExitedWithError(error),
 		}
 	}
 }
 
-fn remove_video_defects_regions_are_inside_video_frame(regions: &[Region], video_resolution: &Resolution) -> bool {
+fn remove_video_defects_regions_are_inside_video_frame(regions: &[Region], video_resolution: Resolution) -> bool {
 	for rvd_arg in regions {
-		let x_range = 1..(video_resolution.width() as i32 - rvd_arg.dimensions().width() as i32);
-		let y_range = 1..(video_resolution.height() as i32 - rvd_arg.dimensions().height() as i32);
-		if !x_range.contains(&(rvd_arg.top_left_corner().x() as i32))
-			|| !y_range.contains(&(rvd_arg.top_left_corner().y() as i32))
+		let x_range = 1..(i32::try_from(video_resolution.width()).unwrap() - i32::from(rvd_arg.dimensions().width()));
+		let y_range = 1..(i32::try_from(video_resolution.height()).unwrap() - i32::from(rvd_arg.dimensions().height()));
+		if !x_range.contains(&i32::from(rvd_arg.top_left_corner().x()))
+			|| !y_range.contains(&i32::from(rvd_arg.top_left_corner().y()))
 		{
 			return false;
 		}
@@ -382,7 +390,7 @@ fn transcode_video_filter_parts(
 	let mut video_filter_parts = Vec::new();
 
 	if !args.remove_video_defects().is_empty() {
-		if !remove_video_defects_regions_are_inside_video_frame(args.remove_video_defects(), &video_info.resolution()) {
+		if !remove_video_defects_regions_are_inside_video_frame(args.remove_video_defects(), video_info.resolution()) {
 			return Err(TranscodeVideoError::IncompatibleArguments(
 				"cannot remove video defects that are outside the video frame".to_owned(),
 			));
@@ -425,12 +433,20 @@ fn transcode_video_filter_parts(
 			));
 		}
 		let pts_factor = 1.0 / speed;
-		video_filter_parts.push(format!("setpts={:.6}*PTS", pts_factor));
+		video_filter_parts.push(format!("setpts={pts_factor:.6}*PTS"));
 	}
 
 	Ok(video_filter_parts)
 }
 
+/// Transcode the video file according to the given arguments.
+///
+/// # Errors
+/// Returns an error if the transcoding process fails.
+///
+/// # Panics
+/// Panics if the ffmpeg command cannot be built.
+#[allow(clippy::too_many_lines)]
 pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVideoError> {
 	let output_video_file = args.output_video_file(false)?;
 	if !args.input_video_file().exists() {
@@ -467,8 +483,8 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 	let frame_count = frame_count_for_interval(
 		video_info.frame_count(),
 		video_info.frame_rate(),
-		&args.start_end().start(),
-		&args.start_end().end(),
+		args.start_end().start().as_ref(),
+		args.start_end().end().as_ref(),
 	);
 
 	let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
@@ -478,7 +494,7 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 			HwAcceleratedEncoding::No => VideoQuality::ConstantRateFactor(quality),
 			HwAcceleratedEncoding::Yes => VideoQuality::GlobalQuality(quality),
 		},
-		None => video_codec.default_video_quality(hw_acceleration),
+		None => video_codec.default_video_quality(&hw_acceleration),
 	};
 
 	ffmpeg_command
@@ -542,10 +558,10 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 			let mut filters = vec![];
 			while !(0.5..=100.0).contains(&remaining_atempo) {
 				let next_atempo = remaining_atempo.clamp(0.5, 100.0);
-				filters.push(format!("atempo={:.6}", next_atempo));
+				filters.push(format!("atempo={next_atempo:.6}"));
 				remaining_atempo /= next_atempo;
 			}
-			filters.push(format!("atempo={:.6}", remaining_atempo));
+			filters.push(format!("atempo={remaining_atempo:.6}"));
 			ffmpeg_command.add_audio_filter(&filters.join(","));
 			using_audio_filters = true;
 		}
@@ -557,12 +573,20 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 	let spawn_options = ffmpeg::SpawnOptions::default()
 		.with_progress(frame_count)
 		.with_priority(*args.ffmpeg_priority());
-	ffmpeg_command.build().unwrap().spawn(spawn_options)?.wait().await?;
+	ffmpeg_command.build().unwrap().spawn(&spawn_options)?.wait().await?;
 
 	log::info!("{frame_count} frames transcoded successfully");
 	Ok(output_video_file)
 }
 
+/// Transcode the video file, burning the OSD onto it according to the given arguments.
+///
+/// # Errors
+/// Returns an error if the transcoding process fails.
+///
+/// # Panics
+/// Panics if the ffmpeg command cannot be built.
+#[allow(clippy::too_many_lines)]
 pub async fn transcode_burn_osd<P: AsRef<Path>>(
 	args: &TranscodeVideoArgs,
 	osd_file_path: P,
@@ -619,7 +643,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 
 	if video_info.frame_rate().numerator() != 60 || video_info.frame_rate().denominator() != 1 {
 		return Err(TranscodeVideoError::CanOnlyBurnOSDOn60FPSVideo(
-			video_info.frame_rate().numerator() as f64 / video_info.frame_rate().denominator() as f64,
+			f64::from(video_info.frame_rate().numerator()) / f64::from(video_info.frame_rate().denominator()),
 		));
 	}
 
@@ -630,7 +654,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 		osd_file.frames()?,
 		osd_file.font_variant(),
 		&osd_font_dir,
-		&osd_args.osd_font_options().osd_font_ident(),
+		osd_args.osd_font_options().osd_font_ident(),
 		osd_scaling,
 		osd_args.osd_hide_regions(),
 		osd_args.osd_hide_items(),
@@ -639,8 +663,8 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 	let frame_count = frame_count_for_interval(
 		video_info.frame_count(),
 		video_info.frame_rate(),
-		&args.start_end().start(),
-		&args.start_end().end(),
+		args.start_end().start().as_ref(),
+		args.start_end().end().as_ref(),
 	);
 	log::debug!(
 		"frame count: video={}, transcode={}",
@@ -648,16 +672,15 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 		frame_count
 	);
 
+	#[allow(clippy::cast_possible_truncation)]
 	let first_frame_index = args
 		.start_end()
 		.start()
-		.map(|tstamp| tstamp.frame_count(video_info.frame_rate()) as u32)
-		.unwrap_or(0);
-	let last_frame_index = args
-		.start_end()
-		.end()
-		.map(|end| end.frame_count(video_info.frame_rate()) as u32)
-		.unwrap_or(frame_count as u32);
+		.map_or(0, |tstamp| tstamp.frame_count(video_info.frame_rate()) as u32);
+	#[allow(clippy::cast_possible_truncation)]
+	let last_frame_index = args.start_end().end().map_or(frame_count as u32, |end| {
+		end.frame_count(video_info.frame_rate()) as u32
+	});
 	let osd_overlay_resolution = osd_frames_generator.frame_dimensions();
 	let osd_frames_iter =
 		osd_frames_generator.iter_advanced(first_frame_index, Some(last_frame_index), osd_frame_shift);
@@ -669,7 +692,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 			HwAcceleratedEncoding::No => VideoQuality::ConstantRateFactor(quality),
 			HwAcceleratedEncoding::Yes => VideoQuality::GlobalQuality(quality),
 		},
-		None => video_codec.default_video_quality(hw_acceleration),
+		None => video_codec.default_video_quality(&hw_acceleration),
 	};
 
 	let overlay_filter = "[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2";
@@ -729,7 +752,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 	let spawn_options = ffmpeg::SpawnOptions::default()
 		.with_progress(frame_count)
 		.with_priority(*args.ffmpeg_priority());
-	let ffmpeg_process = ffmpeg_command.build().unwrap().spawn(spawn_options)?;
+	let ffmpeg_process = ffmpeg_command.build().unwrap().spawn(&spawn_options)?;
 
 	osd_frames_iter.send_frames_to_ffmpeg_and_wait(ffmpeg_process).await?;
 
@@ -753,26 +776,36 @@ pub enum PlayWithOSDError {
 	MPVExitedWithAnError(ExitStatus),
 }
 
+/// Play the given video file with an OSD overlay using MPV.
+///
+/// # Errors
+/// - Returns `PlayWithOSDError::InvalidVideoFilePath` if the video file path is invalid.
+/// - Returns `PlayWithOSDError::OSDVideoFileNotFound` if the OSD video file is not found.
+/// - Returns `PlayWithOSDError::CanOnlyUseVP8OrVP9OSDVideoFiles` if the OSD video file is not encoded with VP8 or VP9.
+/// - Returns `PlayWithOSDError::FailedToStartMPV` if MPV fails to start.
+/// - Returns `PlayWithOSDError::MPVExitedWithAnError` if MPV exits with an error.
+///
+/// # Panics
+/// Panics if failed to wait for the MPV process.
 pub fn play_with_osd<P: AsRef<Path>, Q: AsRef<Path>>(
 	video_file: P,
 	osd_video_file: &Option<Q>,
 ) -> Result<(), PlayWithOSDError> {
 	let video_file = video_file.as_ref();
 
-	let osd_video_file = match osd_video_file {
-		Some(osd_video_file) => osd_video_file.as_ref().to_path_buf(),
-		None => {
-			let video_file_stem = video_file
-				.file_stem()
-				.ok_or_else(|| PlayWithOSDError::InvalidVideoFilePath(video_file.to_path_buf()))?;
-			let mut osd_video_file_name = video_file_stem.to_os_string();
-			osd_video_file_name.push("_osd");
-			let osd_video_file = video_file.with_file_name(osd_video_file_name).with_extension("webm");
-			if !osd_video_file.exists() {
-				return Err(PlayWithOSDError::OSDVideoFileNotFound(osd_video_file));
-			}
-			osd_video_file
-		},
+	let osd_video_file = if let Some(osd_video_file) = osd_video_file {
+		osd_video_file.as_ref().to_path_buf()
+	} else {
+		let video_file_stem = video_file
+			.file_stem()
+			.ok_or_else(|| PlayWithOSDError::InvalidVideoFilePath(video_file.to_path_buf()))?;
+		let mut osd_video_file_name = video_file_stem.to_os_string();
+		osd_video_file_name.push("_osd");
+		let osd_video_file = video_file.with_file_name(osd_video_file_name).with_extension("webm");
+		if !osd_video_file.exists() {
+			return Err(PlayWithOSDError::OSDVideoFileNotFound(osd_video_file));
+		}
+		osd_video_file
 	};
 
 	let probe_result = probe(&osd_video_file)?;
@@ -808,6 +841,8 @@ pub fn play_with_osd<P: AsRef<Path>, Q: AsRef<Path>>(
 
 #[derive(Debug, Error, From)]
 pub enum SpliceVideosError {
+	#[error("empty input video files list")]
+	EmptyInputVideoFilesList,
 	#[error("failed to get input video details")]
 	FailedToGetInputVideoDetails(VideoProbingError),
 	#[error("output video file exists")]
@@ -824,12 +859,19 @@ pub enum SpliceVideosError {
 	MissingInputVideoFiles(String),
 }
 
+/// Splice multiple video files into a single output file.
+///
+/// # Errors
+/// Returns an error if the splicing process fails.
 pub async fn splice(
 	input_files: &[impl AsRef<Path>],
 	output_file: impl AsRef<Path>,
 	overwrite: bool,
 	ffmpeg_priority: Option<i32>,
 ) -> Result<(), SpliceVideosError> {
+	if input_files.is_empty() {
+		return Err(SpliceVideosError::EmptyInputVideoFilesList);
+	}
 	let missing_input_files = input_files
 		.iter()
 		.filter(|file| !file.as_ref().exists())
@@ -859,7 +901,9 @@ pub async fn splice(
 
 	let videos_info = input_files.iter().map(probe).try_collect::<_, Vec<_>, _>()?;
 
-	let first_video_resolution = videos_info.first().unwrap().resolution();
+	let Some(first_video_resolution) = videos_info.first().map(probe::Result::resolution) else {
+		unreachable!();
+	};
 	if videos_info
 		.iter()
 		.any(|info| info.resolution() != first_video_resolution)
@@ -867,7 +911,7 @@ pub async fn splice(
 		return Err(SpliceVideosError::IncompatibleResolutions);
 	}
 
-	let some_file_has_audio = videos_info.iter().any(|info| info.has_audio());
+	let some_file_has_audio = videos_info.iter().any(probe::Result::has_audio);
 	let some_file_lacks_audio = videos_info.iter().any(|info| !info.has_audio());
 	if some_file_has_audio && some_file_lacks_audio {
 		log::warn!("some input files have audio streams while others do not, the result will not have audio");
@@ -876,12 +920,12 @@ pub async fn splice(
 	let (_temp_list_file_path, ffmpeg_command) =
 		ffmpeg::CommandBuilder::concat(None, input_files, output_file, overwrite)?;
 
-	let total_frame_count = videos_info.iter().map(|info| info.frame_count()).sum::<u64>();
+	let total_frame_count = videos_info.iter().map(probe::Result::frame_count).sum::<u64>();
 
 	let spawn_options = ffmpeg::SpawnOptions::default()
 		.with_progress(total_frame_count)
 		.with_priority(ffmpeg_priority);
-	ffmpeg_command.spawn(spawn_options)?.wait().await?;
+	ffmpeg_command.spawn(&spawn_options)?.wait().await?;
 
 	log::info!("videos spliced successfully, total {total_frame_count} frames");
 	Ok(())
@@ -903,6 +947,13 @@ pub enum AddAudioStreamError {
 	FailedToGetInputVideoDetails(#[from] VideoProbingError),
 }
 
+/// Add an audio stream to a video file that lacks one.
+///
+/// # Errors
+/// Returns an error if the process fails.
+///
+/// # Panics
+/// Panics if the ffmpeg command cannot be built.
 pub async fn add_audio_stream(
 	input_file: impl AsRef<Path>,
 	output_file: impl AsRef<Path>,
@@ -946,7 +997,7 @@ pub async fn add_audio_stream(
 	let spawn_options = ffmpeg::SpawnOptions::default()
 		.with_progress(video_info.frame_count())
 		.with_priority(ffmpeg_priority);
-	ffmpeg_command.build().unwrap().spawn(spawn_options)?.wait().await?;
+	ffmpeg_command.build().unwrap().spawn(&spawn_options)?.wait().await?;
 
 	log::info!("audio stream added successfully");
 

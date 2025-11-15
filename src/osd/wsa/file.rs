@@ -4,8 +4,7 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use byte_struct::*;
-
+use byte_struct::{ByteStruct, ByteStructLen, ByteStructUnspecifiedByteOrder};
 use fs_err::File;
 use getset::{CopyGetters, Getters};
 use itertools::Itertools;
@@ -44,16 +43,18 @@ pub struct FileHeaderRaw {
 }
 
 impl FileHeaderRaw {
+	#[must_use]
 	pub fn font_variant_id(&self) -> Cow<'_, str> {
 		String::from_utf8_lossy(&self.font_variant_id)
 	}
 
+	#[must_use]
 	pub fn font_variant(&self) -> FontVariant {
-		use FontVariant::*;
+		use FontVariant as FV;
 		match self.font_variant_id().borrow() {
-			"INAV" => INAV,
-			"ARDU" => Ardupilot,
-			_ => Unknown,
+			"INAV" => FV::INAV,
+			"ARDU" => FV::Ardupilot,
+			_ => FV::Unknown,
 		}
 	}
 }
@@ -73,7 +74,7 @@ impl From<FileHeaderRaw> for FileHeader {
 		Self {
 			font_variant_id: fhr.font_variant_id().to_string(),
 			font_variant: fhr.font_variant(),
-			osd_dimensions: Dimensions::new(fhr.width_tiles as u32, fhr.height_tiles as u32),
+			osd_dimensions: Dimensions::new(u32::from(fhr.width_tiles), u32::from(fhr.height_tiles)),
 		}
 	}
 }
@@ -87,8 +88,11 @@ pub struct FrameRaw {
 }
 
 impl FrameRaw {
+	#[must_use]
 	pub fn frame_index(&self) -> VideoFrameIndex {
-		(self.frame_timestamp as f64 * 60.0 / 1_000.0).round() as VideoFrameIndex
+		#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+		let result = (f64::from(self.frame_timestamp) * 60.0 / 1_000.0).round() as VideoFrameIndex;
+		result
 	}
 }
 
@@ -109,6 +113,12 @@ impl Reader {
 		Ok(header)
 	}
 
+	/// Opens a WSA OSD file for reading.
+	///
+	/// # Errors
+	/// - Returns `OpenError::FileError` if there is an error opening or reading the file.
+	/// - Returns `OpenError::InvalidHeader` if the file header is invalid.
+	/// - Returns `OpenError::InvalidSize` if the file size is invalid.
 	pub fn open<P: AsRef<Path>>(file_path: P) -> Result<Self, OpenError> {
 		let mut file = File::open(&file_path)?;
 		let header: FileHeader = Self::read_header(&mut file)?.into();
@@ -121,6 +131,10 @@ impl Reader {
 		Ok(Self { file, header })
 	}
 
+	/// Rewinds the reader to the first frame position.
+	///
+	/// # Errors
+	/// - Returns `IOError` if there is an error seeking in the file.
 	pub fn rewind(&mut self) -> Result<(), IOError> {
 		self.file.seek(SeekFrom::Start(FIRST_FRAME_FILE_POS))?;
 		Ok(())
@@ -137,6 +151,10 @@ impl Reader {
 	}
 
 	pub fn iter(&mut self) -> Iter<'_> {
+		self.into_iter()
+	}
+
+	pub fn iter_mut(&mut self) -> Iter<'_> {
 		self.into_iter()
 	}
 }
@@ -248,6 +266,7 @@ impl<'a> IntoIterator for &'a mut Reader {
 	}
 }
 
+/// Attempts to find an associated WSA OSD file for the given video file path.
 pub fn find_associated_to_video_file<P: AsRef<Path>>(video_file_path: P) -> Option<PathBuf> {
 	let video_file_path = video_file_path.as_ref();
 	let file_stem = video_file_path.file_stem()?.to_string_lossy();
@@ -256,16 +275,17 @@ pub fn find_associated_to_video_file<P: AsRef<Path>>(video_file_path: P) -> Opti
 	}
 
 	if let Some(captures) = DJI_VIDEO_FILE_RE.captures(&file_stem) {
-		let dji_file_number = captures.get(1).unwrap().as_str();
+		let Some(dji_file_number) = captures.get(1) else {
+			unreachable!();
+		};
 		let osd_file_path = video_file_path
-			.with_file_name(format!("AvatarG{dji_file_number}"))
+			.with_file_name(format!("AvatarG{}", dji_file_number.as_str()))
 			.with_extension("osd");
 		if osd_file_path.is_file() {
 			log::info!("found: {}", osd_file_path.to_string_lossy());
 			return Some(osd_file_path);
-		} else {
-			log::info!("not found: {}", osd_file_path.to_string_lossy());
 		}
+		log::info!("not found: {}", osd_file_path.to_string_lossy());
 	}
 
 	None

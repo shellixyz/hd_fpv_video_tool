@@ -16,23 +16,33 @@ pub struct Timestamp {
 }
 
 impl Timestamp {
+	#[must_use]
 	pub fn total_seconds(&self) -> u32 {
-		self.hours as u32 * 3600 + self.minutes as u32 * 60 + self.seconds as u32
+		u32::from(self.hours) * 3600 + u32::from(self.minutes) * 60 + u32::from(self.seconds)
 	}
 
+	#[must_use]
 	pub fn to_ffmpeg_position(&self) -> String {
 		format!("{}:{}:{}", self.hours, self.minutes, self.seconds)
 	}
 
+	#[must_use]
 	pub fn frame_count(&self, fps: Rational) -> u64 {
+		#[allow(clippy::cast_possible_wrap)]
 		let frame_exact = fps * ffmpeg_next::Rational::new(self.total_seconds() as i32, 1);
-		(frame_exact.numerator() as f64 / frame_exact.denominator() as f64).round() as u64
+		#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+		let frame_count = (f64::from(frame_exact.numerator()) / f64::from(frame_exact.denominator())).round() as u64;
+		frame_count
 	}
 
+	/// # Panics
+	/// - Panics if the frame count does not fit in `u32`.
+	#[must_use]
 	pub fn overlay_frame_count(&self) -> u32 {
 		u32::try_from(self.frame_count(Rational::from((60, 1)))).unwrap()
 	}
 
+	#[must_use]
 	pub fn overlay_frame_index(&self) -> u32 {
 		let frame_count = self.overlay_frame_count();
 		if frame_count < 1 {
@@ -41,20 +51,24 @@ impl Timestamp {
 		frame_count - 1
 	}
 
+	#[must_use]
 	pub fn interval_frames(start_timestamp: &Self, end_timestamp: &Self, fps: Rational) -> u64 {
+		#[allow(clippy::cast_possible_wrap)]
 		let interval_seconds = end_timestamp.total_seconds() as i32 - start_timestamp.total_seconds() as i32;
 		if interval_seconds < 0 {
 			return 0;
 		}
 		let frames_exact = fps * ffmpeg_next::Rational::new(interval_seconds, 1);
-		(frames_exact.numerator() as f64 / frames_exact.denominator() as f64).round() as u64
+		#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+		let interval_frames = (f64::from(frames_exact.numerator()) / f64::from(frames_exact.denominator())).round() as u64;
+		interval_frames
 	}
 }
 
 impl Display for Timestamp {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		if self.hours > 0 {
-			write!(f, "{}:", self.hours)?
+			write!(f, "{}:", self.hours)?;
 		}
 		write!(f, "{}:{}", self.minutes, self.seconds)
 	}
@@ -88,8 +102,7 @@ impl FromStr for Timestamp {
 			Some(captures) => {
 				let hours = captures
 					.name("hours")
-					.map(|hours_match| hours_match.as_str().parse().unwrap())
-					.unwrap_or(0);
+					.map_or(0, |hours_match| hours_match.as_str().parse().unwrap());
 				let minutes = captures.name("minutes").unwrap().as_str().parse().unwrap();
 				let seconds = captures.name("seconds").unwrap().as_str().parse().unwrap();
 				Timestamp::new(hours, minutes, seconds)
@@ -113,6 +126,6 @@ impl StartEndOverlayFrameIndex for Option<Timestamp> {
 	}
 
 	fn end_overlay_frame_index(&self) -> Option<u32> {
-		self.as_ref().map(|end| end.overlay_frame_index())
+		self.as_ref().map(Timestamp::overlay_frame_index)
 	}
 }

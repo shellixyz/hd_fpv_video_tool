@@ -5,8 +5,7 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use byte_struct::*;
-
+use byte_struct::{ByteStruct, ByteStructLen, ByteStructUnspecifiedByteOrder};
 use derive_more::From;
 use fs_err::File;
 use getset::{CopyGetters, Getters};
@@ -98,15 +97,16 @@ pub struct FileHeader {
 }
 
 impl FileHeader {
+	#[must_use]
 	pub fn font_variant(&self) -> FontVariant {
-		use FontVariant::*;
+		use FontVariant as FV;
 		match self.font_variant_id {
-			0 => Generic,
-			1 => Betaflight,
-			2 => INAV,
-			3 => Ardupilot,
-			4 => KISSUltra,
-			_ => Unknown,
+			0 => FV::Generic,
+			1 => FV::Betaflight,
+			2 => FV::INAV,
+			3 => FV::Ardupilot,
+			4 => FV::KISSUltra,
+			_ => FV::Unknown,
 		}
 	}
 }
@@ -115,10 +115,10 @@ impl From<FileHeaderRaw> for FileHeader {
 	fn from(fhr: FileHeaderRaw) -> Self {
 		Self {
 			format_version: fhr.format_version,
-			osd_dimensions: Dimensions::new(fhr.width_tiles as u32, fhr.height_tiles as u32),
+			osd_dimensions: Dimensions::new(u32::from(fhr.width_tiles), u32::from(fhr.height_tiles)),
 			tile_dimensions: TileDimensions {
-				width: fhr.tile_width as u32,
-				height: fhr.tile_height as u32,
+				width: u32::from(fhr.tile_width),
+				height: u32::from(fhr.tile_height),
 			},
 			offset: Offset {
 				x: fhr.x_offset,
@@ -168,6 +168,12 @@ impl Reader {
 		Ok(header)
 	}
 
+	/// Opens a DJI OSD file for reading.
+	///
+	/// # Errors
+	/// - Returns `OpenError::FileError` if there is an error opening or reading the file.
+	/// - Returns `OpenError::InvalidHeader` if the file header is invalid.
+	/// - Returns `OpenError::InvalidOSDDimensions` if the OSD dimensions are invalid.
 	pub fn open<P: AsRef<Path>>(file_path: P) -> Result<Self, OpenError> {
 		let mut file = File::open(&file_path)?;
 		Self::check_signature(&file_path, &mut file)?;
@@ -219,6 +225,10 @@ impl Reader {
 	//     Ok(SortedUniqFrames::new(osd_kind, font_variant, frames))
 	// }
 
+	/// Rewinds the reader to the beginning of the first frame.
+	///
+	/// # Errors
+	/// - Returns `IOError` if there is an error seeking in the file.
 	pub fn rewind(&mut self) -> Result<(), IOError> {
 		self.file.seek(SeekFrom::Start(FIRST_FRAME_FILE_POS))?;
 		Ok(())
@@ -251,13 +261,16 @@ impl Reader {
 	pub fn iter(&mut self) -> Iter<'_> {
 		self.into_iter()
 	}
+
+	pub fn iter_mut(&mut self) -> Iter<'_> {
+		self.into_iter()
+	}
 }
 
 impl GenericReader for Reader {
 	fn read_frame(&mut self) -> Result<Option<Frame>, ReadError> {
-		let header = match self.read_frame_header()? {
-			Some(header) => header,
-			None => return Ok(None),
+		let Some(header) = self.read_frame_header()? else {
+			return Ok(None);
 		};
 		let mut data_bytes = vec![0; header.data_len() as usize * 2];
 		match self.file.read_exact(&mut data_bytes) {
@@ -266,7 +279,7 @@ impl GenericReader for Reader {
 				return Ok(None);
 			},
 			Err(e) => return Err(ReadError::FileError(e)),
-			Ok(_) => {},
+			Ok(()) => {},
 		}
 		let tile_indices = TileIndices::new(
 			data_bytes
@@ -294,10 +307,11 @@ impl GenericReader for Reader {
 			.sorted_unstable_by_key(Frame::index)
 			.unique_by(Frame::index)
 			.collect::<Vec<Frame>>();
-		'outer: for frame in frames.iter() {
+		'outer: for frame in &frames {
 			for (coordinates, tile_index) in frame.enumerate_tile_indices() {
 				if tile_index > 0
-					&& (coordinates.x as u32 >= osd_dimensions.width || coordinates.y as u32 >= osd_dimensions.height)
+					&& (u32::from(coordinates.x) >= osd_dimensions.width
+						|| u32::from(coordinates.y) >= osd_dimensions.height)
 				{
 					log::warn!(
 						"the OSD dimensions in the OSD file header do not seem to match the actual data in the file, the OSD might not be rendered fully"
@@ -373,6 +387,7 @@ impl<'a> IntoIterator for &'a mut Reader {
 	}
 }
 
+/// Attempts to find an associated DJI OSD file for the given video file path.
 pub fn find_associated_to_video_file<P: AsRef<Path>>(video_file_path: P) -> Option<PathBuf> {
 	let video_file_path = video_file_path.as_ref();
 	let file_stem = video_file_path.file_stem()?.to_string_lossy();
@@ -381,16 +396,17 @@ pub fn find_associated_to_video_file<P: AsRef<Path>>(video_file_path: P) -> Opti
 	}
 
 	if let Some(captures) = DJI_VIDEO_FILE_RE.captures(&file_stem) {
-		let dji_file_number = captures.get(1).unwrap().as_str();
+		let Some(dji_file_number) = captures.get(1) else {
+			unreachable!();
+		};
 		let osd_file_path = video_file_path
-			.with_file_name(format!("DJIG{dji_file_number}"))
+			.with_file_name(format!("DJIG{}", dji_file_number.as_str()))
 			.with_extension("osd");
 		if osd_file_path.is_file() {
 			log::info!("found: {}", osd_file_path.to_string_lossy());
 			return Some(osd_file_path);
-		} else {
-			log::info!("not found: {}", osd_file_path.to_string_lossy());
 		}
+		log::info!("not found: {}", osd_file_path.to_string_lossy());
 	}
 
 	None

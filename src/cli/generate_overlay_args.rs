@@ -28,7 +28,7 @@ pub struct GenerateOverlayArgs {
 	/// hide rectangular regions from the OSD
 	///
 	/// The parameter is a `;` separated list of regions.{n}
-	/// The format for a region is: <left_x>,<top_y>[:<width>x<height>]{n}
+	/// The format for a region is: <`left_x`>`top_y`>[:<width>x<height>]{n}
 	/// If the size is not specified it will default to 1x1
 	#[clap(long, value_parser, value_delimiter = ';', value_name = "REGIONS")]
 	hide_regions: Vec<osd::Region>,
@@ -81,6 +81,11 @@ pub(crate) fn osd_hide_items_arg_help() -> StyledStr {
 }
 
 impl GenerateOverlayArgs {
+	/// Validates the arguments.
+	///
+	/// # Errors
+	/// - Returns an error if the start/end arguments are invalid (end > start).
+	/// - Returns an error if the OSD file does not have the `.osd` extension.
 	pub fn check_valid(&self) -> anyhow::Result<()> {
 		self.start_end().check_valid()?;
 		if self.osd_file.extension().map(ToOwned::to_owned).unwrap_or_default() != OsStr::new("osd") {
@@ -89,6 +94,10 @@ impl GenerateOverlayArgs {
 		Ok(())
 	}
 
+	/// Determines the frame shift to apply based on the provided arguments and the target video file.
+	///
+	/// # Errors
+	/// - Returns an error if there is an issue probing the target video file.
 	pub fn frame_shift(&self) -> anyhow::Result<i32> {
 		Ok(match (self.frame_shift, &self.target_video_file) {
 			(Some(frame_shift), _) => frame_shift,

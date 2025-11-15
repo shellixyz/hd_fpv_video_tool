@@ -21,20 +21,21 @@ impl FromStr for video::Codec {
 	type Err = String;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		use video::Codec::*;
+		use video::Codec as C;
 		Ok(match s.to_uppercase().as_str() {
-			"AV1" => AV1,
-			"H264" | "H.264" => H264,
-			"H265" | "H.265" => H265,
-			"VP8" => VP8,
-			"VP9" => VP9,
+			"AV1" => C::AV1,
+			"H264" | "H.264" => C::H264,
+			"H265" | "H.265" => C::H265,
+			"VP8" => C::VP8,
+			"VP9" => C::VP9,
 			_ => return Err(format!("unknown video codec: {s}")),
 		})
 	}
 }
 
 impl video::Codec {
-	pub fn default_video_quality(&self, hw_accel: impl AsBool) -> ffmpeg::VideoQuality {
+	pub fn default_video_quality(&self, hw_accel: &impl AsBool) -> ffmpeg::VideoQuality {
+		#[allow(clippy::match_bool, clippy::match_same_arms)]
 		match hw_accel.as_bool() {
 			true => match self {
 				video::Codec::AV1 => VideoQuality::GlobalQuality(120),
@@ -62,9 +63,9 @@ pub struct TranscodeVideoOSDArgs {
 	/// First tries finding a file with the name <basename of the video file>.osd then if it does
 	/// not exist tries finding a file with same DJI prefix as the video file with G instead of U
 	/// if it is starting with DJIU. Examples:{n} DJIG0000.mp4 => DJIG0000.osd{n}
-	/// DJIG0000_something.mp4 => DJIG0000.osd{n}
-	/// DJIU0000.mp4 => DJIG0000.osd{n}
-	/// DJIU0000_something.mp4 => DJIG0000.osd{n}
+	/// `DJIG0000_something.mp4` => `DJIG0000.osd`{n}
+	/// `DJIU0000.mp4` => `DJIG0000.osd`{n}
+	/// `DJIU0000_something.mp4` => `DJIG0000.osd`{n}
 	#[clap(long, value_parser)]
 	#[getset(get_copy = "pub")]
 	osd: bool,
@@ -85,7 +86,7 @@ pub struct TranscodeVideoOSDArgs {
 	/// hide rectangular regions from the OSD
 	///
 	/// The parameter is a `;` separated list of regions.{n}
-	/// The format for a region is: <left_x>,<top_y>[:<width>x<height>]{n}
+	/// The format for a region is: <`left_x`>,<`top_y`>[:<`width`>x<`height`>]{n}
 	/// If the size is not specified it will default to 1x1
 	#[clap(long, value_parser, value_delimiter = ';', value_name = "REGIONS")]
 	#[getset(get = "pub")]
@@ -120,6 +121,11 @@ pub struct TranscodeVideoOSDArgs {
 pub struct RequestedOSDButNoFileProvidedNorFound;
 
 impl TranscodeVideoOSDArgs {
+	/// Returns the path to the OSD file to use for generating OSD frames.
+	/// If no OSD file is provided and OSD is requested, tries to find the associated OSD file.
+	///
+	/// # Errors
+	/// - Returns `RequestedOSDButNoFileProvidedNorFound` if OSD is requested but no file is provided nor found.
 	pub fn osd_file_path<P: AsRef<Path>>(
 		&self,
 		video_file_path: P,
@@ -137,6 +143,7 @@ impl TranscodeVideoOSDArgs {
 
 #[derive(Args, Getters, CopyGetters)]
 #[getset(get = "pub")]
+#[allow(clippy::struct_excessive_bools)]
 pub struct TranscodeVideoArgs {
 	/// add audio stream to the output video
 	///
@@ -195,17 +202,17 @@ pub struct TranscodeVideoArgs {
 
 	/// remove video defects
 	///
-	/// uses the FFMpeg delogo filter to remove small video defects
+	/// uses the `FFMpeg` delogo filter to remove small video defects
 	///
 	/// The parameter is a `;` separated list of regions.{n}
-	/// The format for a region is: <left_x>,<top_y>[:<width>x<height>]{n}
+	/// The format for a region is: <`left_x`>,<`top_y`>[:<`width`>x<`height`>]{n}
 	/// If the size is not specified it will default to 1x1
 	#[clap(long, value_parser, value_delimiter = ';', value_name = "REGIONS")]
 	remove_video_defects: Vec<video::Region>,
 
 	/// audio encoder to use
 	///
-	/// This value is directly passed to the `-c:a` FFMpeg argument.{n}
+	/// This value is directly passed to the `-c:a` `FFMpeg` argument.{n}
 	/// Run `ffmpeg -encoders` for a list of available encoders
 	#[clap(long, value_parser, default_value = "aac")]
 	audio_encoder: String,
@@ -217,7 +224,7 @@ pub struct TranscodeVideoArgs {
 	#[clap(flatten)]
 	start_end: StartEndArgs,
 
-	/// process scheduling priority to give to FFMpeg from -20 to 19
+	/// process scheduling priority to give to `FFMpeg` from -20 to 19
 	#[clap(short = 'P', long, value_parser = clap::value_parser!(i32).range(-20..=19), value_name = "PRIORITY")]
 	ffmpeg_priority: Option<i32>,
 
@@ -257,41 +264,47 @@ pub enum OutputVideoFileError {
 }
 
 impl TranscodeVideoArgs {
+	#[must_use]
 	pub fn video_audio_fix(&self) -> Option<video::AudioFixType> {
-		use video::AudioFixType::*;
+		use video::AudioFixType as AFT;
 		match (self.fix_audio, self.fix_audio_sync, self.fix_audio_volume) {
-			(true, _, _) | (false, true, true) => Some(SyncAndVolume),
-			(false, true, false) => Some(Sync),
-			(false, false, true) => Some(Volume),
+			(true, _, _) | (false, true, true) => Some(AFT::SyncAndVolume),
+			(false, true, false) => Some(AFT::Sync),
+			(false, false, true) => Some(AFT::Volume),
 			(false, false, false) => None,
 		}
 	}
 
+	#[must_use]
 	pub fn output_video_file_provided(&self) -> bool {
 		self.output_video_file.is_some()
 	}
 
+	/// Returns the output video file path.
+	///
+	/// # Errors
+	/// - Returns `OutputVideoFileError::InputHasNoFileName` if the input video file has no file name.
+	/// - Returns `OutputVideoFileError::InputHasNoExtension` if the input video file has no extension.
 	pub fn output_video_file(&self, with_osd: bool) -> Result<PathBuf, OutputVideoFileError> {
-		Ok(match &self.output_video_file {
-			Some(output_video_file) => output_video_file.clone(),
-			None => {
-				let mut output_file_stem = Path::new(
-					self.input_video_file
-						.file_stem()
-						.ok_or(OutputVideoFileError::InputHasNoFileName)?,
-				)
-				.as_os_str()
-				.to_os_string();
-				let suffix = if with_osd { "_with_osd" } else { "_transcoded" };
-				output_file_stem.push(suffix);
-				let input_file_extension = self
-					.input_video_file
-					.extension()
-					.ok_or(OutputVideoFileError::InputHasNoExtension)?;
+		Ok(if let Some(output_video_file) = &self.output_video_file {
+			output_video_file.clone()
+		} else {
+			let mut output_file_stem = Path::new(
 				self.input_video_file
-					.with_file_name(output_file_stem)
-					.with_extension(input_file_extension)
-			},
+					.file_stem()
+					.ok_or(OutputVideoFileError::InputHasNoFileName)?,
+			)
+			.as_os_str()
+			.to_os_string();
+			let suffix = if with_osd { "_with_osd" } else { "_transcoded" };
+			output_file_stem.push(suffix);
+			let input_file_extension = self
+				.input_video_file
+				.extension()
+				.ok_or(OutputVideoFileError::InputHasNoExtension)?;
+			self.input_video_file
+				.with_file_name(output_file_stem)
+				.with_extension(input_file_extension)
 		})
 	}
 
@@ -304,6 +317,7 @@ impl TranscodeVideoArgs {
 	}
 
 	#[cfg(feature = "hwaccel")]
+	#[must_use]
 	pub fn video_codec(&self) -> (video::Codec, HwAcceleratedEncoding) {
 		const FALLBACK: (video::Codec, HwAcceleratedEncoding) = (video::Codec::H265, HwAcceleratedEncoding::No);
 		match self.video_codec {

@@ -21,6 +21,8 @@ pub struct StartEndArgs {
 pub struct StartGreaterThanEndError;
 
 impl StartEndArgs {
+	/// Returns true if the start and end timestamps are valid (start < end) or if either is None.
+	#[must_use]
 	pub fn are_valid(&self) -> bool {
 		if let (Some(start), Some(end)) = (self.start, self.end) {
 			return start < end;
@@ -28,6 +30,10 @@ impl StartEndArgs {
 		true
 	}
 
+	/// Validates the start and end timestamps.
+	///
+	/// # Errors
+	/// - Returns `StartGreaterThanEndError` if the start timestamp is greater than or equal to the end timestamp.
 	pub fn check_valid(&self) -> Result<(), StartGreaterThanEndError> {
 		if !self.are_valid() {
 			return Err(StartGreaterThanEndError);
@@ -49,6 +55,8 @@ pub struct CutVideoStartEndArgs {
 }
 
 impl CutVideoStartEndArgs {
+	/// Returns true if the start and end timestamps are valid (start < end) or if either is None.
+	#[must_use]
 	pub fn are_valid(&self) -> bool {
 		if let (Some(start), Some(end)) = (self.start, self.end) {
 			return start < end;
@@ -56,6 +64,10 @@ impl CutVideoStartEndArgs {
 		true
 	}
 
+	/// Validates the start and end timestamps.
+	///
+	/// # Errors
+	/// - Returns `StartGreaterThanEndError` if the start timestamp is greater than or equal to the end timestamp.
 	pub fn check_valid(&self) -> Result<(), StartGreaterThanEndError> {
 		if !self.are_valid() {
 			return Err(StartGreaterThanEndError);

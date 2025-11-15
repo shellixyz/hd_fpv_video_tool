@@ -56,17 +56,23 @@ pub enum OSDFontDirError {
 	CanonicalizeError { font_dir: PathBuf, error: IOError },
 }
 
-fn font_dir_base(font_dir: &Option<PathBuf>) -> Result<PathBuf, OSDFontDirError> {
+/// Resolves the OSD font directory path, using the provided path, environment variable, or default path.
+///
+/// # Errors
+/// - Returns `OSDFontDirError::UnableToLocateHomeDir` if the home directory cannot be located.
+/// - Returns `OSDFontDirError::CanonicalizeError` if the font directory path cannot be canonicalized.
+fn font_dir_base(font_dir: Option<&PathBuf>) -> Result<PathBuf, OSDFontDirError> {
 	let font_dir = match font_dir {
 		Some(font_dir) => font_dir.clone(),
-		None => match std::env::var(FONT_DIR_ENV_VAR_NAME) {
-			Ok(font_dir) => PathBuf::from(font_dir),
-			Err(_) => {
+		None => {
+			if let Ok(font_dir) = std::env::var(FONT_DIR_ENV_VAR_NAME) {
+				PathBuf::from(font_dir)
+			} else {
 				let home_dir = home::home_dir().ok_or(OSDFontDirError::UnableToLocateHomeDir)?;
 				[home_dir, PathBuf::from(DEFAULT_HOME_RELATIVE_FONT_DIR)]
 					.iter()
 					.collect()
-			},
+			}
 		},
 	};
 	let font_dir = font_dir
@@ -76,10 +82,15 @@ fn font_dir_base(font_dir: &Option<PathBuf>) -> Result<PathBuf, OSDFontDirError>
 }
 
 impl FontOptions {
+	/// Resolves the OSD font directory path, using the provided path, environment variable, or default path.
+	///
+	/// # Errors
+	/// See `font_dir_base` for error details.
 	pub fn font_dir(&self) -> Result<PathBuf, OSDFontDirError> {
-		font_dir_base(&self.font_dir)
+		font_dir_base(self.font_dir.as_ref())
 	}
 
+	#[must_use]
 	pub fn font_ident(&self) -> Option<Option<&str>> {
 		match self.font_ident.as_deref() {
 			Some("") => Some(None),
@@ -90,10 +101,15 @@ impl FontOptions {
 }
 
 impl OSDFontOptions {
+	/// Resolves the OSD font directory path, using the provided path, environment variable, or default path.
+	///
+	/// # Errors
+	/// See `font_dir_base` for error details.
 	pub fn osd_font_dir(&self) -> Result<PathBuf, OSDFontDirError> {
-		font_dir_base(&self.osd_font_dir)
+		font_dir_base(self.osd_font_dir.as_ref())
 	}
 
+	#[must_use]
 	pub fn osd_font_ident(&self) -> Option<Option<&str>> {
 		match self.osd_font_ident.as_deref() {
 			Some("") => Some(None),

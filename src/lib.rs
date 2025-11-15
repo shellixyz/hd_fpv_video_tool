@@ -1,3 +1,4 @@
+#![warn(clippy::pedantic)]
 // #![forbid(unsafe_code)]
 
 pub mod cli;

@@ -4,9 +4,9 @@ use clap::{Parser, Subcommand};
 use getset::CopyGetters;
 use hd_fpv_video_tool::{cli::start_end_args::CutVideoStartEndArgs, prelude::*};
 
-use crate::shell_autocompletion::*;
+use crate::shell_autocompletion::{GenerateShellAutoCompletionFilesArg, generate_shell_autocompletion_files_arg_parser};
 
-/// hd_fpv_video_tool is a command line tool for manipulating video files and OSD files recorded with the DJI and Walksnail Avatar FPV systems
+/// `hd_fpv_video_tool` is a command line tool for manipulating video files and OSD files recorded with the DJI and Walksnail Avatar FPV systems
 ///
 /// Author: Michel Pastor <shellixyz@gmail.com>
 ///
@@ -45,7 +45,7 @@ pub enum Commands {
 	/// the native kind of tiles corresponding to the kind of OSD layout read from the FPV.WTF .osd file.
 	///
 	/// Fonts are loaded either from the directory specified with the --font-dir option or
-	/// from the directory found in the environment variable FONTS_DIR or
+	/// from the directory found in the environment variable `FONTS_DIR` or
 	/// if neither of these are available it falls back to the `fonts` directory inside the current directory.
 	#[clap(alias = "gof")]
 	GenerateOverlayFrames {
@@ -71,7 +71,7 @@ pub enum Commands {
 	/// but also it is roughly twice as slow as encoding with the VP8 codec which is already unfortunately pretty slow.
 	///
 	/// Fonts are loaded either from the directory specified with the --font-dir option or
-	/// from the directory found in the environment variable FONTS_DIR or
+	/// from the directory found in the environment variable `FONTS_DIR` or
 	/// if neither of these are available it falls back to the `fonts` directory inside the current directory.
 	///
 	/// NOTE: unfortunately this is very slow right now because only a handful of video formats support transparency
@@ -154,7 +154,7 @@ pub enum Commands {
 	/// The defaults aim to provide a good balance between quality and file size
 	///
 	/// Fonts are loaded either from the directory specified with the --font-dir option or
-	/// from the directory found in the environment variable FONTS_DIR or
+	/// from the directory found in the environment variable `FONTS_DIR` or
 	/// if neither of these are available it falls back to the `fonts` directory inside the current directory
 	#[clap(alias = "tv")]
 	TranscodeVideo {
@@ -169,8 +169,8 @@ pub enum Commands {
 	///
 	/// You can generate a compatible OSD overlay video file with the `generate-overlay-video` command.
 	///
-	/// If the <OSD_VIDEO_FILE> argument is not provided it will try to use the file with the same base name
-	/// as the <VIDEO_FILE> argument with suffix `_osd` and with `webm` extension.
+	/// If the <`OSD_VIDEO_FILE`> argument is not provided it will try to use the file with the same base name
+	/// as the <`VIDEO_FILE`> argument with suffix `_osd` and with `webm` extension.
 	#[clap(alias = "pvwo")]
 	PlayVideoWithOSD {
 		video_file: PathBuf,
@@ -204,7 +204,7 @@ pub enum Commands {
 	AddAudioStream {
 		/// audio encoder to use
 		///
-		/// This value is directly passed to the `-c:a` FFMpeg argument.{n}
+		/// This value is directly passed to the `-c:a` `FFMpeg` argument.{n}
 		/// Run `ffmpeg -encoders` for a list of available encoders
 		#[clap(long, value_parser, default_value = "aac")]
 		audio_encoder: String,

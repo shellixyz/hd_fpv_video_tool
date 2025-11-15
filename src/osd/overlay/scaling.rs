@@ -114,6 +114,10 @@ pub struct OSDScalingArgs {
 }
 
 impl Scaling {
+	/// Creates a `Scaling` instance from `ScalingArgs` and an optional target video file path.
+	///
+	/// # Errors
+	/// Returns `ScalingArgsError` if the arguments are invalid or if video probing fails
 	pub fn try_from_scaling_args<P: AsRef<Path>>(
 		args: &ScalingArgs,
 		target_video_file: &Option<P>,
@@ -140,10 +144,11 @@ impl Scaling {
 			(false, true) => Scaling::No { target_resolution },
 			(false, false) => match target_resolution {
 				Some(target_resolution) => {
-					let min_coverage = args.min_coverage as f64 / 100.0;
+					let min_coverage = f64::from(args.min_coverage) / 100.0;
+					#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 					let min_resolution = VideoResolution::new(
-						(target_resolution.dimensions().width as f64 * min_coverage) as u32,
-						(target_resolution.dimensions().height as f64 * min_coverage) as u32,
+						(f64::from(target_resolution.dimensions().width) * min_coverage) as u32,
+						(f64::from(target_resolution.dimensions().height) * min_coverage) as u32,
 					);
 					Scaling::Auto {
 						target_resolution,
@@ -156,6 +161,10 @@ impl Scaling {
 		})
 	}
 
+	/// Creates a `Scaling` instance from `OSDScalingArgs` and the video resolution.
+	///
+	/// # Errors
+	/// Returns `ScalingArgsError` if the arguments are invalid
 	pub fn try_from_osd_args(
 		args: &OSDScalingArgs,
 		video_resolution: VideoResolution,
@@ -171,10 +180,11 @@ impl Scaling {
 			},
 			(false, false) => {
 				let target_resolution = TargetResolution::Custom(video_resolution);
-				let min_coverage = args.min_osd_coverage as f64 / 100.0;
+				let min_coverage = f64::from(args.min_osd_coverage) / 100.0;
+				#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 				let min_resolution = VideoResolution::new(
-					(target_resolution.dimensions().width as f64 * min_coverage) as u32,
-					(target_resolution.dimensions().height as f64 * min_coverage) as u32,
+					(f64::from(target_resolution.dimensions().width) * min_coverage) as u32,
+					(f64::from(target_resolution.dimensions().height) * min_coverage) as u32,
 				);
 				Scaling::Auto {
 					target_resolution,

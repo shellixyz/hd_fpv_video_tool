@@ -10,22 +10,24 @@ pub enum Codec {
 }
 
 impl Codec {
+	#[must_use]
 	pub fn ffmpeg_string(&self, hw_accel: bool) -> &'static str {
-		match hw_accel {
-			true => match self {
+		if hw_accel {
+			match self {
 				Self::AV1 => "av1_vaapi",
 				Self::H264 => "h264_vaapi",
 				Self::H265 => "hevc_vaapi",
 				Self::VP8 => "vp8_vaapi",
 				Self::VP9 => "vp9_vaapi",
-			},
-			false => match self {
+			}
+		} else {
+			match self {
 				Self::AV1 => "libaom-av1",
 				Self::H264 => "libx264",
 				Self::H265 => "libx265",
 				Self::VP8 => "libvpx",
 				Self::VP9 => "libvpx-vp9",
-			},
+			}
 		}
 	}
 }

@@ -1,3 +1,4 @@
+#![warn(clippy::pedantic)]
 #![forbid(unsafe_code)]
 
 use std::{
@@ -16,9 +17,9 @@ mod cli;
 mod man_pages;
 mod shell_autocompletion;
 
-use cli::*;
-use man_pages::*;
-use shell_autocompletion::*;
+use cli::{Cli, Commands};
+use man_pages::{generate_exe_man_page, generate_man_page_for_subcommands};
+use shell_autocompletion::{GenerateShellAutoCompletionFilesArg, SHELL_COMPLETION_FILES_DIR, Shell};
 
 fn display_osd_file_info_command<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
 	let mut reader = osd::file::open(path)?;
@@ -53,8 +54,11 @@ fn display_osd_file_info_command<P: AsRef<Path>>(path: P) -> anyhow::Result<()> 
 	println!("Number of OSD frames: {}", frames.len());
 	if let Some(last_frame) = frames.last() {
 		println!("Highest video frame index: {}", last_frame.index());
-		let refresh_percent_frames = frames.len() as f64 * 100.0 / last_frame.index() as f64;
-		let refresh_interval_frames = last_frame.index() as f64 / frames.len() as f64;
+		#[allow(clippy::cast_precision_loss)]
+		let refresh_percent_frames = frames.len() as f64 * 100.0 / f64::from(last_frame.index());
+		#[allow(clippy::cast_precision_loss)]
+		let refresh_interval_frames = f64::from(last_frame.index()) / frames.len() as f64;
+		#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 		let refresh_interval_frames_str = match refresh_interval_frames.round() as u32 {
 			1 => "every frame".to_owned(),
 			frames => format!("every {frames} frames"),
@@ -76,7 +80,7 @@ fn generate_overlay_prepare_generator(common_args: &GenerateOverlayArgs) -> anyh
 		osd_file_reader.frames()?,
 		osd_file_reader.font_variant(),
 		&font_dir,
-		&common_args.font_options().font_ident(),
+		common_args.font_options().font_ident(),
 		scaling,
 		common_args.hide_regions(),
 		common_args.hide_items(),
@@ -247,24 +251,23 @@ async fn add_audio_stream_command(command: &Commands) -> anyhow::Result<()> {
 		ffmpeg_priority,
 	} = command
 	{
-		let output_video_file = match output_video_file {
-			Some(output_video_file) => output_video_file.clone(),
-			None => {
-				let mut output_file_stem = Path::new(
-					input_video_file
-						.file_stem()
-						.ok_or_else(|| anyhow!("input file has no file name"))?,
-				)
-				.as_os_str()
-				.to_os_string();
-				output_file_stem.push("_with_audio");
-				let input_file_extension = input_video_file
-					.extension()
-					.ok_or_else(|| anyhow!("input file has no extension"))?;
+		let output_video_file = if let Some(output_video_file) = output_video_file {
+			output_video_file.clone()
+		} else {
+			let mut output_file_stem = Path::new(
 				input_video_file
-					.with_file_name(output_file_stem)
-					.with_extension(input_file_extension)
-			},
+					.file_stem()
+					.ok_or_else(|| anyhow!("input file has no file name"))?,
+			)
+			.as_os_str()
+			.to_os_string();
+			output_file_stem.push("_with_audio");
+			let input_file_extension = input_video_file
+				.extension()
+				.ok_or_else(|| anyhow!("input file has no extension"))?;
+			input_video_file
+				.with_file_name(output_file_stem)
+				.with_extension(input_file_extension)
 		};
 		video::add_audio_stream(
 			input_video_file,
@@ -281,7 +284,7 @@ async fn add_audio_stream_command(command: &Commands) -> anyhow::Result<()> {
 
 async fn fix_video_audio_command<P: AsRef<Path>, Q: AsRef<Path>>(
 	input_video_file: P,
-	output_video_file: &Option<Q>,
+	output_video_file: Option<&Q>,
 	overwrite: bool,
 	sync: bool,
 	volume: bool,
@@ -318,7 +321,7 @@ fn generate_shell_autocompletion_files_command(arg: &GenerateShellAutoCompletion
 	let shell_completion_files_path = Path::new(SHELL_COMPLETION_FILES_DIR);
 	if shell_completion_files_path.exists() {
 		if shell_completion_files_path.is_dir() {
-			return Err(anyhow!("{} is not a directory", SHELL_COMPLETION_FILES_DIR));
+			return Err(anyhow!("{SHELL_COMPLETION_FILES_DIR} is not a directory"));
 		}
 	} else {
 		std::fs::create_dir(SHELL_COMPLETION_FILES_DIR)?;
@@ -388,7 +391,7 @@ async fn main() {
 		} => {
 			fix_video_audio_command(
 				input_video_file,
-				output_video_file,
+				output_video_file.as_ref(),
 				*overwrite,
 				*sync,
 				*volume,

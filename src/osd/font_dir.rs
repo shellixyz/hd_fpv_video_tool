@@ -1,59 +1,84 @@
-
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 
 use hd_fpv_osd_font_tool::prelude::*;
 
 use crate::osd::{font_variant::FontVariant, tile_indices::TileIndex};
 
-
 pub struct FontDir(PathBuf);
 
 impl FontDir {
+	pub fn new<P: AsRef<Path>>(dir_path: P) -> Self {
+		Self(dir_path.as_ref().to_path_buf())
+	}
 
-    pub fn new<P: AsRef<Path>>(dir_path: P) -> Self {
-        Self(dir_path.as_ref().to_path_buf())
-    }
+	/// Loads tiles from the font directory for the given tile kind and optional ident.
+	///
+	/// # Errors
+	/// Returns `bin_file::LoadError` if there is an error loading the tiles.
+	pub fn load(
+		&self,
+		tile_kind: tile::Kind,
+		ident: Option<&str>,
+		max_used_tile_index: TileIndex,
+	) -> Result<Vec<Tile>, bin_file::LoadError> {
+		#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+		let tile_count = bin_file::TILE_COUNT as u16;
+		match max_used_tile_index {
+			max_index if max_index <= tile_count => bin_file::load_base_norm(&self.0, tile_kind, ident),
+			_ => bin_file::load_extended_norm(&self.0, tile_kind, ident),
+		}
+	}
 
-    pub fn load(&self, tile_kind: tile::Kind, ident: &Option<&str>, max_used_tile_index: TileIndex) -> Result<Vec<Tile>, bin_file::LoadError> {
-        match max_used_tile_index {
-            max_index if max_index <= bin_file::TILE_COUNT as u16 => bin_file::load_base_norm(&self.0, tile_kind, ident),
-            _ => bin_file::load_extended_norm(&self.0, tile_kind, ident)
-        }
-    }
+	/// Loads tiles from the font directory for the given tile kind and font variant, with fallback to generic font if specific font is missing.
+	///
+	/// # Errors
+	/// Returns `bin_file::LoadError` if there is an error loading the tiles.
+	pub fn load_variant_with_fallback(
+		&self,
+		tile_kind: tile::Kind,
+		variant: &FontVariant,
+		max_used_tile_index: TileIndex,
+	) -> Result<Vec<Tile>, bin_file::LoadError> {
+		let ident = variant.font_set_ident();
+		let ident_load_result = self.load(tile_kind, ident, max_used_tile_index);
+		let tiles = match (ident, ident_load_result) {
+			(None | Some(_), Ok(tiles)) => tiles,
+			(None, error @ Err(_)) => return error,
+			(Some(ident), Err(error)) => {
+				if error.because_file_is_missing() {
+					log::warn!("font for {variant} ({ident} ident) not found, falling back to generic font");
+					self.load(tile_kind, None, max_used_tile_index)?
+				} else {
+					return Err(error);
+				}
+			},
+		};
+		Ok(tiles)
+	}
 
-    pub fn load_variant_with_fallback(&self, tile_kind: tile::Kind, variant: &FontVariant, max_used_tile_index: TileIndex) -> Result<Vec<Tile>, bin_file::LoadError> {
-        let ident = variant.font_set_ident();
-        let ident_load_result = self.load(tile_kind, &ident, max_used_tile_index);
-        let tiles = match (ident, ident_load_result) {
-            (None, Ok(tiles)) | (Some(_), Ok(tiles)) => tiles,
-            (None, error @ Err(_)) => return error,
-            (Some(ident), Err(error)) => {
-                if error.because_file_is_missing() {
-                    log::warn!("font for {variant} ({ident} ident) not found, falling back to generic font");
-                    self.load(tile_kind, &None, max_used_tile_index)?
-                } else {
-                    return Err(error);
-                }
-            },
-        };
-        Ok(tiles)
-    }
-
-    pub fn load_with_fallback(&self, tile_kind: tile::Kind, ident: &Option<&str>, highest_used_tile_index: TileIndex) -> Result<Vec<Tile>, bin_file::LoadError> {
-        let ident_load_result = self.load(tile_kind, ident, highest_used_tile_index);
-        let tiles = match (ident, ident_load_result) {
-            (None, Ok(tiles)) | (Some(_), Ok(tiles)) => tiles,
-            (None, error @ Err(_)) => return error,
-            (Some(ident), Err(error)) => {
-                if error.because_file_is_missing() {
-                    log::warn!("font with ident `{ident}` not found, falling back to generic font");
-                    self.load(tile_kind, &None, highest_used_tile_index)?
-                } else {
-                    return Err(error);
-                }
-            },
-        };
-        Ok(tiles)
-    }
-
+	/// Loads tiles from the font directory for the given tile kind and optional ident, with fallback to generic font if specific font is missing.
+	///
+	/// # Errors
+	/// Returns `bin_file::LoadError` if there is an error loading the tiles.
+	pub fn load_with_fallback(
+		&self,
+		tile_kind: tile::Kind,
+		ident: Option<&str>,
+		highest_used_tile_index: TileIndex,
+	) -> Result<Vec<Tile>, bin_file::LoadError> {
+		let ident_load_result = self.load(tile_kind, ident, highest_used_tile_index);
+		let tiles = match (ident, ident_load_result) {
+			(None | Some(_), Ok(tiles)) => tiles,
+			(None, error @ Err(_)) => return error,
+			(Some(ident), Err(error)) => {
+				if error.because_file_is_missing() {
+					log::warn!("font with ident `{ident}` not found, falling back to generic font");
+					self.load(tile_kind, None, highest_used_tile_index)?
+				} else {
+					return Err(error);
+				}
+			},
+		};
+		Ok(tiles)
+	}
 }

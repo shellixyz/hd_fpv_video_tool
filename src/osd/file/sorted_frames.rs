@@ -27,11 +27,12 @@ pub struct SortedUniqFrames {
 }
 
 impl SortedUniqFrames {
+	#[must_use]
 	pub fn new(kind: Kind, font_variant: FontVariant, frames: Vec<Frame>) -> Self {
 		Self {
-			frames,
 			kind,
 			font_variant,
+			frames,
 		}
 	}
 }
@@ -57,6 +58,7 @@ pub struct SortedUniqFramesForVideoSlice<'a> {
 }
 
 impl<'a> SortedUniqFramesForVideoSlice<'a> {
+	#[must_use]
 	pub fn new(
 		kind: Kind,
 		font_variant: FontVariant,
@@ -66,24 +68,28 @@ impl<'a> SortedUniqFramesForVideoSlice<'a> {
 		video_frame_shift: i32,
 	) -> Self {
 		Self {
-			frames,
 			kind,
 			font_variant,
+			video_frame_shift,
 			first_video_frame,
 			last_video_frame,
-			video_frame_shift,
+			frames,
 		}
 	}
 
+	#[must_use]
 	pub fn video_frames_rel_index_iter(&self, eof_action: EndOfFramesAction) -> VideoFramesRelIndexIter<'_> {
+		#[allow(clippy::cast_possible_wrap)]
 		let index_shift = self.video_frame_shift - self.first_video_frame as i32;
 		VideoFramesRelIndexIter::new(self.frames, index_shift, eof_action, self.last_video_frame)
 	}
 
+	#[must_use]
 	pub fn video_frames_rel_index_par_iter(
 		&self,
 		eof_action: EndOfFramesAction,
 	) -> ParallelVideoFramesRelIndexIter<'_> {
+		#[allow(clippy::cast_possible_wrap)]
 		let index_shift = self.video_frame_shift - self.first_video_frame as i32;
 		ParallelVideoFramesRelIndexIter::new(self.frames, index_shift, eof_action, self.last_video_frame)
 	}
@@ -154,26 +160,31 @@ where
 			.iter()
 			.flat_map(|frame| frame.tile_indices().as_slice())
 			.max()
-			.cloned()
+			.copied()
 	}
 
 	/// returns the video frame shifted index of the first frame which has a video frame shifted index greater than the specified first video frame
 	fn first_video_frame_index(&self, first_video_frame: u32, video_frame_shift: i32) -> Option<u32> {
+		#[allow(clippy::cast_possible_wrap)]
 		let first_video_frame_index = first_video_frame as i32 - video_frame_shift;
+		#[allow(clippy::cast_possible_wrap)]
 		let first_frame_index = self
 			.frames()
 			.iter()
 			.position(|frame| (frame.index() as i32) >= first_video_frame_index)?;
-		Some(u32::try_from(self.frames()[first_frame_index].index() as i32 + video_frame_shift).unwrap())
+		#[allow(clippy::cast_possible_wrap)]
+		let video_frame_index = self.frames()[first_frame_index].index() as i32;
+		Some(u32::try_from(video_frame_index + video_frame_shift).unwrap())
 	}
 
 	fn video_frame_indices(&self, video_frame_shift: i32) -> SortedUniqFrameIndices {
-		SortedUniqFrameIndices(
-			self.frames()
-				.iter()
-				.map(|frame| (frame.index() as i32 + video_frame_shift) as u32)
-				.collect(),
-		)
+		#[allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
+		let frame_indices = self
+			.frames()
+			.iter()
+			.map(|frame| (frame.index() as i32 + video_frame_shift) as u32)
+			.collect();
+		SortedUniqFrameIndices(frame_indices)
 	}
 
 	fn shift_iter(&self, video_frame_shift: i32) -> ShiftIter<'_> {
@@ -188,12 +199,14 @@ where
 	}
 
 	fn video_frames_iter(&self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> VideoFramesIter<'_> {
+		#[allow(clippy::cast_possible_wrap)]
 		let first_video_frame_index = first_frame as i32 - frame_shift;
+		#[allow(clippy::cast_possible_wrap)]
 		let first_frame_index = self
 			.frames()
 			.iter()
 			.position(|frame| (frame.index() as i32) >= first_video_frame_index);
-		let osd_file_frames = first_frame_index.map(|index| &self.frames()[index..]).unwrap_or(&[]);
+		let osd_file_frames: &[Frame] = first_frame_index.map_or(&[], |index| &self.frames()[index..]);
 
 		VideoFramesIter {
 			frames: osd_file_frames,
@@ -206,28 +219,31 @@ where
 }
 
 impl SortedUniqFrames {
+	#[must_use]
 	pub fn select_slice(
 		&self,
 		first_video_frame: u32,
 		last_video_frame: Option<u32>,
 		video_frame_shift: i32,
 	) -> SortedUniqFramesForVideoSlice<'_> {
+		#[allow(clippy::cast_possible_wrap)]
 		let first_video_frame_index = first_video_frame as i32 - video_frame_shift;
+		#[allow(clippy::cast_possible_wrap)]
 		let first_frame_index = self
 			.frames()
 			.iter()
 			.position(|frame| (frame.index() as i32) >= first_video_frame_index);
 
-		let frames = match (first_frame_index, last_video_frame) {
+		let frames: &[Frame] = match (first_frame_index, last_video_frame) {
 			(Some(first_frame_index), Some(last_video_frame)) => {
+				#[allow(clippy::cast_possible_wrap)]
 				let last_video_frame_index = last_video_frame as i32 - video_frame_shift;
+				#[allow(clippy::cast_possible_wrap)]
 				let last_frame_index = self
 					.frames()
 					.iter()
 					.rposition(|frame| (frame.index() as i32) <= last_video_frame_index);
-				last_frame_index
-					.map(|index| &self.frames()[first_frame_index..=index])
-					.unwrap_or(&[])
+				last_frame_index.map_or(&[], |index| &self.frames()[first_frame_index..=index])
 			},
 
 			(Some(first_frame_index), None) => &self.frames()[first_frame_index..],
@@ -275,8 +291,10 @@ impl<'a> Iterator for VideoFramesIter<'a> {
 		}
 
 		let current_frame = &self.frames[self.frame_index];
+		#[allow(clippy::cast_possible_wrap)]
 		let actual_frame_video_frame_index = current_frame.index() as i32 + self.video_frame_shift;
 
+		#[allow(clippy::cast_possible_wrap)]
 		let frame = if (self.video_frame_index as i32) < actual_frame_video_frame_index {
 			None
 		} else {
@@ -294,7 +312,7 @@ impl ExactSizeIterator for VideoFramesIter<'_> {
 	fn len(&self) -> usize {
 		match self.last_video_frame_index {
 			Some(last_video_frame_index) => last_video_frame_index as usize + 1,
-			None => self.frames.last().map(|frame| frame.index() + 1).unwrap_or(0) as usize,
+			None => self.frames.last().map_or(0, |frame| frame.index() + 1) as usize,
 		}
 	}
 }
@@ -308,6 +326,7 @@ pub struct ShiftIter<'a> {
 
 impl<'a> ShiftIter<'a> {
 	fn new(frames: &'a [Frame], video_frame_shift: i32) -> Self {
+		#[allow(clippy::cast_possible_wrap)]
 		Self {
 			frames,
 			frame_index: -1,
@@ -325,7 +344,9 @@ impl<'a> Iterator for ShiftIter<'a> {
 		if self.frame_index == self.back_frame_index {
 			return None;
 		}
+		#[allow(clippy::cast_sign_loss)]
 		let frame = &self.frames[self.frame_index as usize];
+		#[allow(clippy::cast_possible_wrap)]
 		let actual_frame_video_frame_index = u32::try_from(frame.index() as i32 + self.video_frame_shift).unwrap();
 		Some((actual_frame_video_frame_index, frame))
 	}
@@ -343,7 +364,9 @@ impl DoubleEndedIterator for ShiftIter<'_> {
 		if self.frame_index == self.back_frame_index {
 			return None;
 		}
+		#[allow(clippy::cast_sign_loss)]
 		let frame = &self.frames[self.back_frame_index as usize];
+		#[allow(clippy::cast_possible_wrap)]
 		let actual_frame_video_frame_index = u32::try_from(frame.index() as i32 + self.video_frame_shift).unwrap();
 		Some((actual_frame_video_frame_index, frame))
 	}
@@ -433,13 +456,17 @@ pub struct VideoFramesRelIndexIter<'a> {
 
 impl ExactSizeIterator for VideoFramesRelIndexIter<'_> {
 	fn len(&self) -> usize {
-		use EndOfFramesAction::*;
+		use EndOfFramesAction as EOFA;
 		match (self.eof_action, self.last_video_frame) {
-			(ContinueToLastVideoFrame, Some(last_video_frame)) => (last_video_frame + 1) as usize,
-			(Stop, _) | (ContinueToLastVideoFrame, None) => self
+			(EOFA::ContinueToLastVideoFrame, Some(last_video_frame)) => (last_video_frame + 1) as usize,
+			(EOFA::Stop, _) | (EOFA::ContinueToLastVideoFrame, None) => self
 				.frames
 				.last()
-				.map(|frame| u32::try_from(frame.index() as i32 + self.index_shift + 1).unwrap())
+				.map(|frame| {
+					#[allow(clippy::cast_possible_wrap)]
+					let frame_index = frame.index() as i32;
+					u32::try_from(frame_index + self.index_shift + 1).unwrap()
+				})
 				.unwrap_or_default() as usize,
 		}
 	}
@@ -447,6 +474,7 @@ impl ExactSizeIterator for VideoFramesRelIndexIter<'_> {
 
 impl<'a> VideoFramesRelIndexIter<'a> {
 	// NOTE: last_video_frame should NOT be shifted prior to calling this function
+	#[must_use]
 	pub fn new(
 		frames: &'a [Frame],
 		index_shift: i32,
@@ -461,8 +489,11 @@ impl<'a> VideoFramesRelIndexIter<'a> {
 			index_shift,
 			end_iter: true,
 			eof_action,
-			last_video_frame: last_video_frame
-				.map(|index| u32::try_from(index as i32 + index_shift).unwrap_or_default()),
+			last_video_frame: last_video_frame.map(|index| {
+				#[allow(clippy::cast_possible_wrap)]
+				let index = index as i32;
+				u32::try_from(index + index_shift).unwrap_or_default()
+			}),
 		}
 	}
 }
@@ -502,7 +533,9 @@ impl<'a> Iterator for VideoFramesRelIndexIter<'a> {
 		}
 
 		let frame = &self.frames[self.frame_index];
-		let actual_frame_vfi = u32::try_from(frame.index() as i32 + self.index_shift).unwrap();
+		#[allow(clippy::cast_possible_wrap)]
+		let frame_index = frame.index() as i32;
+		let actual_frame_vfi = u32::try_from(frame_index + self.index_shift).unwrap();
 
 		let item = match self.video_frame_index {
 			0 if actual_frame_vfi > 0 => {
@@ -554,6 +587,7 @@ pub struct ParallelVideoFramesRelIndexIter<'a> {
 }
 
 impl<'a> ParallelVideoFramesRelIndexIter<'a> {
+	#[must_use]
 	pub fn new(
 		frames: &'a [Frame],
 		index_shift: i32,
@@ -568,8 +602,11 @@ impl<'a> ParallelVideoFramesRelIndexIter<'a> {
 			index_shift,
 			end_iter: true,
 			eof_action,
-			last_video_frame: last_video_frame
-				.map(|index| u32::try_from(index as i32 + index_shift).unwrap_or_default()),
+			last_video_frame: last_video_frame.map(|index| {
+				#[allow(clippy::cast_possible_wrap)]
+				let index = index as i32;
+				u32::try_from(index + index_shift).unwrap_or_default()
+			}),
 		}
 	}
 }
@@ -587,13 +624,17 @@ impl<'a> ParallelIterator for ParallelVideoFramesRelIndexIter<'a> {
 
 impl IndexedParallelIterator for ParallelVideoFramesRelIndexIter<'_> {
 	fn len(&self) -> usize {
-		use EndOfFramesAction::*;
+		use EndOfFramesAction as EOFA;
 		match (self.eof_action, self.last_video_frame) {
-			(ContinueToLastVideoFrame, Some(last_video_frame)) => (last_video_frame + 1) as usize,
-			(Stop, _) | (ContinueToLastVideoFrame, None) => self
+			(EOFA::ContinueToLastVideoFrame, Some(last_video_frame)) => (last_video_frame + 1) as usize,
+			(EOFA::Stop, _) | (EOFA::ContinueToLastVideoFrame, None) => self
 				.frames
 				.last()
-				.map(|frame| u32::try_from(frame.index() as i32 + self.index_shift + 1).unwrap())
+				.map(|frame| {
+					#[allow(clippy::cast_possible_wrap)]
+					let frame_index = frame.index() as i32;
+					u32::try_from(frame_index + self.index_shift + 1).unwrap()
+				})
 				.unwrap_or_default() as usize,
 		}
 	}
@@ -630,7 +671,8 @@ impl<'a> RayonProducer for ParallelVideoFramesRelIndexIter<'a> {
 				eof_action: self.eof_action,
 				last_video_frame: self.last_video_frame,
 			};
-			let left_last_frame_index = left_frames.last().map(|frame| frame.index()).unwrap_or_default();
+			let left_last_frame_index = left_frames.last().map(super::frame::Frame::index).unwrap_or_default();
+			#[allow(clippy::cast_possible_wrap)]
 			let right = Self {
 				frames: right_frames,
 				frame_index: 0,

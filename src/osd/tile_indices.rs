@@ -21,6 +21,7 @@ pub struct UnknownOSDItem {
 }
 
 impl UnknownOSDItem {
+	#[must_use]
 	pub fn new(font_variant: FontVariant, item_name: &str) -> Self {
 		Self {
 			font_variant,
@@ -33,6 +34,7 @@ impl UnknownOSDItem {
 pub struct TileIndices(Vec<TileIndex>);
 
 impl TileIndices {
+	#[must_use]
 	pub fn new(inner: Vec<TileIndex>) -> Self {
 		Self(inner)
 	}
@@ -42,16 +44,19 @@ impl TileIndices {
 	}
 
 	fn index_to_screen_coordinates(index: usize) -> osd::Coordinates {
-		osd::Coordinates::new(
-			(index / DIMENSIONS.height as usize) as osd::Coordinate,
-			(index % DIMENSIONS.height as usize) as osd::Coordinate,
-		)
+		#[allow(clippy::cast_possible_truncation)]
+		let x = (index / DIMENSIONS.height as usize) as osd::Coordinate;
+		#[allow(clippy::cast_possible_truncation)]
+		let y = (index % DIMENSIONS.height as usize) as osd::Coordinate;
+		osd::Coordinates::new(x, y)
 	}
 
+	#[must_use]
 	pub fn enumerate(&self) -> TileIndicesEnumeratorIter<'_> {
 		TileIndicesEnumeratorIter(self.iter().enumerate())
 	}
 
+	#[must_use]
 	fn enumerate_mut(&mut self) -> TileIndicesEnumeratorIterMut<'_> {
 		TileIndicesEnumeratorIterMut(self.0.iter_mut().enumerate())
 	}
@@ -67,10 +72,14 @@ impl TileIndices {
 
 	pub fn erase_regions(&mut self, regions: &[osd::Region]) {
 		for region in regions {
-			self.erase_region(region)
+			self.erase_region(region);
 		}
 	}
 
+	/// Erases the specified OSD item from the tile indices.
+	///
+	/// # Errors
+	/// Returns `UnknownOSDItem` if the specified OSD item is not found for the given font variant.
 	pub fn erase_osd_item(
 		&mut self,
 		font_variant: FontVariant,
@@ -100,6 +109,10 @@ impl TileIndices {
 		Ok(())
 	}
 
+	/// Erases the specified OSD items from the tile indices.
+	///
+	/// # Errors
+	/// Returns `UnknownOSDItem` if any of the specified OSD items are not found for the given font variant.
 	pub fn erase_osd_items(
 		&mut self,
 		font_variant: FontVariant,

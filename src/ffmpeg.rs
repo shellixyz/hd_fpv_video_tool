@@ -87,6 +87,7 @@ pub enum Filter {
 }
 
 impl Filter {
+	#[must_use]
 	pub fn to_args(&self) -> Vec<OsString> {
 		let mut args = vec![];
 		let (prefix, value) = match self {
@@ -111,6 +112,7 @@ pub struct CommonOutputStreamSettings {
 pub struct AudioOutputSettings(CommonOutputStreamSettings);
 
 impl AudioOutputSettings {
+	#[must_use]
 	pub fn to_args(&self) -> Vec<OsString> {
 		let mut args = vec![];
 		if let Some(codec) = self.codec() {
@@ -157,6 +159,7 @@ pub struct VideoOutputSettings {
 }
 
 impl VideoOutputSettings {
+	#[must_use]
 	pub fn to_args(&self) -> Vec<OsString> {
 		let mut args = vec![];
 		if let Some(codec) = self.codec() {
@@ -216,18 +219,20 @@ pub enum Mapping {
 }
 
 impl Mapping {
+	#[must_use]
 	pub fn to_args(&self) -> Vec<OsString> {
 		let mut args = vec!["-map".into()];
 		match self {
 			Mapping::WithoutFilter(mapping) => args.push(mapping.into()),
 			Mapping::WithFilter { mapping, filter } => {
 				args.push(mapping.into());
-				args.append(&mut filter.to_args())
+				args.append(&mut filter.to_args());
 			},
 		}
 		args
 	}
 
+	#[must_use]
 	pub fn new_with_audio_filter(mapping: &str, filter: &str) -> Self {
 		Self::WithFilter {
 			mapping: mapping.to_string(),
@@ -235,6 +240,7 @@ impl Mapping {
 		}
 	}
 
+	#[must_use]
 	pub fn new_with_video_filter(mapping: &str, filter: &str) -> Self {
 		Self::WithFilter {
 			mapping: mapping.to_string(),
@@ -242,6 +248,7 @@ impl Mapping {
 		}
 	}
 
+	#[must_use]
 	pub fn new_with_complex_filter(mapping: &str, filter: &str) -> Self {
 		Self::WithFilter {
 			mapping: mapping.to_string(),
@@ -309,12 +316,15 @@ impl CommandBuilder {
 		self
 	}
 
+	#[must_use]
 	pub fn has_stdin_input(&self) -> bool {
 		self.inputs()
 			.iter()
 			.any(|input| matches!(input, Input::StdinPipedRaw { .. }))
 	}
 
+	/// # Errors
+	/// Returns a `CommandHasAlreadyOneStdinInput` if a stdin input has already been added.
 	pub fn add_stdin_input(
 		&mut self,
 		resolution: Resolution,
@@ -367,7 +377,7 @@ impl CommandBuilder {
 		self.mappings.append(
 			&mut mappings
 				.iter()
-				.map(|s| Mapping::WithoutFilter(s.to_string()))
+				.map(|s| Mapping::WithoutFilter((*s).to_string()))
 				.collect::<Vec<_>>(),
 		);
 		self
@@ -425,7 +435,7 @@ impl CommandBuilder {
 
 	pub fn add_args(&mut self, args: &[&str]) -> &mut Self {
 		self.args
-			.append(&mut args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>());
+			.append(&mut args.iter().map(std::string::ToString::to_string).collect::<Vec<_>>());
 		self
 	}
 
@@ -436,7 +446,7 @@ impl CommandBuilder {
 
 	pub fn add_prefix_args(&mut self, args: &[&str]) -> &mut Self {
 		self.prefix_args
-			.append(&mut args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>());
+			.append(&mut args.iter().map(std::string::ToString::to_string).collect::<Vec<_>>());
 		self
 	}
 
@@ -450,6 +460,8 @@ impl CommandBuilder {
 		self
 	}
 
+	/// # Errors
+	/// Returns a `BuildCommandError` if the command could not be built.
 	pub fn build(&self) -> Result<Command, BuildCommandError> {
 		let binary_path = self
 			.bin_path
@@ -494,6 +506,8 @@ impl CommandBuilder {
 		})
 	}
 
+	/// # Errors
+	/// Returns a `BuildCommandError` if the command could not be built.
 	pub fn concat(
 		binary_path: Option<&Path>,
 		input_files: &[impl AsRef<Path>],
@@ -569,16 +583,19 @@ pub struct SpawnOptions {
 }
 
 impl SpawnOptions {
+	#[must_use]
 	pub fn no_output(mut self) -> Self {
 		self.output_type = ProcessOutputType::None;
 		self
 	}
 
+	#[must_use]
 	pub fn with_progress(mut self, frame_count: u64) -> Self {
 		self.output_type = ProcessOutputType::Progress { frame_count };
 		self
 	}
 
+	#[must_use]
 	pub fn with_priority(mut self, priority: Option<i32>) -> Self {
 		self.priority = priority;
 		self
@@ -593,7 +610,9 @@ pub struct SpawnError {
 }
 
 impl Command {
-	pub fn spawn(mut self, spawn_options: SpawnOptions) -> Result<Process, SpawnError> {
+	/// # Errors
+	/// Returns a `SpawnError` if the process could not be spawned.
+	pub fn spawn(mut self, spawn_options: &SpawnOptions) -> Result<Process, SpawnError> {
 		log::debug!("spawning process: {self}");
 		let stdin_stdio = if self.has_stdin_input() {
 			process::Stdio::piped()
@@ -722,6 +741,7 @@ impl Process {
 		}
 	}
 
+	#[allow(clippy::unused_async)]
 	async fn monitor(mut ffmpeg_stderr: process::ChildStderr, frame_count: Option<u64>) -> Vec<String> {
 		let mut output_buf = String::new();
 		let mut read_buf = [0; 1024];
@@ -783,6 +803,7 @@ impl Process {
 		self.stdin.take()
 	}
 
+	#[must_use]
 	pub fn id(&self) -> u32 {
 		self.handle.id()
 	}
@@ -794,6 +815,11 @@ impl Process {
 		}
 	}
 
+	/// # Errors
+	/// Returns a `ProcessError` if the process has exited with an error.
+	///
+	/// # Panics
+	/// Panics if checking the process status fails.
 	pub async fn try_wait(&mut self) -> Result<bool, ProcessError> {
 		match self.handle.try_wait().unwrap() {
 			Some(exit_status) => {
@@ -811,6 +837,11 @@ impl Process {
 		}
 	}
 
+	/// # Errors
+	/// Returns a `ProcessError` if the process has exited with an error.
+	///
+	/// # Panics
+	/// Panics if checking the process status fails.
 	pub async fn wait(&mut self) -> Result<(), ProcessError> {
 		match self.handle.wait().unwrap() {
 			exit_status if exit_status.success() => Ok(()),
@@ -822,12 +853,15 @@ impl Process {
 		}
 	}
 
+	/// # Errors
+	/// Returns an `IOError` if killing the process fails.
 	pub fn kill(mut self) -> Result<(), IOError> {
 		self.handle.kill()
 	}
 }
 
 impl video::Region {
+	#[must_use]
 	pub fn to_ffmpeg_filter_string(&self) -> String {
 		format!(
 			"x={}:y={}:w={}:h={}",

@@ -14,7 +14,7 @@ If you specify a target resolution with \-\-target\-resolution or a video file t
 .PP
 VP8 or VP9 codecs can be selected with the \-\-codec option. Files generated with the VP9 codec are smaller but also it is roughly twice as slow as encoding with the VP8 codec which is already unfortunately pretty slow.
 .PP
-Fonts are loaded either from the directory specified with the \-\-font\-dir option or from the directory found in the environment variable FONTS_DIR or if neither of these are available it falls back to the `fonts` directory inside the current directory.
+Fonts are loaded either from the directory specified with the \-\-font\-dir option or from the directory found in the environment variable `FONTS_DIR` or if neither of these are available it falls back to the `fonts` directory inside the current directory.
 .PP
 NOTE: unfortunately this is very slow right now because only a handful of video formats support transparency and their encoders are very slow
 .SH OPTIONS
@@ -25,7 +25,7 @@ use the resolution from the specified video file to decide what kind of tiles (S
 \fB\-\-hide\-regions\fR \fI<REGIONS>\fR
 hide rectangular regions from the OSD
 
-The parameter is a `;` separated list of regions.{n} The format for a region is: <left_x>,<top_y>[:<width>x<height>]{n} If the size is not specified it will default to 1x1
+The parameter is a `;` separated list of regions.{n} The format for a region is: <`left_x`>`top_y`>[:<width>x<height>]{n} If the size is not specified it will default to 1x1
 .TP
 \fB\-\-hide\-items\fR \fI<ITEM_NAMES>\fR
 hide items from the OSD

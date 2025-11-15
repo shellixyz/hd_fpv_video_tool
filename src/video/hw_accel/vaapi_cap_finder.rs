@@ -7,8 +7,9 @@ use crate::video::Codec;
 pub struct VaapiCapFinder(Rc<cros_libva::Display>);
 
 impl VaapiCapFinder {
+	#[must_use]
 	pub fn new() -> Option<Self> {
-		env::set_var("LIBVA_MESSAGING_LEVEL", "0");
+		unsafe { env::set_var("LIBVA_MESSAGING_LEVEL", "0") };
 		let display = cros_libva::Display::open()?;
 		Some(Self(display))
 	}
@@ -30,6 +31,7 @@ impl VaapiCapFinder {
 	}
 }
 
+#[must_use]
 pub fn vaapi_cap_finder() -> Option<VaapiCapFinder> {
 	let res = VaapiCapFinder::new();
 	if res.is_none() {

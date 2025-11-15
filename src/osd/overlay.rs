@@ -60,6 +60,7 @@ pub struct VideoResolutionTooSmallError {
 }
 
 impl Frame {
+	#[must_use]
 	pub fn new(dimensions: Dimensions) -> Self {
 		Self {
 			dimensions,
@@ -67,6 +68,10 @@ impl Frame {
 		}
 	}
 
+	/// Copies pixels from the provided image into this frame at the specified (x, y) position
+	///
+	/// # Errors
+	/// See `image::GenericImage::copy_from` for details
 	pub fn copy_from(&mut self, image: &ImageBuffer<Rgba<u8>, Vec<u8>>, x: u32, y: u32) -> ImageResult<()> {
 		self.image.copy_from(image, x, y)
 	}
@@ -90,14 +95,14 @@ impl super::file::Frame {
 			let Some(tile_image) = tile_images.get(tile_index as usize) else {
 				continue;
 			};
-			let x = osd_coordinates.x as u32 * tiles_width;
-			let y = osd_coordinates.y as u32 * tiles_height;
+			let x = u32::from(osd_coordinates.x) * tiles_width;
+			let y = u32::from(osd_coordinates.y) * tiles_height;
 			if x < frame.width() && y < frame.height() {
 				frame
 					.copy_from(
 						tile_image,
-						osd_coordinates.x as u32 * tiles_width,
-						osd_coordinates.y as u32 * tiles_height,
+						u32::from(osd_coordinates.x) * tiles_width,
+						u32::from(osd_coordinates.y) * tiles_height,
 					)
 					.unwrap();
 			}
@@ -121,10 +126,15 @@ pub enum DrawFrameOverlayError {
 	},
 }
 
+#[must_use]
 pub fn format_overlay_frame_file_index(frame_index: VideoFrameIndex) -> String {
 	format!("{frame_index:010}.png")
 }
 
+/// Constructs the file path for an overlay frame image file given a directory path and a frame index.
+///
+/// # Panics
+/// Panics if the directory path cannot be converted to a string slice (i.e., if it contains invalid UTF-8).
 pub fn make_overlay_frame_file_path<P: AsRef<Path>>(dir_path: P, frame_index: VideoFrameIndex) -> PathBuf {
 	[
 		dir_path.as_ref().to_str().unwrap(),
@@ -153,6 +163,7 @@ pub struct OverlayVideoCodecParams {
 }
 
 impl OverlayVideoCodecParams {
+	#[must_use]
 	pub fn new(
 		encoder: &'static str,
 		bitrate: Option<&'static str>,
@@ -169,11 +180,13 @@ impl OverlayVideoCodecParams {
 }
 
 impl OverlayVideoCodec {
+	#[must_use]
 	pub fn params(&self) -> OverlayVideoCodecParams {
-		use OverlayVideoCodec::*;
+		use OverlayVideoCodec as OVC;
+		use OverlayVideoCodecParams as OVCP;
 		match self {
-			Vp8 => OverlayVideoCodecParams::new("libvpx", Some("1M"), Some(40), &["-auto-alt-ref", "0"]),
-			Vp9 => OverlayVideoCodecParams::new("libvpx-vp9", Some("0"), Some(40), &[]),
+			OVC::Vp8 => OVCP::new("libvpx", Some("1M"), Some(40), &["-auto-alt-ref", "0"]),
+			OVC::Vp9 => OVCP::new("libvpx-vp9", Some("0"), Some(40), &[]),
 		}
 	}
 }
@@ -221,11 +234,10 @@ pub enum GenerateOverlayVideoError {
 
 impl From<SendFramesToFFMpegError> for GenerateOverlayVideoError {
 	fn from(error: SendFramesToFFMpegError) -> Self {
-		use SendFramesToFFMpegError::*;
 		match error {
-			PipeError(error) => Self::FailedSendingOSDFramesToFFMpeg(error),
-			UnknownOSDItem(error) => Self::UnknownOSDItem(error),
-			FFMpegExitedWithError(error) => Self::FFMpegExitedWithError(error),
+			SendFramesToFFMpegError::PipeError(error) => Self::FailedSendingOSDFramesToFFMpeg(error),
+			SendFramesToFFMpegError::UnknownOSDItem(error) => Self::UnknownOSDItem(error),
+			SendFramesToFFMpegError::FFMpegExitedWithError(error) => Self::FFMpegExitedWithError(error),
 		}
 	}
 }
@@ -287,6 +299,7 @@ fn best_settings_for_requested_scaling(
                     Ok(values) => {
                         let (overlay_dimensions, _, _) = values;
                         let (margin_width, margin_height) = crate::video::margins(target_resolution.dimensions(), overlay_dimensions);
+						#[allow(clippy::cast_possible_wrap)]
                         let min_margins_condition_met = margin_width >= min_margins.horizontal() as i32 && margin_height >= min_margins.vertical() as i32;
                         let min_dimensions_condition_met = overlay_dimensions.width >= min_resolution.width && overlay_dimensions.height >= min_resolution.height;
 
@@ -331,11 +344,15 @@ pub struct Generator<'a> {
 }
 
 impl<'a> Generator<'a> {
+	/// Creates a new `Generator` instance for rendering OSD frames.
+	///
+	/// # Errors
+	/// Returns `DrawFrameOverlayError` if the OSD file is empty or if there are issues loading the font or determining the best settings for scaling.
 	pub fn new(
 		osd_file_frames: OSDFileSortedFrames,
 		font_variant: FontVariant,
 		font_dir: &FontDir,
-		font_ident: &Option<Option<&str>>,
+		font_ident: Option<Option<&str>>,
 		scaling: Scaling,
 		hide_regions: &'a [Region],
 		hide_items: &'a [String],
@@ -347,7 +364,9 @@ impl<'a> Generator<'a> {
 		let (overlay_resolution, tile_kind, tile_scaling) =
 			best_settings_for_requested_scaling(osd_file_frames.kind(), &scaling)?;
 
-		let highest_used_tile_index = osd_file_frames.highest_used_tile_index().unwrap();
+		let Some(highest_used_tile_index) = osd_file_frames.highest_used_tile_index() else {
+			unreachable!();
+		};
 		let tiles = match font_ident {
 			Some(font_ident) => font_dir.load_with_fallback(tile_kind, font_ident, highest_used_tile_index)?,
 			None => font_dir.load_variant_with_fallback(
@@ -366,8 +385,9 @@ impl<'a> Generator<'a> {
 			target_resolution: Some(target_resolution),
 		} = scaling
 		{
-			let overlay_res_scale = ((overlay_resolution.width as f64 / target_resolution.dimensions().width as f64)
-				+ (overlay_resolution.height as f64 / target_resolution.dimensions().height as f64))
+			let overlay_res_scale = ((f64::from(overlay_resolution.width)
+				/ f64::from(target_resolution.dimensions().width))
+				+ (f64::from(overlay_resolution.height) / f64::from(target_resolution.dimensions().height)))
 				/ 2.0;
 
 			if overlay_res_scale < 0.8 {
@@ -424,6 +444,13 @@ impl<'a> Generator<'a> {
 		)
 	}
 
+	/// Saves rendered overlay frames to the specified directory.
+	///
+	/// # Errors
+	/// Returns `SaveFramesToDirError` if there are issues creating the directory, reading frames, writing images, or if there are no frames to write.
+	///
+	/// # Panics
+	/// Panics if the provided path cannot be absolutized.
 	pub fn save_frames_to_dir<P: AsRef<Path> + std::marker::Sync>(
 		&mut self,
 		start: Option<Timestamp>,
@@ -455,26 +482,28 @@ impl<'a> Generator<'a> {
 		let frame_count = iter.len();
 
 		#[allow(clippy::literal_string_with_formatting_args)]
-		let progress_style = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}").unwrap();
+		let Ok(progress_style) = ProgressStyle::with_template("{wide_bar} {pos:>6}/{len}") else {
+			unreachable!();
+		};
 		let progress_bar = ProgressBar::new(frame_count as u64).with_style(progress_style);
 		progress_bar.enable_steady_tick(std::time::Duration::new(0, 100_000_000));
 
 		let abs_output_dir_path = path.as_ref().absolutize().unwrap();
 
 		iter.progress_with(progress_bar).try_for_each(|item| {
-			use crate::osd::file::sorted_frames::VideoFramesRelIndexIterItem::*;
+			use crate::osd::file::sorted_frames::VideoFramesRelIndexIterItem as VFRIII;
 			match item {
-				Existing { rel_index, frame } => {
+				VFRIII::Existing { rel_index, frame } => {
 					log::debug!("existing {}", &rel_index);
 					let frame_image = self.draw_frame(frame)?;
 					frame_image.write_image_file(make_overlay_frame_file_path(&path, rel_index))?;
 				},
-				FirstNonExisting => {
+				VFRIII::FirstNonExisting => {
 					log::debug!("first non existing");
 					let frame_0_path = make_overlay_frame_file_path(&path, 0);
 					Frame::new(self.frame_dimensions).write_image_file(frame_0_path)?;
 				},
-				NonExisting {
+				VFRIII::NonExisting {
 					prev_rel_index,
 					rel_index,
 				} => {
@@ -491,6 +520,13 @@ impl<'a> Generator<'a> {
 		Ok(())
 	}
 
+	/// Generates an overlay video from the OSD frames.
+	///
+	/// # Errors
+	/// Returns `GenerateOverlayVideoError` if there are issues reading frames, writing the output video file, or if the output file already exists.
+	///
+	/// # Panics
+	/// It does not panic.
 	#[allow(clippy::too_many_arguments)]
 	pub async fn generate_overlay_video<P: AsRef<Path>>(
 		&mut self,
@@ -542,7 +578,7 @@ impl<'a> Generator<'a> {
 		let spawn_options = ffmpeg::SpawnOptions::default()
 			.with_progress(frame_count as u64)
 			.with_priority(ffmpeg_priority);
-		let ffmpeg_process = ffmpeg_command.build().unwrap().spawn(spawn_options)?;
+		let ffmpeg_process = ffmpeg_command.build().unwrap().spawn(&spawn_options)?;
 
 		frames_iter.send_frames_to_ffmpeg_and_wait(ffmpeg_process).await?;
 
@@ -550,10 +586,12 @@ impl<'a> Generator<'a> {
 		Ok(())
 	}
 
+	#[must_use]
 	pub fn iter(&self) -> FramesIter<'_> {
 		self.into_iter()
 	}
 
+	#[must_use]
 	pub fn iter_advanced(&self, first_frame: u32, last_frame: Option<u32>, frame_shift: i32) -> FramesIter<'_> {
 		FramesIter {
 			frame_dimensions: self.frame_dimensions,
@@ -601,6 +639,13 @@ pub struct FramesIter<'a> {
 }
 
 impl FramesIter<'_> {
+	/// Sends rendered frames to the provided ffmpeg process.
+	///
+	/// # Errors
+	/// Returns `SendFramesToFFMpegError` if there are issues writing to ffmpeg's stdin or if there are unknown OSD items.
+	///
+	/// # Panics
+	/// Panics if the stdin of the ffmpeg process has already been taken.
 	pub fn send_frames_to_ffmpeg(
 		&mut self,
 		ffmpeg_process: &mut ffmpeg::Process,
@@ -613,6 +658,10 @@ impl FramesIter<'_> {
 		Ok(())
 	}
 
+	/// Sends rendered frames to the provided ffmpeg process and waits for it to finish.
+	///
+	/// # Errors
+	/// Returns `SendFramesToFFMpegError` if there are issues writing to ffmpeg's stdin, if there are unknown OSD items, or if ffmpeg exits with an error
 	pub async fn send_frames_to_ffmpeg_and_wait(
 		mut self,
 		mut ffmpeg_process: ffmpeg::Process,
