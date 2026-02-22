@@ -1,4 +1,5 @@
 use std::{
+	ffi::OsString,
 	path::{Path, PathBuf},
 	str::FromStr,
 };
@@ -302,9 +303,18 @@ impl TranscodeVideoArgs {
 				.input_video_file
 				.extension()
 				.ok_or(OutputVideoFileError::InputHasNoExtension)?;
+			let (video_codec, hw_acceleration) = self.video_codec();
+			let output_extension = if hw_acceleration.is_yes() {
+				match video_codec {
+					video::Codec::AV1 | video::Codec::H264 | video::Codec::H265 => OsString::from("mp4"),
+					video::Codec::VP8 | video::Codec::VP9 => OsString::from("webm"),
+				}
+			} else {
+				input_file_extension.to_os_string()
+			};
 			self.input_video_file
 				.with_file_name(output_file_stem)
-				.with_extension(input_file_extension)
+				.with_extension(output_extension)
 		})
 	}
 
