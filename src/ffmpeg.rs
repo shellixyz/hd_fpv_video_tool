@@ -121,7 +121,7 @@ impl AudioOutputSettings {
 		}
 		if let Some(bitrate) = self.bitrate() {
 			args.push("-b:a".into());
-			args.push(bitrate.to_string().into());
+			args.push(bitrate.into());
 		}
 		args
 	}
@@ -168,7 +168,7 @@ impl VideoOutputSettings {
 		}
 		if let Some(bitrate) = self.bitrate() {
 			args.push("-b:v".into());
-			args.push(bitrate.to_string().into());
+			args.push(bitrate.into());
 		}
 		if let Some(video_quality) = self.video_quality() {
 			args.append(&mut video_quality.into_args());
