@@ -406,21 +406,18 @@ fn codec_profile_summary(codec_profile: &TranscodeCodecProfile) -> Option<String
 	let bitrate = codec_profile.video_bitrate.clone().unwrap_or_else(|| "-".to_owned());
 	let quality = codec_profile
 		.video_quality
-		.map(|value| value.to_string())
-		.unwrap_or_else(|| "-".to_owned());
+		.map_or_else(|| "-".to_owned(), |value| value.to_string());
 	Some(format!("bitrate={bitrate}, quality={quality}"))
 }
 
 fn transcode_profile_summary(profile: &TranscodeProfile) -> String {
 	let codec = profile
 		.video_codec
-		.map(|value| value.to_string())
-		.unwrap_or_else(|| "auto".to_owned());
+		.map_or_else(|| "auto".to_owned(), |value| value.to_string());
 	let default_bitrate = profile.default_video_bitrate.clone().unwrap_or_else(|| "-".to_owned());
 	let default_quality = profile
 		.default_video_quality
-		.map(|value| value.to_string())
-		.unwrap_or_else(|| "-".to_owned());
+		.map_or_else(|| "-".to_owned(), |value| value.to_string());
 	let mut summary = format!("codec={codec}, default_bitrate={default_bitrate}, default_quality={default_quality}");
 	let codec_overrides = [
 		("H264", &profile.h264),
@@ -470,40 +467,40 @@ fn user_transcode_profiles() -> Result<BTreeMap<String, TranscodeProfile>, Trans
 		.collect()
 }
 
-fn built_in_transcode_profile(profile_name: &str) -> Option<TranscodeProfile> {
-	match profile_name {
-		TRANSCODE_PROFILE_DIGITAL_FPV => Some(TranscodeProfile::default()),
-		TRANSCODE_PROFILE_ANALOG_FPV => Some(TranscodeProfile {
+fn built_in_transcode_profiles() -> BTreeMap<String, TranscodeProfile> {
+	let mut profiles = BTreeMap::new();
+	profiles.insert(TRANSCODE_PROFILE_DIGITAL_FPV.to_owned(), TranscodeProfile::default());
+	profiles.insert(
+		TRANSCODE_PROFILE_ANALOG_FPV.to_owned(),
+		TranscodeProfile {
 			default_video_quality: Some(140),
 			..TranscodeProfile::default()
-		}),
-		_ => None,
-	}
+		},
+	);
+	profiles
 }
 
+fn available_transcode_profiles() -> Result<BTreeMap<String, TranscodeProfile>, TranscodeVideoProfileError> {
+	let mut profiles = built_in_transcode_profiles();
+	profiles.extend(user_transcode_profiles()?);
+	Ok(profiles)
+}
+
+/// Returns all available transcode profiles, including built-ins and user-defined profiles.
+///
+/// If a user-defined profile name matches a built-in profile name, the user-defined profile
+/// overrides the built-in profile.
+///
+/// # Errors
+/// Returns `TranscodeVideoProfileError` if user profile loading/parsing fails.
 pub fn transcode_profiles_display() -> Result<String, TranscodeVideoProfileError> {
-	let mut lines = vec![
-		"Built-in profiles:".to_owned(),
-		format!(
-			"  {TRANSCODE_PROFILE_DIGITAL_FPV}: {}",
-			transcode_profile_summary(&built_in_transcode_profile(TRANSCODE_PROFILE_DIGITAL_FPV).unwrap())
-		),
-		format!(
-			"  {TRANSCODE_PROFILE_ANALOG_FPV}: {}",
-			transcode_profile_summary(&built_in_transcode_profile(TRANSCODE_PROFILE_ANALOG_FPV).unwrap())
-		),
-	];
-	let user_profiles = user_transcode_profiles()?;
-	if user_profiles.is_empty() {
-		lines.push(format!("User profiles (~/{USER_CONFIG_FILE_HOME_RELATIVE_PATH}): none"));
-	} else {
-		lines.push(format!("User profiles (~/{USER_CONFIG_FILE_HOME_RELATIVE_PATH}):"));
-		lines.extend(
-			user_profiles
-				.into_iter()
-				.map(|(profile_name, profile)| format!("  {profile_name}: {}", transcode_profile_summary(&profile))),
-		);
-	}
+	let mut lines = vec!["Available profiles:".to_owned()];
+	lines.extend(
+		available_transcode_profiles()?
+			.into_iter()
+			.map(|(profile_name, profile)| format!("  {profile_name}: {}", transcode_profile_summary(&profile))),
+	);
+	lines.push(format!("Custom profiles file: ~/{USER_CONFIG_FILE_HOME_RELATIVE_PATH}"));
 	Ok(lines.join("\n"))
 }
 
@@ -523,12 +520,7 @@ impl TranscodeVideoArgs {
 			return Ok(None);
 		};
 
-		if let Some(profile) = built_in_transcode_profile(profile_name) {
-			return Ok(Some(profile));
-		}
-
-		let user_profiles = user_transcode_profiles()?;
-		user_profiles
+		available_transcode_profiles()?
 			.get(profile_name)
 			.cloned()
 			.ok_or_else(|| TranscodeVideoProfileError::UnknownProfile {
@@ -541,6 +533,10 @@ impl TranscodeVideoArgs {
 		Ok(self.profile()?.and_then(|profile| profile.video_codec))
 	}
 
+	/// Resolves the output video bitrate according to CLI values, profile values and defaults.
+	///
+	/// # Errors
+	/// Returns `TranscodeVideoProfileError` if profile loading/parsing fails.
 	pub fn resolved_video_bitrate(&self, video_codec: video::Codec) -> Result<String, TranscodeVideoProfileError> {
 		if let Some(video_bitrate) = &self.video_bitrate {
 			return Ok(video_bitrate.clone());
@@ -559,6 +555,10 @@ impl TranscodeVideoArgs {
 		Ok(DEFAULT_VIDEO_BITRATE.to_owned())
 	}
 
+	/// Resolves the output video quality according to CLI values, profile values and defaults.
+	///
+	/// # Errors
+	/// Returns `TranscodeVideoProfileError` if profile loading/parsing fails.
 	pub fn resolved_video_quality(&self, video_codec: video::Codec) -> Result<Option<u8>, TranscodeVideoProfileError> {
 		if let Some(video_quality) = self.video_quality {
 			return Ok(Some(video_quality));
@@ -631,6 +631,10 @@ impl TranscodeVideoArgs {
 	}
 
 	#[cfg(not(feature = "hwaccel"))]
+	/// Resolves the output codec and hardware acceleration mode.
+	///
+	/// # Errors
+	/// Returns `TranscodeVideoProfileError` if profile loading/parsing fails.
 	pub fn video_codec(&self) -> Result<(video::Codec, HwAcceleratedEncoding), TranscodeVideoProfileError> {
 		Ok((
 			self.video_codec
@@ -641,7 +645,10 @@ impl TranscodeVideoArgs {
 	}
 
 	#[cfg(feature = "hwaccel")]
-	#[must_use]
+	/// Resolves the output codec and hardware acceleration mode.
+	///
+	/// # Errors
+	/// Returns `TranscodeVideoProfileError` if profile loading/parsing fails.
 	pub fn video_codec(&self) -> Result<(video::Codec, HwAcceleratedEncoding), TranscodeVideoProfileError> {
 		const FALLBACK: (video::Codec, HwAcceleratedEncoding) = (video::Codec::H265, HwAcceleratedEncoding::No);
 		let selected_video_codec = self.video_codec.or(self.profile_requested_video_codec()?);
