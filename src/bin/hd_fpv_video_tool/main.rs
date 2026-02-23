@@ -206,11 +206,13 @@ async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
 	{
 		transcode_args.start_end().check_valid()?;
 
-		if osd_args.osd() && transcode_args.speed().is_some() {
+		let osd_file_path = osd_args.osd_file_path(transcode_args.input_video_file())?;
+
+		if osd_args.osd() && osd_file_path.is_some() && transcode_args.speed().is_some() {
 			return Err(anyhow!("OSD overlay and speed options cannot be used together"));
 		}
 
-		match osd_args.osd_file_path(transcode_args.input_video_file())? {
+		match osd_file_path {
 			Some(osd_file_path) if osd_args.osd_overlay_video() => {
 				let transcode_output_video_file = video::transcode(transcode_args).await?;
 				let osd_overlay_video_file_name = match osd_args.osd_overlay_video_file() {

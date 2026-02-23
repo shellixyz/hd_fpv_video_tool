@@ -120,13 +120,18 @@ pub struct TranscodeVideoOSDArgs {
 	#[getset(get = "pub")]
 	osd_overlay_video_file: Option<PathBuf>,
 
+	/// if no associated .osd file is found, continue without OSD instead of failing
+	#[clap(long)]
+	#[getset(get_copy = "pub")]
+	optional_osd: bool,
+
 	/// path to FPV.WTF .osd file to use to generate OSD frames to burn onto video
 	#[clap(short = 'F', long, value_parser, value_name = "OSD file path")]
 	osd_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Error)]
-#[error("args error: requested OSD but no file provided nor found")]
+#[error("args error: requested OSD but no file provided nor found (use --optional-osd to continue without OSD)")]
 pub struct RequestedOSDButNoFileProvidedNorFound;
 
 impl TranscodeVideoOSDArgs {
@@ -134,14 +139,22 @@ impl TranscodeVideoOSDArgs {
 	/// If no OSD file is provided and OSD is requested, tries to find the associated OSD file.
 	///
 	/// # Errors
-	/// - Returns `RequestedOSDButNoFileProvidedNorFound` if OSD is requested but no file is provided nor found.
+	/// - Returns `RequestedOSDButNoFileProvidedNorFound` if OSD is requested, `--optional-osd` is disabled and no
+	///   file is provided nor found.
 	pub fn osd_file_path<P: AsRef<Path>>(
 		&self,
 		video_file_path: P,
 	) -> Result<Option<PathBuf>, RequestedOSDButNoFileProvidedNorFound> {
 		let osd_file_path = match (self.osd || self.osd_overlay_video, &self.osd_file) {
 			(true, None) => {
-				Some(find_associated_to_video_file(video_file_path).ok_or(RequestedOSDButNoFileProvidedNorFound)?)
+				match find_associated_to_video_file(video_file_path) {
+					Some(osd_file_path) => Some(osd_file_path),
+					None if self.optional_osd => {
+						log::warn!("no associated .osd file found, continuing without OSD due to --optional-osd");
+						None
+					},
+					None => return Err(RequestedOSDButNoFileProvidedNorFound),
+				}
 			},
 			(_, Some(osd_file_path)) => Some(osd_file_path.clone()),
 			(false, None) => None,

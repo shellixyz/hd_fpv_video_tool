@@ -4,7 +4,7 @@
 .SH NAME
 transcode\-video \- Transcode a video file, optionally burning the OSD onto it
 .SH SYNOPSIS
-\fBtranscode\-video\fR [\fB\-\-osd\fR] [\fB\-s\fR|\fB\-\-osd\-scaling\fR] [\fB\-n\fR|\fB\-\-no\-osd\-scaling\fR] [\fB\-\-min\-osd\-margins\fR] [\fB\-\-min\-osd\-coverage\fR] [\fB\-d\fR|\fB\-\-osd\-font\-dir\fR] [\fB\-i\fR|\fB\-\-osd\-font\-ident\fR] [\fB\-o\fR|\fB\-\-osd\-frame\-shift\fR] [\fB\-\-osd\-hide\-regions\fR] [\fB\-\-osd\-hide\-items\fR] [\fB\-O\fR|\fB\-\-osd\-overlay\-video\fR] [\fB\-\-osd\-overlay\-video\-codec\fR] [\fB\-\-osd\-overlay\-video\-file\fR] [\fB\-F\fR|\fB\-\-osd\-file\fR] [\fB\-a\fR|\fB\-\-add\-audio\fR] [\fB\-f\fR|\fB\-\-fix\-audio\fR] [\fB\-v\fR|\fB\-\-fix\-audio\-volume\fR] [\fB\-u\fR|\fB\-\-fix\-audio\-sync\fR] [\fB\-N\fR|\fB\-\-no\-hwaccel\fR] [\fB\-V\fR|\fB\-\-video\-codec\fR] [\fB\-p\fR|\fB\-\-profile\fR] [\fB\-\-video\-bitrate\fR] [\fB\-q\fR|\fB\-\-video\-quality\fR] [\fB\-r\fR|\fB\-\-video\-resolution\fR] [\fB\-\-remove\-video\-defects\fR] [\fB\-\-audio\-encoder\fR] [\fB\-\-audio\-bitrate\fR] [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-P\fR|\fB\-\-ffmpeg\-priority\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-S\fR|\fB\-\-speed\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT_VIDEO_FILE\fR> [\fIOUTPUT_VIDEO_FILE\fR] 
+\fBtranscode\-video\fR [\fB\-\-osd\fR] [\fB\-s\fR|\fB\-\-osd\-scaling\fR] [\fB\-n\fR|\fB\-\-no\-osd\-scaling\fR] [\fB\-\-min\-osd\-margins\fR] [\fB\-\-min\-osd\-coverage\fR] [\fB\-d\fR|\fB\-\-osd\-font\-dir\fR] [\fB\-i\fR|\fB\-\-osd\-font\-ident\fR] [\fB\-o\fR|\fB\-\-osd\-frame\-shift\fR] [\fB\-\-osd\-hide\-regions\fR] [\fB\-\-osd\-hide\-items\fR] [\fB\-O\fR|\fB\-\-osd\-overlay\-video\fR] [\fB\-\-osd\-overlay\-video\-codec\fR] [\fB\-\-osd\-overlay\-video\-file\fR] [\fB\-\-optional\-osd\fR] [\fB\-F\fR|\fB\-\-osd\-file\fR] [\fB\-a\fR|\fB\-\-add\-audio\fR] [\fB\-f\fR|\fB\-\-fix\-audio\fR] [\fB\-v\fR|\fB\-\-fix\-audio\-volume\fR] [\fB\-u\fR|\fB\-\-fix\-audio\-sync\fR] [\fB\-N\fR|\fB\-\-no\-hwaccel\fR] [\fB\-V\fR|\fB\-\-video\-codec\fR] [\fB\-p\fR|\fB\-\-profile\fR] [\fB\-\-video\-bitrate\fR] [\fB\-q\fR|\fB\-\-video\-quality\fR] [\fB\-r\fR|\fB\-\-video\-resolution\fR] [\fB\-\-remove\-video\-defects\fR] [\fB\-\-audio\-encoder\fR] [\fB\-\-audio\-bitrate\fR] [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-P\fR|\fB\-\-ffmpeg\-priority\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-S\fR|\fB\-\-speed\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT_VIDEO_FILE\fR> [\fIOUTPUT_VIDEO_FILE\fR] 
 .SH DESCRIPTION
 Transcode a video file, optionally burning the OSD onto it
 .PP
@@ -61,6 +61,9 @@ generate OSD overlay video instead of burning it onto the video
 .TP
 \fB\-\-osd\-overlay\-video\-file\fR \fI<OSD_OVERLAY_VIDEO_FILE>\fR
 path of the video file to generate
+.TP
+\fB\-\-optional\-osd\fR
+if no associated .osd file is found, continue without OSD instead of failing
 .TP
 \fB\-F\fR, \fB\-\-osd\-file\fR \fI<OSD file path>\fR
 path to FPV.WTF .osd file to use to generate OSD frames to burn onto video
