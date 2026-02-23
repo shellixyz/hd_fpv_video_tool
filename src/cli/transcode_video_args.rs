@@ -280,7 +280,23 @@ fn transcode_video_args_video_codec_help() -> String {
 		.map(|video_codec| video_codec.to_string().to_uppercase())
 		.collect::<Vec<_>>()
 		.join(", ");
-	format!("video codec to use. Possible values: {video_codecs}")
+	#[cfg(feature = "hwaccel")]
+	let default_selection_help = "If omitted:{n}\
+		- uses codec defined by --profile (if any){n}\
+		- otherwise, if hardware acceleration is enabled, tries AV1 then H265 and picks the first codec that can be \
+		hardware-encoded{n}\
+		- if no hardware-encodable codec is found, falls back to H265 software encoding{n}\
+		- with --no-hwaccel, falls back to H265 software encoding";
+	#[cfg(not(feature = "hwaccel"))]
+	let default_selection_help = "If omitted:{n}\
+		- uses codec defined by --profile (if any){n}\
+		- otherwise falls back to H265 software encoding";
+	format!(
+		"video codec to use. Possible values: {video_codecs}.{n}\
+		 This option overrides codec selected by --profile.{n}\
+		 {default_selection_help}",
+		n = '\n'
+	)
 }
 
 fn transcode_video_args_profile_help() -> String {

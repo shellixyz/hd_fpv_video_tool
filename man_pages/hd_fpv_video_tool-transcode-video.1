@@ -86,7 +86,9 @@ fix DJI AU audio sync
 disable hardware acceleration
 .TP
 \fB\-V\fR, \fB\-\-video\-codec\fR \fI<VIDEO_CODEC>\fR
-video codec to use. Possible values: AV1, H264, H265, VP8, VP9
+video codec to use. Possible values: AV1, H264, H265, VP8, VP9.
+This option overrides codec selected by \-\-profile.
+If omitted:{n}\- uses codec defined by \-\-profile (if any){n}\- otherwise, if hardware acceleration is enabled, tries AV1 then H265 and picks the first codec that can be hardware\-encoded{n}\- if no hardware\-encodable codec is found, falls back to H265 software encoding{n}\- with \-\-no\-hwaccel, falls back to H265 software encoding
 .TP
 \fB\-p\fR, \fB\-\-profile\fR \fI<PROFILE>\fR
 transcode profile name. Built\-in profiles: digital\-fpv, analog\-fpv. Custom profiles can be defined in ~/.config/hd_fpv_video_tool.toml
