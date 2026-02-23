@@ -1,11 +1,14 @@
 use std::{
+	collections::BTreeMap,
 	ffi::OsString,
+	io::Error as IOError,
 	path::{Path, PathBuf},
 	str::FromStr,
 };
 
 use clap::Args;
 use getset::{CopyGetters, Getters};
+use serde::Deserialize;
 use strum::IntoEnumIterator as _;
 use thiserror::Error;
 
@@ -17,6 +20,11 @@ use crate::{
 	prelude::OverlayVideoCodec,
 	video::{self, HwAcceleratedEncoding, resolution::TargetResolution},
 };
+
+const DEFAULT_VIDEO_BITRATE: &str = "25M";
+const TRANSCODE_PROFILE_DIGITAL_FPV: &str = "digital-fpv";
+const TRANSCODE_PROFILE_ANALOG_FPV: &str = "analog-fpv";
+const USER_CONFIG_FILE_HOME_RELATIVE_PATH: &str = ".config/hd_fpv_video_tool.toml";
 
 impl FromStr for video::Codec {
 	type Err = String;
@@ -185,9 +193,14 @@ pub struct TranscodeVideoArgs {
 	#[getset(skip)]
 	video_codec: Option<video::Codec>,
 
+	#[clap(short = 'p', long, value_parser, help = transcode_video_args_profile_help(), value_name = "PROFILE")]
+	#[getset(skip)]
+	profile: Option<String>,
+
 	/// video max bitrate
-	#[clap(long, value_parser, default_value = "25M")]
-	video_bitrate: String,
+	#[clap(long, value_parser)]
+	#[getset(skip)]
+	video_bitrate: Option<String>,
 
 	/// video constant quality setting
 	#[clap(short = 'q', long)]
@@ -256,15 +269,314 @@ fn transcode_video_args_video_codec_help() -> String {
 	format!("video codec to use. Possible values: {video_codecs}")
 }
 
+fn transcode_video_args_profile_help() -> String {
+	format!(
+		"transcode profile name. Built-in profiles: {TRANSCODE_PROFILE_DIGITAL_FPV}, {TRANSCODE_PROFILE_ANALOG_FPV}. \
+		 Custom profiles can be defined in ~/{USER_CONFIG_FILE_HOME_RELATIVE_PATH}"
+	)
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum ProfileBitrate {
+	String(String),
+	Integer(i64),
+}
+
+impl From<ProfileBitrate> for String {
+	fn from(profile_bitrate: ProfileBitrate) -> Self {
+		match profile_bitrate {
+			ProfileBitrate::String(value) => value,
+			ProfileBitrate::Integer(value) => value.to_string(),
+		}
+	}
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+struct TranscodeCodecProfileToml {
+	video_bitrate: Option<ProfileBitrate>,
+	video_quality: Option<u8>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+struct TranscodeProfileToml {
+	video_codec: Option<String>,
+	default_video_bitrate: Option<ProfileBitrate>,
+	default_video_quality: Option<u8>,
+	h264: Option<TranscodeCodecProfileToml>,
+	h265: Option<TranscodeCodecProfileToml>,
+	av1: Option<TranscodeCodecProfileToml>,
+	vp8: Option<TranscodeCodecProfileToml>,
+	vp9: Option<TranscodeCodecProfileToml>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct TranscodeVideoConfigToml {
+	profiles: BTreeMap<String, TranscodeProfileToml>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct HDVideoToolConfigToml {
+	transcode_video: TranscodeVideoConfigToml,
+}
+
+#[derive(Debug, Clone, Default)]
+struct TranscodeCodecProfile {
+	video_bitrate: Option<String>,
+	video_quality: Option<u8>,
+}
+
+impl From<TranscodeCodecProfileToml> for TranscodeCodecProfile {
+	fn from(value: TranscodeCodecProfileToml) -> Self {
+		Self {
+			video_bitrate: value.video_bitrate.map(String::from),
+			video_quality: value.video_quality,
+		}
+	}
+}
+
+#[derive(Debug, Clone, Default)]
+struct TranscodeProfile {
+	video_codec: Option<video::Codec>,
+	default_video_bitrate: Option<String>,
+	default_video_quality: Option<u8>,
+	h264: TranscodeCodecProfile,
+	h265: TranscodeCodecProfile,
+	av1: TranscodeCodecProfile,
+	vp8: TranscodeCodecProfile,
+	vp9: TranscodeCodecProfile,
+}
+
+impl TranscodeProfile {
+	fn codec_profile(&self, video_codec: video::Codec) -> &TranscodeCodecProfile {
+		match video_codec {
+			video::Codec::AV1 => &self.av1,
+			video::Codec::H264 => &self.h264,
+			video::Codec::H265 => &self.h265,
+			video::Codec::VP8 => &self.vp8,
+			video::Codec::VP9 => &self.vp9,
+		}
+	}
+
+	fn from_toml(profile_name: &str, profile_toml: TranscodeProfileToml) -> Result<Self, TranscodeVideoProfileError> {
+		let video_codec = match profile_toml.video_codec {
+			Some(video_codec_str) => Some(video::Codec::from_str(&video_codec_str).map_err(|_| {
+				TranscodeVideoProfileError::InvalidCodec {
+					profile_name: profile_name.to_owned(),
+					video_codec: video_codec_str,
+				}
+			})?),
+			None => None,
+		};
+		Ok(Self {
+			video_codec,
+			default_video_bitrate: profile_toml.default_video_bitrate.map(String::from),
+			default_video_quality: profile_toml.default_video_quality,
+			h264: profile_toml.h264.unwrap_or_default().into(),
+			h265: profile_toml.h265.unwrap_or_default().into(),
+			av1: profile_toml.av1.unwrap_or_default().into(),
+			vp8: profile_toml.vp8.unwrap_or_default().into(),
+			vp9: profile_toml.vp9.unwrap_or_default().into(),
+		})
+	}
+}
+
+#[derive(Debug, Error)]
+pub enum TranscodeVideoProfileError {
+	#[error("unable to locate home directory to read transcode profiles")]
+	UnableToLocateHomeDirectory,
+	#[error("failed to read transcode profiles from `{path}`: {error}")]
+	ConfigReadError { path: PathBuf, error: IOError },
+	#[error("failed to parse transcode profiles from `{path}`: {error}")]
+	ConfigParseError { path: PathBuf, error: toml::de::Error },
+	#[error("profile `{profile_name}` not found")]
+	UnknownProfile { profile_name: String },
+	#[error("invalid video codec `{video_codec}` in profile `{profile_name}`")]
+	InvalidCodec { profile_name: String, video_codec: String },
+}
+
+fn codec_profile_summary(codec_profile: &TranscodeCodecProfile) -> Option<String> {
+	if codec_profile.video_bitrate.is_none() && codec_profile.video_quality.is_none() {
+		return None;
+	}
+	let bitrate = codec_profile.video_bitrate.clone().unwrap_or_else(|| "-".to_owned());
+	let quality = codec_profile
+		.video_quality
+		.map(|value| value.to_string())
+		.unwrap_or_else(|| "-".to_owned());
+	Some(format!("bitrate={bitrate}, quality={quality}"))
+}
+
+fn transcode_profile_summary(profile: &TranscodeProfile) -> String {
+	let codec = profile
+		.video_codec
+		.map(|value| value.to_string())
+		.unwrap_or_else(|| "auto".to_owned());
+	let default_bitrate = profile.default_video_bitrate.clone().unwrap_or_else(|| "-".to_owned());
+	let default_quality = profile
+		.default_video_quality
+		.map(|value| value.to_string())
+		.unwrap_or_else(|| "-".to_owned());
+	let mut summary = format!("codec={codec}, default_bitrate={default_bitrate}, default_quality={default_quality}");
+	let codec_overrides = [
+		("H264", &profile.h264),
+		("H265", &profile.h265),
+		("AV1", &profile.av1),
+		("VP8", &profile.vp8),
+		("VP9", &profile.vp9),
+	]
+	.iter()
+	.filter_map(|(codec_name, codec_profile)| {
+		codec_profile_summary(codec_profile)
+			.map(|codec_profile_summary| format!("{codec_name}({codec_profile_summary})"))
+	})
+	.collect::<Vec<_>>();
+	if !codec_overrides.is_empty() {
+		summary.push_str(", overrides=");
+		summary.push_str(codec_overrides.join("; ").as_str());
+	}
+	summary
+}
+
+fn user_transcode_profiles() -> Result<BTreeMap<String, TranscodeProfile>, TranscodeVideoProfileError> {
+	let home_dir = home::home_dir().ok_or(TranscodeVideoProfileError::UnableToLocateHomeDirectory)?;
+	let config_path = home_dir.join(USER_CONFIG_FILE_HOME_RELATIVE_PATH);
+	if !config_path.exists() {
+		return Ok(BTreeMap::new());
+	}
+	let config_contents =
+		std::fs::read_to_string(&config_path).map_err(|error| TranscodeVideoProfileError::ConfigReadError {
+			path: config_path.clone(),
+			error,
+		})?;
+	let config_toml = toml::from_str::<HDVideoToolConfigToml>(&config_contents).map_err(|error| {
+		TranscodeVideoProfileError::ConfigParseError {
+			path: config_path.clone(),
+			error,
+		}
+	})?;
+	config_toml
+		.transcode_video
+		.profiles
+		.into_iter()
+		.map(|(profile_name, profile_toml)| {
+			let profile = TranscodeProfile::from_toml(&profile_name, profile_toml)?;
+			Ok((profile_name, profile))
+		})
+		.collect()
+}
+
+fn built_in_transcode_profile(profile_name: &str) -> Option<TranscodeProfile> {
+	match profile_name {
+		TRANSCODE_PROFILE_DIGITAL_FPV => Some(TranscodeProfile::default()),
+		TRANSCODE_PROFILE_ANALOG_FPV => Some(TranscodeProfile {
+			default_video_quality: Some(140),
+			..TranscodeProfile::default()
+		}),
+		_ => None,
+	}
+}
+
+pub fn transcode_profiles_display() -> Result<String, TranscodeVideoProfileError> {
+	let mut lines = vec![
+		"Built-in profiles:".to_owned(),
+		format!(
+			"  {TRANSCODE_PROFILE_DIGITAL_FPV}: {}",
+			transcode_profile_summary(&built_in_transcode_profile(TRANSCODE_PROFILE_DIGITAL_FPV).unwrap())
+		),
+		format!(
+			"  {TRANSCODE_PROFILE_ANALOG_FPV}: {}",
+			transcode_profile_summary(&built_in_transcode_profile(TRANSCODE_PROFILE_ANALOG_FPV).unwrap())
+		),
+	];
+	let user_profiles = user_transcode_profiles()?;
+	if user_profiles.is_empty() {
+		lines.push(format!("User profiles (~/{USER_CONFIG_FILE_HOME_RELATIVE_PATH}): none"));
+	} else {
+		lines.push(format!("User profiles (~/{USER_CONFIG_FILE_HOME_RELATIVE_PATH}):"));
+		lines.extend(
+			user_profiles
+				.into_iter()
+				.map(|(profile_name, profile)| format!("  {profile_name}: {}", transcode_profile_summary(&profile))),
+		);
+	}
+	Ok(lines.join("\n"))
+}
+
 #[derive(Debug, Error)]
 pub enum OutputVideoFileError {
 	#[error("input has no file name")]
 	InputHasNoFileName,
 	#[error("input has no extension")]
 	InputHasNoExtension,
+	#[error(transparent)]
+	TranscodeVideoProfileError(#[from] TranscodeVideoProfileError),
 }
 
 impl TranscodeVideoArgs {
+	fn profile(&self) -> Result<Option<TranscodeProfile>, TranscodeVideoProfileError> {
+		let Some(profile_name) = self.profile.as_deref() else {
+			return Ok(None);
+		};
+
+		if let Some(profile) = built_in_transcode_profile(profile_name) {
+			return Ok(Some(profile));
+		}
+
+		let user_profiles = user_transcode_profiles()?;
+		user_profiles
+			.get(profile_name)
+			.cloned()
+			.ok_or_else(|| TranscodeVideoProfileError::UnknownProfile {
+				profile_name: profile_name.to_owned(),
+			})
+			.map(Some)
+	}
+
+	fn profile_requested_video_codec(&self) -> Result<Option<video::Codec>, TranscodeVideoProfileError> {
+		Ok(self.profile()?.and_then(|profile| profile.video_codec))
+	}
+
+	pub fn resolved_video_bitrate(&self, video_codec: video::Codec) -> Result<String, TranscodeVideoProfileError> {
+		if let Some(video_bitrate) = &self.video_bitrate {
+			return Ok(video_bitrate.clone());
+		}
+
+		if let Some(profile) = self.profile()? {
+			let codec_profile = profile.codec_profile(video_codec);
+			if let Some(video_bitrate) = &codec_profile.video_bitrate {
+				return Ok(video_bitrate.clone());
+			}
+			if let Some(default_video_bitrate) = &profile.default_video_bitrate {
+				return Ok(default_video_bitrate.clone());
+			}
+		}
+
+		Ok(DEFAULT_VIDEO_BITRATE.to_owned())
+	}
+
+	pub fn resolved_video_quality(&self, video_codec: video::Codec) -> Result<Option<u8>, TranscodeVideoProfileError> {
+		if let Some(video_quality) = self.video_quality {
+			return Ok(Some(video_quality));
+		}
+
+		if let Some(profile) = self.profile()? {
+			let codec_profile = profile.codec_profile(video_codec);
+			if let Some(video_quality) = codec_profile.video_quality {
+				return Ok(Some(video_quality));
+			}
+			if let Some(default_video_quality) = profile.default_video_quality {
+				return Ok(Some(default_video_quality));
+			}
+		}
+
+		Ok(None)
+	}
+
 	#[must_use]
 	pub fn video_audio_fix(&self) -> Option<video::AudioFixType> {
 		use video::AudioFixType as AFT;
@@ -303,7 +615,7 @@ impl TranscodeVideoArgs {
 				.input_video_file
 				.extension()
 				.ok_or(OutputVideoFileError::InputHasNoExtension)?;
-			let (video_codec, hw_acceleration) = self.video_codec();
+			let (video_codec, hw_acceleration) = self.video_codec()?;
 			let output_extension = if hw_acceleration.is_yes() {
 				match video_codec {
 					video::Codec::AV1 | video::Codec::H264 | video::Codec::H265 => OsString::from("mp4"),
@@ -319,18 +631,21 @@ impl TranscodeVideoArgs {
 	}
 
 	#[cfg(not(feature = "hwaccel"))]
-	pub fn video_codec(&self) -> (video::Codec, HwAcceleratedEncoding) {
-		(
-			self.video_codec.unwrap_or(video::Codec::H265),
+	pub fn video_codec(&self) -> Result<(video::Codec, HwAcceleratedEncoding), TranscodeVideoProfileError> {
+		Ok((
+			self.video_codec
+				.or(self.profile_requested_video_codec()?)
+				.unwrap_or(video::Codec::H265),
 			HwAcceleratedEncoding::No,
-		)
+		))
 	}
 
 	#[cfg(feature = "hwaccel")]
 	#[must_use]
-	pub fn video_codec(&self) -> (video::Codec, HwAcceleratedEncoding) {
+	pub fn video_codec(&self) -> Result<(video::Codec, HwAcceleratedEncoding), TranscodeVideoProfileError> {
 		const FALLBACK: (video::Codec, HwAcceleratedEncoding) = (video::Codec::H265, HwAcceleratedEncoding::No);
-		match self.video_codec {
+		let selected_video_codec = self.video_codec.or(self.profile_requested_video_codec()?);
+		Ok(match selected_video_codec {
 			None if self.no_hwaccel => FALLBACK,
 			Some(video_codec) if self.no_hwaccel => (video_codec, HwAcceleratedEncoding::No),
 			Some(video_codec) => match video::hw_accel::vaapi_cap_finder() {
@@ -352,6 +667,6 @@ impl TranscodeVideoArgs {
 					FALLBACK
 				}
 			},
-		}
+		})
 	}
 }

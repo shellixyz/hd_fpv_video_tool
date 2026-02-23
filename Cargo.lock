@@ -988,10 +988,12 @@ dependencies = [
  "rayon",
  "regex",
  "ringbuffer",
+ "serde",
  "strum",
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
+ "toml",
 ]
 
 [[package]]

@@ -16,7 +16,7 @@ use crate::{
 	cli::{
 		font_options::OSDFontDirError,
 		start_end_args::CutVideoStartEndArgs,
-		transcode_video_args::{OutputVideoFileError, TranscodeVideoOSDArgs},
+		transcode_video_args::{OutputVideoFileError, TranscodeVideoOSDArgs, TranscodeVideoProfileError},
 	},
 	ffmpeg::{self, VideoQuality},
 	file::TouchError,
@@ -326,6 +326,8 @@ pub enum TranscodeVideoError {
 	#[error(transparent)]
 	OutputVideoFileError(OutputVideoFileError),
 	#[error(transparent)]
+	TranscodeVideoProfileError(TranscodeVideoProfileError),
+	#[error(transparent)]
 	UnrecognizedOSDFile(UnrecognizedOSDFile),
 	#[error(transparent)]
 	ScalingArgsError(ScalingArgsError),
@@ -471,7 +473,7 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		output_video_file.to_string_lossy()
 	);
 
-	let (video_codec, hw_acceleration) = args.video_codec();
+	let (video_codec, hw_acceleration) = args.video_codec()?;
 
 	log::info!(
 		"using codec: {} (hw accel: {})",
@@ -489,13 +491,14 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 
 	let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
 
-	let video_quality = match args.video_quality() {
+	let video_quality = match args.resolved_video_quality(video_codec)? {
 		Some(quality) => match hw_acceleration {
 			HwAcceleratedEncoding::No => VideoQuality::ConstantRateFactor(quality),
 			HwAcceleratedEncoding::Yes => VideoQuality::GlobalQuality(quality),
 		},
 		None => video_codec.default_video_quality(&hw_acceleration),
 	};
+	let video_bitrate = args.resolved_video_bitrate(video_codec)?;
 
 	ffmpeg_command
 		.add_input_file_slice(
@@ -505,7 +508,7 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		)
 		.set_output_video_settings(
 			Some(video_codec.ffmpeg_string(hw_acceleration.as_bool())),
-			Some(args.video_bitrate()),
+			Some(&video_bitrate),
 			Some(video_quality),
 			// Some(VideoQuality::GlobalQuality(22)),
 		)
@@ -633,7 +636,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 		output_video_file.to_string_lossy()
 	);
 
-	let (video_codec, hw_acceleration) = args.video_codec();
+	let (video_codec, hw_acceleration) = args.video_codec()?;
 
 	log::info!(
 		"using codec: {} (hw accel: {})",
@@ -687,13 +690,14 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 
 	let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
 
-	let video_quality = match args.video_quality() {
+	let video_quality = match args.resolved_video_quality(video_codec)? {
 		Some(quality) => match hw_acceleration {
 			HwAcceleratedEncoding::No => VideoQuality::ConstantRateFactor(quality),
 			HwAcceleratedEncoding::Yes => VideoQuality::GlobalQuality(quality),
 		},
 		None => video_codec.default_video_quality(&hw_acceleration),
 	};
+	let video_bitrate = args.resolved_video_bitrate(video_codec)?;
 
 	let overlay_filter = "[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2";
 	let video_filter_parts = transcode_video_filter_parts(args, &video_info, hw_acceleration)?;
@@ -715,7 +719,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 		.add_mapping("[vo]")
 		.set_output_video_settings(
 			Some(video_codec.ffmpeg_string(hw_acceleration.as_bool())),
-			Some(args.video_bitrate()),
+			Some(&video_bitrate),
 			Some(video_quality),
 		)
 		.set_output_file(output_video_file)

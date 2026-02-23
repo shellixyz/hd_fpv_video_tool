@@ -11,7 +11,11 @@ use std::{
 use anyhow::anyhow;
 use clap::Parser;
 use env_logger::fmt::Color;
-use hd_fpv_video_tool::{cli::generate_overlay_args::GenerateOverlayArgsBuilder, osd::file::GenericReader, prelude::*};
+use hd_fpv_video_tool::{
+	cli::{generate_overlay_args::GenerateOverlayArgsBuilder, transcode_video_args::transcode_profiles_display},
+	osd::file::GenericReader,
+	prelude::*,
+};
 use strum::IntoEnumIterator;
 mod cli;
 mod man_pages;
@@ -69,6 +73,11 @@ fn display_osd_file_info_command<P: AsRef<Path>>(path: P) -> anyhow::Result<()> 
 			 {refresh_interval_frames_str})"
 		);
 	}
+	Ok(())
+}
+
+fn display_profiles_command() -> anyhow::Result<()> {
+	println!("{}", transcode_profiles_display()?);
 	Ok(())
 }
 
@@ -366,6 +375,7 @@ async fn main() {
 		command @ Commands::TranscodeVideo { .. } => transcode_video_command(command).await,
 		command @ Commands::AddAudioStream { .. } => add_audio_stream_command(command).await,
 		Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info_command(osd_file),
+		Commands::DisplayProfiles => display_profiles_command(),
 		Commands::CutVideo {
 			start_end,
 			input_video_file,

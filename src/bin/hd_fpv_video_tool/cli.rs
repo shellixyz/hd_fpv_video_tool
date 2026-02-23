@@ -30,6 +30,10 @@ pub enum Commands {
 	#[clap(alias = "dofi")]
 	DisplayOSDFileInfo { osd_file: PathBuf },
 
+	/// Display available transcode profiles
+	#[clap(alias = "dp")]
+	DisplayProfiles,
+
 	/// Generate a transparent overlay frame sequence as PNG files from a .osd file
 	///
 	/// This command generates numbered OSD frame images from the specified WTF.FPV OSD file and writes
