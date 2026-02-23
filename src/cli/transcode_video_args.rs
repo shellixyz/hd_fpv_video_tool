@@ -120,7 +120,7 @@ pub struct TranscodeVideoOSDArgs {
 	#[getset(get = "pub")]
 	osd_overlay_video_file: Option<PathBuf>,
 
-	/// if no associated .osd file is found, continue without OSD instead of failing
+	/// try to use an associated .osd file and continue without OSD if none is found
 	#[clap(long)]
 	#[getset(get_copy = "pub")]
 	optional_osd: bool,
@@ -145,7 +145,8 @@ impl TranscodeVideoOSDArgs {
 		&self,
 		video_file_path: P,
 	) -> Result<Option<PathBuf>, RequestedOSDButNoFileProvidedNorFound> {
-		let osd_file_path = match (self.osd || self.osd_overlay_video, &self.osd_file) {
+		let osd_requested = self.osd || self.osd_overlay_video || self.optional_osd;
+		let osd_file_path = match (osd_requested, &self.osd_file) {
 			(true, None) => {
 				match find_associated_to_video_file(video_file_path) {
 					Some(osd_file_path) => Some(osd_file_path),
