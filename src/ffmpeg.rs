@@ -18,6 +18,9 @@ use tempfile::TempPath;
 use thiserror::Error;
 use tokio::task::JoinHandle;
 
+/// Callback invoked with `(current_frame, total_frames)` as ffmpeg progresses.
+pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send + 'static>;
+
 use crate::{
 	process::Command as ProcessCommand,
 	video::{self, Resolution, Timestamp},
@@ -602,6 +605,39 @@ impl SpawnOptions {
 	}
 }
 
+/// Like [`SpawnOptions`] but allows a progress callback.
+/// Separate type because `Box<dyn Fn>` is not `Copy`/`Clone`.
+pub struct SpawnOptionsWithCallback {
+	output_type: SpawnOutputType,
+	priority: Option<i32>,
+}
+
+impl Default for SpawnOptionsWithCallback {
+	fn default() -> Self {
+		Self { output_type: SpawnOutputType::None, priority: None }
+	}
+}
+
+impl SpawnOptionsWithCallback {
+	#[must_use]
+	pub fn with_progress(mut self, frame_count: u64) -> Self {
+		self.output_type = SpawnOutputType::Progress { frame_count };
+		self
+	}
+
+	#[must_use]
+	pub fn with_callback(mut self, frame_count: u64, callback: ProgressCallback) -> Self {
+		self.output_type = SpawnOutputType::Callback { frame_count, callback };
+		self
+	}
+
+	#[must_use]
+	pub fn with_priority(mut self, priority: Option<i32>) -> Self {
+		self.priority = priority;
+		self
+	}
+}
+
 #[derive(Debug, Error)]
 #[error("failed spawning ffmpeg process: {bin_path}: {error}")]
 pub struct SpawnError {
@@ -673,6 +709,51 @@ impl Command {
 	// 	};
 	// 	self.spawn_base(output_type)
 	// }
+
+	/// Spawn with an optional progress callback instead of the indicatif TTY bar.
+	///
+	/// # Errors
+	/// Returns a `SpawnError` if the process could not be spawned.
+	pub fn spawn_with_callback(mut self, options: SpawnOptionsWithCallback) -> Result<Process, SpawnError> {
+		log::debug!("spawning process: {self}");
+		let stdin_stdio = if self.has_stdin_input() { process::Stdio::piped() } else { process::Stdio::null() };
+		let mut process_handle = self
+			.command
+			.stdin(stdin_stdio)
+			.stdout(process::Stdio::null())
+			.stderr(process::Stdio::piped())
+			.spawn()
+			.map_err(|error| SpawnError {
+				error,
+				bin_path: self.command.get_program().to_string_lossy().to_string(),
+			})?;
+
+		if let Some(priority) = options.priority {
+			unsafe {
+				if libc::setpriority(libc::PRIO_PROCESS, process_handle.id(), priority) != 0 {
+					log::error!("failed to set ffmpeg process priority to {priority}");
+				}
+			}
+		}
+
+		let process_stdin = if self.has_stdin_input() { process_handle.stdin.take() } else { None };
+		let stderr = process_handle.stderr.take().unwrap();
+		let command_str = self.command.to_string();
+
+		let monitor_handle = match options.output_type {
+			SpawnOutputType::Callback { frame_count, callback } => {
+				Some(tokio::spawn(Process::monitor_with_callback(stderr, frame_count, callback)))
+			},
+			SpawnOutputType::Progress { frame_count } => {
+				Some(tokio::spawn(Process::monitor(stderr, Some(frame_count))))
+			},
+			SpawnOutputType::None | SpawnOutputType::Inherited => {
+				Some(tokio::spawn(Process::monitor(stderr, None)))
+			},
+		};
+
+		Ok(Process { command: command_str, handle: process_handle, monitor_handle, stdin: process_stdin })
+	}
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -682,6 +763,15 @@ pub enum ProcessOutputType {
 	Progress {
 		frame_count: u64,
 	},
+	None,
+}
+
+/// Like [`ProcessOutputType`] but allows an optional progress callback.
+/// Cannot be `Copy`/`Clone` due to the `Box<dyn Fn>`.
+pub enum SpawnOutputType {
+	Inherited,
+	Progress { frame_count: u64 },
+	Callback { frame_count: u64, callback: ProgressCallback },
 	None,
 }
 
@@ -859,6 +949,66 @@ impl Process {
 	/// Returns an `IOError` if killing the process fails.
 	pub fn kill(mut self) -> Result<(), IOError> {
 		self.handle.kill()
+	}
+
+	/// Kill the process asynchronously (for use in async contexts).
+	///
+	/// # Errors
+	/// Returns an `IOError` if killing the process fails.
+	pub async fn kill_async(&mut self) -> Result<(), IOError> {
+		// Send SIGKILL via libc directly (no-op import needed).
+		let pid = self.handle.id();
+		unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
+		Ok(())
+	}
+
+	#[allow(clippy::unused_async)]
+	async fn monitor_with_callback(
+		mut ffmpeg_stderr: process::ChildStderr,
+		frame_count: u64,
+		callback: ProgressCallback,
+	) -> Vec<String> {
+		let mut output_buf = String::new();
+		let mut read_buf = [0; 1024];
+		let mut last_lines = ConstGenericRingBuffer::<_, 16>::new();
+
+		loop {
+			let read_count = ffmpeg_stderr.read(&mut read_buf).unwrap();
+			if read_count == 0 {
+				break;
+			}
+			output_buf.push_str(String::from_utf8_lossy(&read_buf[0..read_count]).to_string().as_str());
+
+			let mut lines = output_buf.split_inclusive('\n').map(str::to_string);
+			let last_line = lines.next_back().unwrap();
+			let last_cr_lines = last_line.split_inclusive('\r').map(str::to_string).collect::<Vec<_>>();
+
+			if let Some(cr_line) = last_cr_lines.iter().rfind(|cr_pl| cr_pl.ends_with('\r')) {
+				lazy_static! {
+					static ref PROGRESS_RE: Regex = Regex::new(r"\Aframe=\s*(\d+)").unwrap();
+				}
+				if let Some(captures) = PROGRESS_RE.captures(cr_line) {
+					if let Ok(frame) = captures.get(1).unwrap().as_str().parse::<u64>() {
+						callback(frame, frame_count);
+					}
+				}
+			}
+
+			last_lines.extend(lines);
+			output_buf.clear();
+
+			if last_line.ends_with('\n') {
+				last_lines.push(last_line);
+			} else {
+				let last_cr_line = last_cr_lines.last().unwrap();
+				if !last_cr_line.ends_with('\r') {
+					output_buf.push_str(last_cr_line);
+				}
+			}
+		}
+
+		callback(frame_count, frame_count);
+		last_lines.to_vec()
 	}
 }
 

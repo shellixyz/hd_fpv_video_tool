@@ -593,6 +593,73 @@ impl<'a> Generator<'a> {
 		Ok(())
 	}
 
+	/// Generate the overlay video with a progress callback instead of the indicatif TTY bar.
+	///
+	/// # Errors
+	/// Returns [`GenerateOverlayVideoError`] if generation fails.
+	pub async fn generate_overlay_video_with_progress<P, F>(
+		&mut self,
+		codec: OverlayVideoCodec,
+		start: Option<Timestamp>,
+		end: Option<Timestamp>,
+		output_video_path: P,
+		frame_shift: i32,
+		overwrite_output: bool,
+		ffmpeg_priority: Option<i32>,
+		callback: F,
+	) -> Result<(), GenerateOverlayVideoError>
+	where
+		P: AsRef<Path>,
+		F: Fn(u64, u64) + Send + 'static,
+	{
+		let output_video_path = output_video_path.as_ref();
+
+		if !matches!(output_video_path.extension(), Some(extension) if extension == "webm") {
+			return Err(GenerateOverlayVideoError::OutputFileExtensionNotWebm);
+		}
+
+		if !overwrite_output && output_video_path.exists() {
+			return Err(GenerateOverlayVideoError::TargetVideoFileExists(
+				output_video_path.to_path_buf(),
+			));
+		}
+
+		file::touch(output_video_path)?;
+
+		log::info!("generating overlay video: {}", output_video_path.to_string_lossy());
+
+		let frames_iter = self.iter_advanced(
+			start.start_overlay_frame_count(),
+			end.end_overlay_frame_index(),
+			frame_shift,
+		);
+		let frame_count = frames_iter.len();
+
+		let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
+
+		ffmpeg_command
+			.add_stdin_input(self.frame_dimensions, 60)
+			.unwrap()
+			.set_output_video_settings(
+				Some(codec.params().encoder()),
+				codec.params().bitrate(),
+				codec.params().crf().map(VideoQuality::ConstantRateFactor),
+			)
+			.add_args(codec.params().additional_args())
+			.set_output_file(output_video_path)
+			.set_overwrite_output_file(true);
+
+		let spawn_options = ffmpeg::SpawnOptionsWithCallback::default()
+			.with_callback(frame_count as u64, Box::new(callback))
+			.with_priority(ffmpeg_priority);
+		let ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_callback(spawn_options)?;
+
+		frames_iter.send_frames_to_ffmpeg_and_wait(ffmpeg_process).await?;
+
+		log::info!("overlay video generation completed: {frame_count} frames");
+		Ok(())
+	}
+
 	#[must_use]
 	pub fn iter(&self) -> FramesIter<'_> {
 		self.into_iter()

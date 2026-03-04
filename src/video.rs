@@ -305,7 +305,63 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(
 	Ok(())
 }
 
-fn frame_count_for_interval(
+/// Fix DJI Air Unit audio with a progress callback instead of the indicatif TTY bar.
+///
+/// # Errors
+/// Returns [`FixVideoFileAudioError`] if the operation fails.
+pub async fn fix_dji_air_unit_audio_with_progress<P, Q, F>(
+	input_video_file: P,
+	output_video_file: Option<&Q>,
+	overwrite: bool,
+	fix_type: AudioFixType,
+	ffmpeg_priority: Option<i32>,
+	callback: F,
+) -> Result<(), FixVideoFileAudioError>
+where
+	P: AsRef<std::path::Path>,
+	Q: AsRef<std::path::Path>,
+	F: Fn(u64, u64) + Send + 'static,
+{
+	let input_video_file = input_video_file.as_ref();
+	if !input_video_file.exists() {
+		return Err(FixVideoFileAudioError::InputVideoFileDoesNotExist);
+	}
+	let output_video_file = if let Some(p) = output_video_file {
+		p.as_ref().to_path_buf()
+	} else {
+		let mut stem = std::path::Path::new(input_video_file.file_stem().ok_or(FixVideoFileAudioError::InputHasNoFileName)?)
+			.as_os_str()
+			.to_os_string();
+		stem.push("_fixed_audio");
+		let ext = input_video_file.extension().ok_or(FixVideoFileAudioError::InputHasNoExtension)?;
+		input_video_file.with_file_name(stem).with_extension(ext)
+	};
+	if !overwrite && output_video_file.exists() {
+		return Err(FixVideoFileAudioError::OutputVideoFileExists);
+	}
+	file::touch(&output_video_file)?;
+	let video_info = probe(input_video_file)?;
+	if !video_info.has_audio() {
+		return Err(FixVideoFileAudioError::InputVideoDoesNotHaveAnAudioStream);
+	}
+	let frame_count = video_info.frame_count();
+	let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
+	ffmpeg_command
+		.add_input_file(input_video_file)
+		.add_audio_filter(&fix_type.ffmpeg_audio_filter_string())
+		.set_output_video_codec(Some("copy"))
+		.set_output_audio_settings(Some("aac"), Some("93k"))
+		.set_output_file(output_video_file)
+		.set_overwrite_output_file(true);
+	let spawn_options = ffmpeg::SpawnOptionsWithCallback::default()
+		.with_callback(frame_count, Box::new(callback))
+		.with_priority(ffmpeg_priority);
+	ffmpeg_command.build().unwrap().spawn_with_callback(spawn_options)?.wait().await?;
+	log::info!("video file's audio stream fixed successfully");
+	Ok(())
+}
+
+pub fn frame_count_for_interval(
 	total_frames: u64,
 	frame_rate: Rational,
 	start: Option<&Timestamp>,
@@ -577,6 +633,108 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		.with_progress(frame_count)
 		.with_priority(*args.ffmpeg_priority());
 	ffmpeg_command.build().unwrap().spawn(&spawn_options)?.wait().await?;
+
+	log::info!("{frame_count} frames transcoded successfully");
+	Ok(output_video_file)
+}
+
+/// Minimal plain-data config for programmatic transcoding (no clap dependency).
+#[derive(Debug, Clone)]
+pub struct TranscodeConfig {
+	pub input_video_file: std::path::PathBuf,
+	pub output_video_file: Option<std::path::PathBuf>,
+	/// Profile name, e.g. `"analog-fpv"` or `"digital-fpv"`.
+	pub profile: Option<String>,
+	pub overwrite: bool,
+	pub ffmpeg_priority: Option<i32>,
+}
+
+/// Transcode using a plain [`TranscodeConfig`], invoking `callback(current_frame, total_frames)`
+/// as encoding progresses. Returns the output file path.
+///
+/// # Errors
+/// Returns [`TranscodeVideoError`] if transcoding fails.
+pub async fn transcode_with_progress<F>(
+	config: &TranscodeConfig,
+	callback: F,
+) -> Result<std::path::PathBuf, TranscodeVideoError>
+where
+	F: Fn(u64, u64) + Send + 'static,
+{
+	// Build the ffmpeg command directly, mirroring what transcode() does but with a callback.
+	let input = &config.input_video_file;
+	if !input.exists() {
+		return Err(TranscodeVideoError::InputVideoFileDoesNotExist);
+	}
+
+	let video_info = probe(input)?;
+	let frame_count = video_info.frame_count();
+
+	// Resolve profile settings manually.
+	let profile_str = config.profile.as_deref();
+	let (video_codec, hw_acceleration) = {
+		#[cfg(feature = "hwaccel")]
+		{
+			const FALLBACK: (Codec, HwAcceleratedEncoding) = (Codec::H265, HwAcceleratedEncoding::No);
+			match hw_accel::vaapi_cap_finder() {
+				Some(hw_accel_cap) => {
+					let codec = [Codec::AV1, Codec::H265]
+						.iter()
+						.find(|&&c| hw_accel_cap.can_encode(c))
+						.copied()
+						.unwrap_or(Codec::H265);
+					(codec, HwAcceleratedEncoding::from(hw_accel_cap.can_encode(codec)))
+				},
+				None => FALLBACK,
+			}
+		}
+		#[cfg(not(feature = "hwaccel"))]
+		{ (Codec::H265, HwAcceleratedEncoding::No) }
+	};
+
+	let video_quality = if profile_str == Some("analog-fpv") {
+		ffmpeg::VideoQuality::GlobalQuality(140)
+	} else {
+		video_codec.default_video_quality(&hw_acceleration)
+	};
+
+	let video_bitrate = "25M".to_owned();
+
+	let output_video_file = config.output_video_file.clone().unwrap_or_else(|| {
+		let mut stem = input.file_stem().unwrap_or_default().to_os_string();
+		stem.push("_transcoded");
+		input.with_file_name(stem).with_extension(input.extension().unwrap_or_default())
+	});
+
+	if !config.overwrite && output_video_file.exists() {
+		return Err(TranscodeVideoError::OutputVideoFileExists);
+	}
+	file::touch(&output_video_file)?;
+
+	let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
+	ffmpeg_command
+		.add_input_file(input)
+		.set_output_video_settings(
+			Some(video_codec.ffmpeg_string(hw_acceleration.as_bool())),
+			Some(&video_bitrate),
+			Some(video_quality),
+		)
+		.set_output_file(output_video_file.clone())
+		.set_overwrite_output_file(true);
+
+	if video_info.has_audio() {
+		ffmpeg_command.add_mapping("0:a");
+	}
+
+	if hw_acceleration.is_yes() {
+		ffmpeg_command.add_prefix_arg("-hwaccel").add_prefix_arg("vaapi");
+		ffmpeg_command.add_complex_filter("[0:v]format=nv12,hwupload[vo]").add_mapping("[vo]");
+	}
+
+	let spawn_options = ffmpeg::SpawnOptionsWithCallback::default()
+		.with_callback(frame_count, Box::new(callback))
+		.with_priority(config.ffmpeg_priority);
+	ffmpeg_command.build().unwrap().spawn_with_callback(spawn_options)?.wait().await?;
 
 	log::info!("{frame_count} frames transcoded successfully");
 	Ok(output_video_file)
