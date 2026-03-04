@@ -16,8 +16,7 @@ use regex::Regex;
 use ringbuffer::{self, ConstGenericRingBuffer, RingBuffer};
 use tempfile::TempPath;
 use thiserror::Error;
-use tokio::task::JoinHandle;
-use tokio::io::AsyncReadExt as _;
+use tokio::{io::AsyncReadExt as _, task::JoinHandle};
 
 /// Callback invoked with `(current_frame, total_frames)` as ffmpeg progresses.
 pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send + 'static>;
@@ -615,7 +614,10 @@ pub struct SpawnOptionsWithCallback {
 
 impl Default for SpawnOptionsWithCallback {
 	fn default() -> Self {
-		Self { output_type: SpawnOutputType::None, priority: None }
+		Self {
+			output_type: SpawnOutputType::None,
+			priority: None,
+		}
 	}
 }
 
@@ -718,7 +720,11 @@ impl Command {
 	/// Returns a `SpawnError` if the process could not be spawned.
 	pub fn spawn_with_callback(self, options: SpawnOptionsWithCallback) -> Result<ProcessWithCallback, SpawnError> {
 		log::debug!("spawning process: {self}");
-		let stdin_stdio = if self.has_stdin_input() { process::Stdio::piped() } else { process::Stdio::null() };
+		let stdin_stdio = if self.has_stdin_input() {
+			process::Stdio::piped()
+		} else {
+			process::Stdio::null()
+		};
 		let bin = self.command.get_program().to_string_lossy().to_string();
 		let command_str = self.command.to_string();
 
@@ -730,17 +736,20 @@ impl Command {
 		}
 		for (k, v) in self.command.get_envs() {
 			match v {
-				Some(val) => { tokio_cmd.env(k, val); },
-				None => { tokio_cmd.env_remove(k); },
+				Some(val) => {
+					tokio_cmd.env(k, val);
+				},
+				None => {
+					tokio_cmd.env_remove(k);
+				},
 			}
 		}
-		tokio_cmd.stdin(stdin_stdio)
+		tokio_cmd
+			.stdin(stdin_stdio)
 			.stdout(process::Stdio::null())
 			.stderr(process::Stdio::piped());
 
-		let mut process_handle = tokio_cmd
-			.spawn()
-			.map_err(|error| SpawnError { error, bin_path: bin })?;
+		let mut process_handle = tokio_cmd.spawn().map_err(|error| SpawnError { error, bin_path: bin })?;
 
 		if let Some(priority) = options.priority {
 			unsafe {
@@ -750,22 +759,33 @@ impl Command {
 			}
 		}
 
-		let process_stdin = if self.has_stdin_input() { process_handle.stdin.take() } else { None };
+		let process_stdin = if self.has_stdin_input() {
+			process_handle.stdin.take()
+		} else {
+			None
+		};
 		let stderr = process_handle.stderr.take().unwrap();
 
 		let monitor_handle = match options.output_type {
-			SpawnOutputType::Callback { frame_count, callback } => {
-				tokio::spawn(ProcessWithCallback::monitor_with_callback(stderr, frame_count, callback))
-			},
-			SpawnOutputType::Progress { frame_count } => {
-				tokio::spawn(ProcessWithCallback::monitor_with_callback(stderr, frame_count, Box::new(|_, _| {})))
-			},
-			SpawnOutputType::None | SpawnOutputType::Inherited => {
-				tokio::spawn(ProcessWithCallback::monitor_with_callback(stderr, 0, Box::new(|_, _| {})))
-			},
+			SpawnOutputType::Callback { frame_count, callback } => tokio::spawn(
+				ProcessWithCallback::monitor_with_callback(stderr, frame_count, callback),
+			),
+			SpawnOutputType::Progress { frame_count } => tokio::spawn(ProcessWithCallback::monitor_with_callback(
+				stderr,
+				frame_count,
+				Box::new(|_, _| {}),
+			)),
+			SpawnOutputType::None | SpawnOutputType::Inherited => tokio::spawn(
+				ProcessWithCallback::monitor_with_callback(stderr, 0, Box::new(|_, _| {})),
+			),
 		};
 
-		Ok(ProcessWithCallback { command: command_str, handle: process_handle, monitor_handle, stdin: process_stdin })
+		Ok(ProcessWithCallback {
+			command: command_str,
+			handle: process_handle,
+			monitor_handle,
+			stdin: process_stdin,
+		})
 	}
 }
 
@@ -783,8 +803,13 @@ pub enum ProcessOutputType {
 /// Cannot be `Copy`/`Clone` due to the `Box<dyn Fn>`.
 pub enum SpawnOutputType {
 	Inherited,
-	Progress { frame_count: u64 },
-	Callback { frame_count: u64, callback: ProgressCallback },
+	Progress {
+		frame_count: u64,
+	},
+	Callback {
+		frame_count: u64,
+		callback: ProgressCallback,
+	},
 	None,
 }
 

@@ -329,11 +329,17 @@ where
 	let output_video_file = if let Some(p) = output_video_file {
 		p.as_ref().to_path_buf()
 	} else {
-		let mut stem = std::path::Path::new(input_video_file.file_stem().ok_or(FixVideoFileAudioError::InputHasNoFileName)?)
-			.as_os_str()
-			.to_os_string();
+		let mut stem = std::path::Path::new(
+			input_video_file
+				.file_stem()
+				.ok_or(FixVideoFileAudioError::InputHasNoFileName)?,
+		)
+		.as_os_str()
+		.to_os_string();
 		stem.push("_fixed_audio");
-		let ext = input_video_file.extension().ok_or(FixVideoFileAudioError::InputHasNoExtension)?;
+		let ext = input_video_file
+			.extension()
+			.ok_or(FixVideoFileAudioError::InputHasNoExtension)?;
 		input_video_file.with_file_name(stem).with_extension(ext)
 	};
 	if !overwrite && output_video_file.exists() {
@@ -356,7 +362,12 @@ where
 	let spawn_options = ffmpeg::SpawnOptionsWithCallback::default()
 		.with_callback(frame_count, Box::new(callback))
 		.with_priority(ffmpeg_priority);
-	ffmpeg_command.build().unwrap().spawn_with_callback(spawn_options)?.wait().await?;
+	ffmpeg_command
+		.build()
+		.unwrap()
+		.spawn_with_callback(spawn_options)?
+		.wait()
+		.await?;
 	log::info!("video file's audio stream fixed successfully");
 	Ok(())
 }
@@ -689,7 +700,9 @@ where
 			}
 		}
 		#[cfg(not(feature = "hwaccel"))]
-		{ (Codec::H265, HwAcceleratedEncoding::No) }
+		{
+			(Codec::H265, HwAcceleratedEncoding::No)
+		}
 	};
 
 	let video_quality = if profile_str == Some("analog-fpv") {
@@ -703,7 +716,9 @@ where
 	let output_video_file = config.output_video_file.clone().unwrap_or_else(|| {
 		let mut stem = input.file_stem().unwrap_or_default().to_os_string();
 		stem.push("_transcoded");
-		input.with_file_name(stem).with_extension(input.extension().unwrap_or_default())
+		input
+			.with_file_name(stem)
+			.with_extension(input.extension().unwrap_or_default())
 	});
 
 	if !config.overwrite && output_video_file.exists() {
@@ -728,13 +743,20 @@ where
 
 	if hw_acceleration.is_yes() {
 		ffmpeg_command.add_prefix_arg("-hwaccel").add_prefix_arg("vaapi");
-		ffmpeg_command.add_complex_filter("[0:v]format=nv12,hwupload[vo]").add_mapping("[vo]");
+		ffmpeg_command
+			.add_complex_filter("[0:v]format=nv12,hwupload[vo]")
+			.add_mapping("[vo]");
 	}
 
 	let spawn_options = ffmpeg::SpawnOptionsWithCallback::default()
 		.with_callback(frame_count, Box::new(callback))
 		.with_priority(config.ffmpeg_priority);
-	ffmpeg_command.build().unwrap().spawn_with_callback(spawn_options)?.wait().await?;
+	ffmpeg_command
+		.build()
+		.unwrap()
+		.spawn_with_callback(spawn_options)?
+		.wait()
+		.await?;
 
 	log::info!("{frame_count} frames transcoded successfully");
 	Ok(output_video_file)
