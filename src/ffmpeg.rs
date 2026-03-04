@@ -747,7 +747,10 @@ impl Command {
 		tokio_cmd
 			.stdin(stdin_stdio)
 			.stdout(process::Stdio::null())
-			.stderr(process::Stdio::piped());
+			.stderr(process::Stdio::piped())
+			// Ensure the child is killed if the ProcessWithCallback is dropped
+			// (e.g. because the owning tokio task was aborted on cancellation).
+			.kill_on_drop(true);
 
 		let mut process_handle = tokio_cmd.spawn().map_err(|error| SpawnError { error, bin_path: bin })?;
 
