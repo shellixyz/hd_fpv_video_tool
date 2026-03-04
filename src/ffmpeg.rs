@@ -17,6 +17,7 @@ use ringbuffer::{self, ConstGenericRingBuffer, RingBuffer};
 use tempfile::TempPath;
 use thiserror::Error;
 use tokio::task::JoinHandle;
+use tokio::io::AsyncReadExt as _;
 
 /// Callback invoked with `(current_frame, total_frames)` as ffmpeg progresses.
 pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send + 'static>;
@@ -710,27 +711,40 @@ impl Command {
 	// 	self.spawn_base(output_type)
 	// }
 
-	/// Spawn with an optional progress callback instead of the indicatif TTY bar.
+	/// Spawn with a progress callback using async I/O (tokio-based).
+	/// Returns a [`ProcessWithCallback`] whose `wait()` is properly non-blocking.
 	///
 	/// # Errors
 	/// Returns a `SpawnError` if the process could not be spawned.
-	pub fn spawn_with_callback(mut self, options: SpawnOptionsWithCallback) -> Result<Process, SpawnError> {
+	pub fn spawn_with_callback(self, options: SpawnOptionsWithCallback) -> Result<ProcessWithCallback, SpawnError> {
 		log::debug!("spawning process: {self}");
 		let stdin_stdio = if self.has_stdin_input() { process::Stdio::piped() } else { process::Stdio::null() };
-		let mut process_handle = self
-			.command
-			.stdin(stdin_stdio)
+		let bin = self.command.get_program().to_string_lossy().to_string();
+		let command_str = self.command.to_string();
+
+		// Build an equivalent tokio::process::Command from the std one.
+		let mut tokio_cmd = tokio::process::Command::new(self.command.get_program());
+		tokio_cmd.args(self.command.get_args());
+		if let Some(dir) = self.command.get_current_dir() {
+			tokio_cmd.current_dir(dir);
+		}
+		for (k, v) in self.command.get_envs() {
+			match v {
+				Some(val) => { tokio_cmd.env(k, val); },
+				None => { tokio_cmd.env_remove(k); },
+			}
+		}
+		tokio_cmd.stdin(stdin_stdio)
 			.stdout(process::Stdio::null())
-			.stderr(process::Stdio::piped())
+			.stderr(process::Stdio::piped());
+
+		let mut process_handle = tokio_cmd
 			.spawn()
-			.map_err(|error| SpawnError {
-				error,
-				bin_path: self.command.get_program().to_string_lossy().to_string(),
-			})?;
+			.map_err(|error| SpawnError { error, bin_path: bin })?;
 
 		if let Some(priority) = options.priority {
 			unsafe {
-				if libc::setpriority(libc::PRIO_PROCESS, process_handle.id(), priority) != 0 {
+				if libc::setpriority(libc::PRIO_PROCESS, process_handle.id().unwrap_or(0), priority) != 0 {
 					log::error!("failed to set ffmpeg process priority to {priority}");
 				}
 			}
@@ -738,21 +752,20 @@ impl Command {
 
 		let process_stdin = if self.has_stdin_input() { process_handle.stdin.take() } else { None };
 		let stderr = process_handle.stderr.take().unwrap();
-		let command_str = self.command.to_string();
 
 		let monitor_handle = match options.output_type {
 			SpawnOutputType::Callback { frame_count, callback } => {
-				Some(tokio::spawn(Process::monitor_with_callback(stderr, frame_count, callback)))
+				tokio::spawn(ProcessWithCallback::monitor_with_callback(stderr, frame_count, callback))
 			},
 			SpawnOutputType::Progress { frame_count } => {
-				Some(tokio::spawn(Process::monitor(stderr, Some(frame_count))))
+				tokio::spawn(ProcessWithCallback::monitor_with_callback(stderr, frame_count, Box::new(|_, _| {})))
 			},
 			SpawnOutputType::None | SpawnOutputType::Inherited => {
-				Some(tokio::spawn(Process::monitor(stderr, None)))
+				tokio::spawn(ProcessWithCallback::monitor_with_callback(stderr, 0, Box::new(|_, _| {})))
 			},
 		};
 
-		Ok(Process { command: command_str, handle: process_handle, monitor_handle, stdin: process_stdin })
+		Ok(ProcessWithCallback { command: command_str, handle: process_handle, monitor_handle, stdin: process_stdin })
 	}
 }
 
@@ -961,19 +974,60 @@ impl Process {
 		unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
 		Ok(())
 	}
+}
 
-	#[allow(clippy::unused_async)]
+/// A process spawned with a progress callback, using truly async tokio I/O.
+///
+/// Unlike [`Process`], `wait()` is non-blocking and safe to call in an async context.
+pub struct ProcessWithCallback {
+	command: String,
+	handle: tokio::process::Child,
+	monitor_handle: JoinHandle<Vec<String>>,
+	stdin: Option<tokio::process::ChildStdin>,
+}
+
+impl ProcessWithCallback {
+	pub fn take_stdin(&mut self) -> Option<tokio::process::ChildStdin> {
+		self.stdin.take()
+	}
+
+	async fn last_output_lines(&mut self) -> Option<String> {
+		// The monitor handle is always present for ProcessWithCallback.
+		// We use a dummy handle in the None case by replacing with a no-op join.
+		let lines = (&mut self.monitor_handle).await.unwrap();
+		if lines.is_empty() { None } else { Some(lines.concat()) }
+	}
+
+	/// Wait for the process to exit, returning an error if it exits non-zero.
+	///
+	/// # Errors
+	/// Returns a [`ProcessError`] if the process exits with a non-zero status.
+	///
+	/// # Panics
+	/// Panics if the OS cannot report the process exit status.
+	pub async fn wait(&mut self) -> Result<(), ProcessError> {
+		match self.handle.wait().await.unwrap() {
+			exit_status if exit_status.success() => Ok(()),
+			exit_status => Err(ProcessError {
+				command: self.command.clone(),
+				exit_status,
+				stderr_content: self.last_output_lines().await,
+			}),
+		}
+	}
+
+	/// Async stderr monitor that parses ffmpeg progress output and calls the callback.
 	async fn monitor_with_callback(
-		mut ffmpeg_stderr: process::ChildStderr,
+		mut ffmpeg_stderr: tokio::process::ChildStderr,
 		frame_count: u64,
 		callback: ProgressCallback,
 	) -> Vec<String> {
 		let mut output_buf = String::new();
-		let mut read_buf = [0; 1024];
+		let mut read_buf = [0u8; 1024];
 		let mut last_lines = ConstGenericRingBuffer::<_, 16>::new();
 
 		loop {
-			let read_count = ffmpeg_stderr.read(&mut read_buf).unwrap();
+			let read_count = ffmpeg_stderr.read(&mut read_buf).await.unwrap_or(0);
 			if read_count == 0 {
 				break;
 			}
@@ -983,13 +1037,15 @@ impl Process {
 			let last_line = lines.next_back().unwrap();
 			let last_cr_lines = last_line.split_inclusive('\r').map(str::to_string).collect::<Vec<_>>();
 
-			if let Some(cr_line) = last_cr_lines.iter().rfind(|cr_pl| cr_pl.ends_with('\r')) {
-				lazy_static! {
-					static ref PROGRESS_RE: Regex = Regex::new(r"\Aframe=\s*(\d+)").unwrap();
-				}
-				if let Some(captures) = PROGRESS_RE.captures(cr_line) {
-					if let Ok(frame) = captures.get(1).unwrap().as_str().parse::<u64>() {
-						callback(frame, frame_count);
+			if frame_count > 0 {
+				if let Some(cr_line) = last_cr_lines.iter().rfind(|cr_pl| cr_pl.ends_with('\r')) {
+					lazy_static! {
+						static ref PROGRESS_RE: Regex = Regex::new(r"\Aframe=\s*(\d+)").unwrap();
+					}
+					if let Some(captures) = PROGRESS_RE.captures(cr_line) {
+						if let Ok(frame) = captures.get(1).unwrap().as_str().parse::<u64>() {
+							callback(frame, frame_count);
+						}
 					}
 				}
 			}
@@ -1007,7 +1063,9 @@ impl Process {
 			}
 		}
 
-		callback(frame_count, frame_count);
+		if frame_count > 0 {
+			callback(frame_count, frame_count);
+		}
 		last_lines.to_vec()
 	}
 }

@@ -2,6 +2,7 @@ use std::{
 	io::{self, Error as IOError, Write},
 	path::{Path, PathBuf},
 };
+use tokio::io::AsyncWriteExt as _;
 
 use derive_more::{Deref, From};
 use getset::{CopyGetters, Getters};
@@ -654,7 +655,7 @@ impl<'a> Generator<'a> {
 			.with_priority(ffmpeg_priority);
 		let ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_callback(spawn_options)?;
 
-		frames_iter.send_frames_to_ffmpeg_and_wait(ffmpeg_process).await?;
+		frames_iter.send_frames_to_ffmpeg_callback_and_wait(ffmpeg_process).await?;
 
 		log::info!("overlay video generation completed: {frame_count} frames");
 		Ok(())
@@ -747,6 +748,41 @@ impl FramesIter<'_> {
 		ffmpeg_process.wait().await?;
 		send_result?;
 
+		Ok(())
+	}
+
+	/// Sends rendered frames to a [`ffmpeg::ProcessWithCallback`] and waits for it to finish.
+	///
+	/// Uses async I/O to write frames so it is safe to call from an async context.
+	///
+	/// # Errors
+	/// Returns `SendFramesToFFMpegError` if there are issues writing to ffmpeg's stdin, if there are unknown OSD items, or if ffmpeg exits with an error.
+	///
+	/// # Panics
+	/// Panics if the stdin of the ffmpeg process has already been taken.
+	pub async fn send_frames_to_ffmpeg_callback_and_wait(
+		self,
+		mut ffmpeg_process: ffmpeg::ProcessWithCallback,
+	) -> Result<(), SendFramesToFFMpegError> {
+		let mut ffmpeg_stdin = ffmpeg_process.take_stdin().unwrap();
+		let mut frame_error: Option<SendFramesToFFMpegError> = None;
+		for osd_frame_image in self {
+			match osd_frame_image {
+				Ok(frame) => {
+					if let Err(e) = ffmpeg_stdin.write_all(frame.as_raw()).await {
+						frame_error = Some(SendFramesToFFMpegError::PipeError(e));
+						break;
+					}
+				},
+				Err(e) => {
+					frame_error = Some(SendFramesToFFMpegError::UnknownOSDItem(e));
+					break;
+				},
+			}
+		}
+		drop(ffmpeg_stdin);
+		ffmpeg_process.wait().await?;
+		if let Some(e) = frame_error { return Err(e); }
 		Ok(())
 	}
 }
