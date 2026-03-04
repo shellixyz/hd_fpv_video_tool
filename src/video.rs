@@ -309,6 +309,9 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(
 ///
 /// # Errors
 /// Returns [`FixVideoFileAudioError`] if the operation fails.
+///
+/// # Panics
+/// Panics if the ffmpeg command cannot be built.
 pub async fn fix_dji_air_unit_audio_with_progress<P, Q, F>(
 	input_video_file: P,
 	output_video_file: Option<&Q>,
@@ -372,6 +375,7 @@ where
 	Ok(())
 }
 
+#[must_use]
 pub fn frame_count_for_interval(
 	total_frames: u64,
 	frame_rate: Rational,
@@ -665,6 +669,9 @@ pub struct TranscodeConfig {
 ///
 /// # Errors
 /// Returns [`TranscodeVideoError`] if transcoding fails.
+///
+/// # Panics
+/// Panics if the ffmpeg command cannot be built.
 pub async fn transcode_with_progress<F>(
 	config: &TranscodeConfig,
 	callback: F,

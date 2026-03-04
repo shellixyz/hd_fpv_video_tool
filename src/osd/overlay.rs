@@ -598,6 +598,10 @@ impl<'a> Generator<'a> {
 	///
 	/// # Errors
 	/// Returns [`GenerateOverlayVideoError`] if generation fails.
+	///
+	/// # Panics
+	/// Panics if the ffmpeg command cannot be built.
+	#[allow(clippy::too_many_arguments)]
 	pub async fn generate_overlay_video_with_progress<P, F>(
 		&mut self,
 		codec: OverlayVideoCodec,

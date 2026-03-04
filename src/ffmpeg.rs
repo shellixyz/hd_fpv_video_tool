@@ -718,6 +718,9 @@ impl Command {
 	///
 	/// # Errors
 	/// Returns a `SpawnError` if the process could not be spawned.
+	///
+	/// # Panics
+	/// Panics if the process priority cannot be set (logs an error instead of panicking).
 	pub fn spawn_with_callback(self, options: SpawnOptionsWithCallback) -> Result<ProcessWithCallback, SpawnError> {
 		log::debug!("spawning process: {self}");
 		let stdin_stdio = if self.has_stdin_input() {
@@ -992,13 +995,14 @@ impl Process {
 		self.handle.kill()
 	}
 
-	/// Kill the process asynchronously (for use in async contexts).
+	/// Kill the process synchronously (safe to call from async contexts since it only sends a signal).
 	///
 	/// # Errors
 	/// Returns an `IOError` if killing the process fails.
-	pub async fn kill_async(&mut self) -> Result<(), IOError> {
-		// Send SIGKILL via libc directly (no-op import needed).
+	pub fn kill_async(&mut self) -> Result<(), IOError> {
+		// Send SIGKILL via libc directly.
 		let pid = self.handle.id();
+		#[allow(clippy::cast_possible_wrap)]
 		unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
 		Ok(())
 	}
