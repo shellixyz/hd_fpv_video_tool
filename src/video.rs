@@ -188,7 +188,7 @@ pub enum FixVideoFileAudioError {
 	WriteToFileError(TouchError),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AudioFixType {
 	Sync,
 	Volume,
@@ -208,7 +208,7 @@ impl AudioFixType {
 		matches!(self, Volume | SyncAndVolume)
 	}
 
-	fn ffmpeg_audio_filter_string(&self) -> String {
+	fn ffmpeg_audio_filter_string(self) -> String {
 		use AudioFixType::{Sync, SyncAndVolume, Volume};
 		match self {
 			Sync => format!("atempo={DJI_AUDIO_FIX_ATEMPO}"),
@@ -455,21 +455,22 @@ fn remove_video_defects_regions_are_inside_video_frame(regions: &[Region], video
 	true
 }
 
-fn transcode_video_filter_parts(
-	args: &TranscodeVideoArgs,
-	video_info: &video::probe::Result,
+fn build_video_filter_parts(
+	remove_video_defects: &[Region],
+	video_resolution: Option<video::resolution::TargetResolution>,
 	hw_acceleration: HwAcceleratedEncoding,
+	speed: Option<f64>,
+	video_info: &video::probe::Result,
 ) -> Result<Vec<String>, TranscodeVideoError> {
 	let mut video_filter_parts = Vec::new();
 
-	if !args.remove_video_defects().is_empty() {
-		if !remove_video_defects_regions_are_inside_video_frame(args.remove_video_defects(), video_info.resolution()) {
+	if !remove_video_defects.is_empty() {
+		if !remove_video_defects_regions_are_inside_video_frame(remove_video_defects, video_info.resolution()) {
 			return Err(TranscodeVideoError::IncompatibleArguments(
 				"cannot remove video defects that are outside the video frame".to_owned(),
 			));
 		}
-		let mut defect_filters = args
-			.remove_video_defects()
+		let mut defect_filters = remove_video_defects
 			.iter()
 			.map(|region| format!("delogo={}", region.to_ffmpeg_filter_string()))
 			.collect_vec();
@@ -477,7 +478,7 @@ fn transcode_video_filter_parts(
 	}
 
 	if hw_acceleration.is_no()
-		&& let Some(resolution) = args.video_resolution()
+		&& let Some(resolution) = video_resolution
 	{
 		let resolution_dimensions = resolution.dimensions();
 		video_filter_parts.push(format!(
@@ -489,7 +490,7 @@ fn transcode_video_filter_parts(
 
 	if hw_acceleration.is_yes() {
 		video_filter_parts.push("format=nv12,hwupload".to_string());
-		if let Some(resolution) = args.video_resolution() {
+		if let Some(resolution) = video_resolution {
 			let resolution_dimensions = resolution.dimensions();
 			video_filter_parts.push(format!(
 				"scale_vaapi={}:{}",
@@ -499,7 +500,7 @@ fn transcode_video_filter_parts(
 		}
 	}
 
-	if let Some(speed) = args.speed() {
+	if let Some(speed) = speed {
 		if speed <= 0.0 {
 			return Err(TranscodeVideoError::IncompatibleArguments(
 				"speedup factor must be greater than 0".to_owned(),
@@ -562,11 +563,11 @@ fn build_transcode_command(
 	}
 
 	if video_filter_parts.is_empty() {
- 		ffmpeg_command.add_mapping("0:v");
- 	} else {
- 		let video_filter = format!("[0:v]{}[vo]", video_filter_parts.join(","));
- 		ffmpeg_command.add_complex_filter(&video_filter).add_mapping("[vo]");
- 	}
+		ffmpeg_command.add_mapping("0:v");
+	} else {
+		let video_filter = format!("[0:v]{}[vo]", video_filter_parts.join(","));
+		ffmpeg_command.add_complex_filter(&video_filter).add_mapping("[vo]");
+	}
 
 	if video_info.has_audio() {
 		ffmpeg_command.add_mapping("0:a");
@@ -631,7 +632,13 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		None => video_codec.default_video_quality(&hw_acceleration),
 	};
 	let video_bitrate = args.resolved_video_bitrate(video_codec)?;
-	let video_filter_parts = transcode_video_filter_parts(args, &video_info, hw_acceleration)?;
+	let video_filter_parts = build_video_filter_parts(
+		args.remove_video_defects(),
+		args.video_resolution(),
+		hw_acceleration,
+		args.speed(),
+		&video_info,
+	)?;
 
 	let mut ffmpeg_command = build_transcode_command(
 		args.input_video_file(),
@@ -704,8 +711,12 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 	Ok(output_video_file)
 }
 
-/// Minimal plain-data config for programmatic transcoding (no clap dependency).
-#[derive(Debug, Clone)]
+/// Plain-data config for programmatic transcoding (no clap dependency).
+///
+/// All fields beyond `input_video_file`, `output_video_file`, `profile`, `overwrite` and
+/// `ffmpeg_priority` default to `None` / `false` / empty, giving the same behaviour as
+/// running the `tv` subcommand with no extra flags.
+#[derive(Debug, Clone, Default)]
 pub struct TranscodeConfig {
 	pub input_video_file: std::path::PathBuf,
 	pub output_video_file: Option<std::path::PathBuf>,
@@ -713,16 +724,104 @@ pub struct TranscodeConfig {
 	pub profile: Option<String>,
 	pub overwrite: bool,
 	pub ffmpeg_priority: Option<i32>,
+
+	// ── Codec / quality ───────────────────────────────────────────────────────
+	/// Force a specific codec. `None` → auto-select (hw-accelerated AV1/H265 or
+	/// software H265 as fallback).
+	pub video_codec: Option<Codec>,
+	/// Force a specific video bitrate string, e.g. `"25M"`. `None` → default.
+	pub video_bitrate: Option<String>,
+	/// Force a specific CRF/global-quality value. `None` → codec default.
+	pub video_quality: Option<u8>,
+	/// Disable hardware acceleration even when available.
+	pub no_hwaccel: bool,
+
+	// ── Filters / transforms ──────────────────────────────────────────────────
+	/// Target output resolution. `None` → keep source resolution.
+	pub video_resolution: Option<video::resolution::TargetResolution>,
+	/// Regions to erase from the video (delogo filter).
+	pub remove_video_defects: Vec<Region>,
+	/// Speed multiplier (e.g. `2.0` = 2× speed). `None` → no change.
+	pub speed: Option<f64>,
+
+	// ── Audio ─────────────────────────────────────────────────────────────────
+	/// Apply the DJI audio fix (volume and/or sync correction).
+	pub video_audio_fix: Option<AudioFixType>,
+	/// Inject a silent audio track when the source has none.
+	pub add_audio: bool,
+	/// Audio encoder to use when re-encoding audio (e.g. `"aac"`).
+	pub audio_encoder: Option<String>,
+	/// Audio bitrate string to use when re-encoding audio (e.g. `"128k"`).
+	pub audio_bitrate: Option<String>,
+
+	// ── Trimming ──────────────────────────────────────────────────────────────
+	/// Trim: start at this timestamp.
+	pub start: Option<Timestamp>,
+	/// Trim: end at this timestamp.
+	pub end: Option<Timestamp>,
+}
+
+impl TranscodeConfig {
+	/// Resolves the output codec and hardware-acceleration mode, mirroring
+	/// `TranscodeVideoArgs::video_codec()`.
+	fn resolve_codec(&self) -> (Codec, HwAcceleratedEncoding) {
+		#[cfg(feature = "hwaccel")]
+		{
+			const FALLBACK: (Codec, HwAcceleratedEncoding) = (Codec::H265, HwAcceleratedEncoding::No);
+			if self.no_hwaccel {
+				return (self.video_codec.unwrap_or(Codec::H265), HwAcceleratedEncoding::No);
+			}
+			if let Some(codec) = self.video_codec {
+				match hw_accel::vaapi_cap_finder() {
+					Some(hw_accel_cap) => (codec, HwAcceleratedEncoding::from(hw_accel_cap.can_encode(codec))),
+					None => (codec, HwAcceleratedEncoding::No),
+				}
+			} else {
+				let found = hw_accel::vaapi_cap_finder()
+					.and_then(|cap| [Codec::AV1, Codec::H265].iter().find(|&&c| cap.can_encode(c)).copied());
+				match found {
+					Some(codec) => (codec, HwAcceleratedEncoding::Yes),
+					None => FALLBACK,
+				}
+			}
+		}
+		#[cfg(not(feature = "hwaccel"))]
+		{
+			(self.video_codec.unwrap_or(Codec::H265), HwAcceleratedEncoding::No)
+		}
+	}
+
+	/// Resolves the video quality, honouring `video_quality` then the profile
+	/// name, then falling back to the codec default.
+	fn resolve_quality(&self, video_codec: Codec, hw_acceleration: HwAcceleratedEncoding) -> VideoQuality {
+		if let Some(q) = self.video_quality {
+			return match hw_acceleration {
+				HwAcceleratedEncoding::No => VideoQuality::ConstantRateFactor(q),
+				HwAcceleratedEncoding::Yes => VideoQuality::GlobalQuality(q),
+			};
+		}
+		// Minimal profile support: only the "analog-fpv" special-case that the
+		// original code handled.
+		if self.profile.as_deref() == Some("analog-fpv") {
+			return VideoQuality::GlobalQuality(140);
+		}
+		video_codec.default_video_quality(&hw_acceleration)
+	}
 }
 
 /// Transcode using a plain [`TranscodeConfig`], invoking `callback(current_frame, total_frames)`
 /// as encoding progresses. Returns the output file path.
+///
+/// Supports the same feature set as the `tv` CLI command: hardware acceleration,
+/// codec/bitrate/quality selection, resolution scaling, speed change, delogo regions,
+/// audio fix, add-audio, and start/end trimming.
 ///
 /// # Errors
 /// Returns [`TranscodeVideoError`] if transcoding fails.
 ///
 /// # Panics
 /// Panics if the ffmpeg command cannot be built.
+#[allow(clippy::too_many_lines)]
 pub async fn transcode_with_progress<F>(
 	config: &TranscodeConfig,
 	callback: F,
@@ -734,39 +833,23 @@ where
 	if !input.exists() {
 		return Err(TranscodeVideoError::InputVideoFileDoesNotExist);
 	}
+	if config.start.is_some() && matches!(config.video_audio_fix, Some(fix) if fix.sync()) {
+		return Err(TranscodeVideoError::IncompatibleArguments(
+			"cannot fix video audio sync while not starting at the beginning of the file".to_owned(),
+		));
+	}
 
 	let video_info = probe(input)?;
-	let frame_count = video_info.frame_count();
+	let frame_count = frame_count_for_interval(
+		video_info.frame_count(),
+		video_info.frame_rate(),
+		config.start.as_ref(),
+		config.end.as_ref(),
+	);
 
-	let profile_str = config.profile.as_deref();
-	let (video_codec, hw_acceleration) = {
-		#[cfg(feature = "hwaccel")]
-		{
-			const FALLBACK: (Codec, HwAcceleratedEncoding) = (Codec::H265, HwAcceleratedEncoding::No);
-			match hw_accel::vaapi_cap_finder() {
-				Some(hw_accel_cap) => {
-					let codec = [Codec::AV1, Codec::H265]
-						.iter()
-						.find(|&&c| hw_accel_cap.can_encode(c))
-						.copied()
-						.unwrap_or(Codec::H265);
-					(codec, HwAcceleratedEncoding::from(hw_accel_cap.can_encode(codec)))
-				},
-				None => FALLBACK,
-			}
-		}
-		#[cfg(not(feature = "hwaccel"))]
-		{
-			(Codec::H265, HwAcceleratedEncoding::No)
-		}
-	};
-
-	let video_quality = if profile_str == Some("analog-fpv") {
-		ffmpeg::VideoQuality::GlobalQuality(140)
-	} else {
-		video_codec.default_video_quality(&hw_acceleration)
-	};
-	let video_bitrate = "25M".to_owned();
+	let (video_codec, hw_acceleration) = config.resolve_codec();
+	let video_quality = config.resolve_quality(video_codec, hw_acceleration);
+	let video_bitrate = config.video_bitrate.clone().unwrap_or_else(|| "25M".to_owned());
 
 	let output_video_file = config.output_video_file.clone().unwrap_or_else(|| {
 		let mut stem = input.file_stem().unwrap_or_default().to_os_string();
@@ -781,18 +864,18 @@ where
 	}
 	file::touch(&output_video_file)?;
 
-	// TranscodeConfig doesn't support speed/filters — pass an empty filter list so
-	// build_transcode_command emits a plain `0:v` mapping.
-	let video_filter_parts = if hw_acceleration.is_yes() {
-		vec!["format=nv12,hwupload".to_string()]
-	} else {
-		vec![]
-	};
+	let video_filter_parts = build_video_filter_parts(
+		&config.remove_video_defects,
+		config.video_resolution,
+		hw_acceleration,
+		config.speed,
+		&video_info,
+	)?;
 
-	let ffmpeg_command = build_transcode_command(
+	let mut ffmpeg_command = build_transcode_command(
 		input,
-		None,
-		None,
+		config.start,
+		config.end,
 		&output_video_file,
 		&video_info,
 		video_codec,
@@ -801,6 +884,58 @@ where
 		video_quality,
 		&video_filter_parts,
 	);
+
+	// Add-audio: inject a silent track when the source has none.
+	if config.add_audio {
+		if video_info.has_audio() {
+			log::warn!("ignoring request to add audio stream to output video as input has one");
+		} else {
+			let encoder = config.audio_encoder.as_deref().unwrap_or("aac");
+			let bitrate = config.audio_bitrate.as_deref().unwrap_or("128k");
+			ffmpeg_command.add_input_filter("lavfi", "anullsrc=channel_layout=stereo:sample_rate=48000");
+			ffmpeg_command.add_arg("-shortest");
+			ffmpeg_command.set_output_audio_settings(Some(encoder), Some(bitrate));
+			ffmpeg_command.add_mapping("1:a");
+		}
+	}
+
+	// Audio filters: volume fix and/or tempo adjustment.
+	if video_info.has_audio() {
+		let mut using_audio_filters = false;
+		let mut atempo_filter_value = None;
+		if let Some(video_audio_fix) = config.video_audio_fix {
+			if video_audio_fix.volume() {
+				ffmpeg_command.add_audio_filter(&AudioFixType::Volume.ffmpeg_audio_filter_string());
+				using_audio_filters = true;
+			}
+			if video_audio_fix.sync() {
+				let mut atempo = DJI_AUDIO_FIX_ATEMPO;
+				if let Some(speed) = config.speed {
+					atempo *= speed;
+				}
+				atempo_filter_value = Some(atempo);
+			}
+		} else if let Some(speed) = config.speed {
+			atempo_filter_value = Some(speed);
+		}
+		if let Some(atempo_filter_value) = atempo_filter_value {
+			let mut remaining_atempo = atempo_filter_value;
+			let mut filters = vec![];
+			while !(0.5..=100.0).contains(&remaining_atempo) {
+				let next_atempo = remaining_atempo.clamp(0.5, 100.0);
+				filters.push(format!("atempo={next_atempo:.6}"));
+				remaining_atempo /= next_atempo;
+			}
+			filters.push(format!("atempo={remaining_atempo:.6}"));
+			ffmpeg_command.add_audio_filter(&filters.join(","));
+			using_audio_filters = true;
+		}
+		if using_audio_filters {
+			let encoder = config.audio_encoder.as_deref().unwrap_or("aac");
+			let bitrate = config.audio_bitrate.as_deref().unwrap_or("128k");
+			ffmpeg_command.set_output_audio_settings(Some(encoder), Some(bitrate));
+		}
+	}
 
 	let spawn_options = ffmpeg::SpawnOptionsWithCallback::default()
 		.with_callback(frame_count, Box::new(callback))
@@ -934,7 +1069,13 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 	let video_bitrate = args.resolved_video_bitrate(video_codec)?;
 
 	let overlay_filter = "[0][1]overlay=eof_action=repeat:x=(W-w)/2:y=(H-h)/2";
-	let video_filter_parts = transcode_video_filter_parts(args, &video_info, hw_acceleration)?;
+	let video_filter_parts = build_video_filter_parts(
+		args.remove_video_defects(),
+		args.video_resolution(),
+		hw_acceleration,
+		args.speed(),
+		&video_info,
+	)?;
 	let video_filter = if video_filter_parts.is_empty() {
 		format!("{overlay_filter}[vo]")
 	} else {
