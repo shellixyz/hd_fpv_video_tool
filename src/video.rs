@@ -455,6 +455,73 @@ fn remove_video_defects_regions_are_inside_video_frame(regions: &[Region], video
 	true
 }
 
+/// Applies add-audio injection and audio fix/tempo filters to an in-progress
+/// ffmpeg command builder.  Called identically by [`transcode`] and
+/// [`transcode_with_progress`], which differ only in their spawn strategy.
+///
+/// * `has_audio`     – whether the source file has an audio stream
+/// * `add_audio`     – inject a silent track when the source has none
+/// * `audio_fix`     – optional DJI audio fix (volume and/or sync)
+/// * `speed`         – optional speed multiplier (drives `atempo` chain)
+/// * `audio_encoder` – encoder name, e.g. `"aac"`
+/// * `audio_bitrate` – bitrate string, e.g. `"128k"`
+fn apply_audio_extras(
+	ffmpeg_command: &mut ffmpeg::CommandBuilder,
+	has_audio: bool,
+	add_audio: bool,
+	audio_fix: Option<AudioFixType>,
+	speed: Option<f64>,
+	audio_encoder: &str,
+	audio_bitrate: &str,
+) {
+	if add_audio {
+		if has_audio {
+			log::warn!("ignoring request to add audio stream to output video as input has one");
+		} else {
+			ffmpeg_command.add_input_filter("lavfi", "anullsrc=channel_layout=stereo:sample_rate=48000");
+			ffmpeg_command.add_arg("-shortest");
+			ffmpeg_command.set_output_audio_settings(Some(audio_encoder), Some(audio_bitrate));
+			ffmpeg_command.add_mapping("1:a");
+		}
+	}
+
+	if has_audio {
+		let mut using_audio_filters = false;
+		let mut atempo_filter_value = None;
+		if let Some(video_audio_fix) = audio_fix {
+			if video_audio_fix.volume() {
+				ffmpeg_command.add_audio_filter(&AudioFixType::Volume.ffmpeg_audio_filter_string());
+				using_audio_filters = true;
+			}
+			if video_audio_fix.sync() {
+				let mut atempo = DJI_AUDIO_FIX_ATEMPO;
+				if let Some(s) = speed {
+					atempo *= s;
+				}
+				atempo_filter_value = Some(atempo);
+			}
+		} else if let Some(s) = speed {
+			atempo_filter_value = Some(s);
+		}
+		if let Some(atempo) = atempo_filter_value {
+			// atempo only supports values in 0.5..=100.0 – chain multiple filters if needed.
+			let mut remaining = atempo;
+			let mut filters = vec![];
+			while !(0.5..=100.0).contains(&remaining) {
+				let next = remaining.clamp(0.5, 100.0);
+				filters.push(format!("atempo={next:.6}"));
+				remaining /= next;
+			}
+			filters.push(format!("atempo={remaining:.6}"));
+			ffmpeg_command.add_audio_filter(&filters.join(","));
+			using_audio_filters = true;
+		}
+		if using_audio_filters {
+			ffmpeg_command.set_output_audio_settings(Some(audio_encoder), Some(audio_bitrate));
+		}
+	}
+}
+
 fn build_video_filter_parts(
 	remove_video_defects: &[Region],
 	video_resolution: Option<video::resolution::TargetResolution>,
@@ -653,54 +720,15 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		&video_filter_parts,
 	);
 
-	// Add-audio: inject a silent track when the source has none.
-	if args.add_audio() {
-		if video_info.has_audio() {
-			log::warn!("ignoring request to add audio stream to output video as input has one");
-		} else {
-			ffmpeg_command.add_input_filter("lavfi", "anullsrc=channel_layout=stereo:sample_rate=48000");
-			ffmpeg_command.add_arg("-shortest");
-			ffmpeg_command.set_output_audio_settings(Some(args.audio_encoder()), Some(args.audio_bitrate()));
-			ffmpeg_command.add_mapping("1:a");
-		}
-	}
-
-	// Audio filters: volume fix and/or tempo adjustment.
-	if video_info.has_audio() {
-		let mut using_audio_filters = false;
-		let mut atempo_filter_value = None;
-		if let Some(video_audio_fix) = args.video_audio_fix() {
-			if video_audio_fix.volume() {
-				ffmpeg_command.add_audio_filter(&AudioFixType::Volume.ffmpeg_audio_filter_string());
-				using_audio_filters = true;
-			}
-			if video_audio_fix.sync() {
-				let mut atempo = DJI_AUDIO_FIX_ATEMPO;
-				if let Some(speed) = args.speed() {
-					atempo *= speed;
-				}
-				atempo_filter_value = Some(atempo);
-			}
-		} else if let Some(speed) = args.speed() {
-			atempo_filter_value = Some(speed);
-		}
-		if let Some(atempo_filter_value) = atempo_filter_value {
-			// atempo filter only supports between 0.5 and 100.0, so chain multiple filters if needed
-			let mut remaining_atempo = atempo_filter_value;
-			let mut filters = vec![];
-			while !(0.5..=100.0).contains(&remaining_atempo) {
-				let next_atempo = remaining_atempo.clamp(0.5, 100.0);
-				filters.push(format!("atempo={next_atempo:.6}"));
-				remaining_atempo /= next_atempo;
-			}
-			filters.push(format!("atempo={remaining_atempo:.6}"));
-			ffmpeg_command.add_audio_filter(&filters.join(","));
-			using_audio_filters = true;
-		}
-		if using_audio_filters {
-			ffmpeg_command.set_output_audio_settings(Some(args.audio_encoder()), Some(args.audio_bitrate()));
-		}
-	}
+	apply_audio_extras(
+		&mut ffmpeg_command,
+		video_info.has_audio(),
+		args.add_audio(),
+		args.video_audio_fix(),
+		args.speed(),
+		args.audio_encoder(),
+		args.audio_bitrate(),
+	);
 
 	let spawn_options = ffmpeg::SpawnOptions::default()
 		.with_progress(frame_count)
@@ -885,57 +913,15 @@ where
 		&video_filter_parts,
 	);
 
-	// Add-audio: inject a silent track when the source has none.
-	if config.add_audio {
-		if video_info.has_audio() {
-			log::warn!("ignoring request to add audio stream to output video as input has one");
-		} else {
-			let encoder = config.audio_encoder.as_deref().unwrap_or("aac");
-			let bitrate = config.audio_bitrate.as_deref().unwrap_or("128k");
-			ffmpeg_command.add_input_filter("lavfi", "anullsrc=channel_layout=stereo:sample_rate=48000");
-			ffmpeg_command.add_arg("-shortest");
-			ffmpeg_command.set_output_audio_settings(Some(encoder), Some(bitrate));
-			ffmpeg_command.add_mapping("1:a");
-		}
-	}
-
-	// Audio filters: volume fix and/or tempo adjustment.
-	if video_info.has_audio() {
-		let mut using_audio_filters = false;
-		let mut atempo_filter_value = None;
-		if let Some(video_audio_fix) = config.video_audio_fix {
-			if video_audio_fix.volume() {
-				ffmpeg_command.add_audio_filter(&AudioFixType::Volume.ffmpeg_audio_filter_string());
-				using_audio_filters = true;
-			}
-			if video_audio_fix.sync() {
-				let mut atempo = DJI_AUDIO_FIX_ATEMPO;
-				if let Some(speed) = config.speed {
-					atempo *= speed;
-				}
-				atempo_filter_value = Some(atempo);
-			}
-		} else if let Some(speed) = config.speed {
-			atempo_filter_value = Some(speed);
-		}
-		if let Some(atempo_filter_value) = atempo_filter_value {
-			let mut remaining_atempo = atempo_filter_value;
-			let mut filters = vec![];
-			while !(0.5..=100.0).contains(&remaining_atempo) {
-				let next_atempo = remaining_atempo.clamp(0.5, 100.0);
-				filters.push(format!("atempo={next_atempo:.6}"));
-				remaining_atempo /= next_atempo;
-			}
-			filters.push(format!("atempo={remaining_atempo:.6}"));
-			ffmpeg_command.add_audio_filter(&filters.join(","));
-			using_audio_filters = true;
-		}
-		if using_audio_filters {
-			let encoder = config.audio_encoder.as_deref().unwrap_or("aac");
-			let bitrate = config.audio_bitrate.as_deref().unwrap_or("128k");
-			ffmpeg_command.set_output_audio_settings(Some(encoder), Some(bitrate));
-		}
-	}
+	apply_audio_extras(
+		&mut ffmpeg_command,
+		video_info.has_audio(),
+		config.add_audio,
+		config.video_audio_fix,
+		config.speed,
+		config.audio_encoder.as_deref().unwrap_or("aac"),
+		config.audio_bitrate.as_deref().unwrap_or("128k"),
+	);
 
 	let spawn_options = ffmpeg::SpawnOptionsWithCallback::default()
 		.with_callback(frame_count, Box::new(callback))
