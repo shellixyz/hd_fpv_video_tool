@@ -1072,16 +1072,14 @@ impl ProcessWithCallback {
 			let last_line = lines.next_back().unwrap();
 			let last_cr_lines = last_line.split_inclusive('\r').map(str::to_string).collect::<Vec<_>>();
 
-			if frame_count > 0 {
-				if let Some(cr_line) = last_cr_lines.iter().rfind(|cr_pl| cr_pl.ends_with('\r')) {
-					lazy_static! {
-						static ref PROGRESS_RE: Regex = Regex::new(r"\Aframe=\s*(\d+)").unwrap();
-					}
-					if let Some(captures) = PROGRESS_RE.captures(cr_line) {
-						if let Ok(frame) = captures.get(1).unwrap().as_str().parse::<u64>() {
-							callback(frame, frame_count);
-						}
-					}
+			if frame_count > 0
+				&& let Some(cr_line) = last_cr_lines.iter().rfind(|cr_pl| cr_pl.ends_with('\r'))
+			{
+				static PROGRESS_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\Aframe=\s*(\d+)").unwrap());
+				if let Some(captures) = PROGRESS_RE.captures(cr_line)
+					&& let Ok(frame) = captures.get(1).unwrap().as_str().parse::<u64>()
+				{
+					callback(frame, frame_count);
 				}
 			}
 
@@ -1089,7 +1087,7 @@ impl ProcessWithCallback {
 			output_buf.clear();
 
 			if last_line.ends_with('\n') {
-				last_lines.push(last_line);
+				last_lines.enqueue(last_line);
 			} else {
 				let last_cr_line = last_cr_lines.last().unwrap();
 				if !last_cr_line.ends_with('\r') {

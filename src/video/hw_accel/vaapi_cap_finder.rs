@@ -31,6 +31,7 @@ impl VaapiCapFinder {
 
 	/// Returns the DRM device node that was used to open the VA-API display,
 	/// e.g. `/dev/dri/renderD128`. Pass this to ffmpeg's `-vaapi_device` argument.
+	#[must_use]
 	pub fn drm_device_path(&self) -> &PathBuf {
 		&self.drm_device_path
 	}

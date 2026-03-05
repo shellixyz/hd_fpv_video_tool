@@ -517,6 +517,69 @@ fn transcode_video_filter_parts(
 /// # Errors
 /// Returns an error if the transcoding process fails.
 ///
+/// Shared ffmpeg command builder for both the CLI transcode path and the programmatic
+/// `transcode_with_progress` path.
+///
+/// Returns `(CommandBuilder, frame_count)` ready to spawn. The caller is responsible for
+/// adding any extra mappings / filters (e.g. audio-fix, speed, add-audio) before spawning,
+/// and for choosing the appropriate `SpawnOptions` / `SpawnOptionsWithCallback`.
+///
+/// The video stream is always mapped: via `[vo]` when a video filter is provided, or via
+/// `0:v` otherwise.  Audio is mapped as `0:a` when `has_audio` is true.
+#[allow(clippy::too_many_arguments)]
+fn build_transcode_command(
+	input: &Path,
+	input_start: Option<Timestamp>,
+	input_end: Option<Timestamp>,
+	output: &Path,
+	video_info: &video::probe::Result,
+	video_codec: Codec,
+	hw_acceleration: HwAcceleratedEncoding,
+	video_bitrate: &str,
+	video_quality: VideoQuality,
+	video_filter_parts: &[String],
+) -> ffmpeg::CommandBuilder {
+	let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
+
+	ffmpeg_command
+		.add_input_file_slice(input, input_start, input_end)
+		.set_output_video_settings(
+			Some(video_codec.ffmpeg_string(hw_acceleration.as_bool())),
+			Some(video_bitrate),
+			Some(video_quality),
+		)
+		.set_output_file(output)
+		.set_overwrite_output_file(true);
+
+	if hw_acceleration.is_yes() {
+		#[cfg(feature = "hwaccel")]
+		if let Some(device) = hw_accel::vaapi_device_path() {
+			ffmpeg_command
+				.add_prefix_arg("-vaapi_device")
+				.add_prefix_arg(device.to_str().unwrap_or("/dev/dri/renderD128"));
+		}
+		ffmpeg_command.add_prefix_arg("-hwaccel").add_prefix_arg("vaapi");
+	}
+
+	if video_filter_parts.is_empty() {
+ 		ffmpeg_command.add_mapping("0:v");
+ 	} else {
+ 		let video_filter = format!("[0:v]{}[vo]", video_filter_parts.join(","));
+ 		ffmpeg_command.add_complex_filter(&video_filter).add_mapping("[vo]");
+ 	}
+
+	if video_info.has_audio() {
+		ffmpeg_command.add_mapping("0:a");
+	}
+
+	ffmpeg_command
+}
+
+/// Transcode the video file according to the given arguments.
+///
+/// # Errors
+/// Returns an error if the transcoding process fails.
+///
 /// # Panics
 /// Panics if the ffmpeg command cannot be built.
 #[allow(clippy::too_many_lines)]
@@ -560,8 +623,6 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		args.start_end().end().as_ref(),
 	);
 
-	let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
-
 	let video_quality = match args.resolved_video_quality(video_codec)? {
 		Some(quality) => match hw_acceleration {
 			HwAcceleratedEncoding::No => VideoQuality::ConstantRateFactor(quality),
@@ -570,22 +631,22 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		None => video_codec.default_video_quality(&hw_acceleration),
 	};
 	let video_bitrate = args.resolved_video_bitrate(video_codec)?;
+	let video_filter_parts = transcode_video_filter_parts(args, &video_info, hw_acceleration)?;
 
-	ffmpeg_command
-		.add_input_file_slice(
-			args.input_video_file(),
-			args.start_end().start(),
-			args.start_end().end(),
-		)
-		.set_output_video_settings(
-			Some(video_codec.ffmpeg_string(hw_acceleration.as_bool())),
-			Some(&video_bitrate),
-			Some(video_quality),
-			// Some(VideoQuality::GlobalQuality(22)),
-		)
-		.set_output_file(output_video_file.clone())
-		.set_overwrite_output_file(true);
+	let mut ffmpeg_command = build_transcode_command(
+		args.input_video_file(),
+		args.start_end().start(),
+		args.start_end().end(),
+		&output_video_file,
+		&video_info,
+		video_codec,
+		hw_acceleration,
+		&video_bitrate,
+		video_quality,
+		&video_filter_parts,
+	);
 
+	// Add-audio: inject a silent track when the source has none.
 	if args.add_audio() {
 		if video_info.has_audio() {
 			log::warn!("ignoring request to add audio stream to output video as input has one");
@@ -597,26 +658,8 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		}
 	}
 
-	if hw_acceleration.is_yes() {
-		#[cfg(feature = "hwaccel")]
-		if let Some(device) = hw_accel::vaapi_device_path() {
-			ffmpeg_command
-				.add_prefix_arg("-vaapi_device")
-				.add_prefix_arg(device.to_str().unwrap_or("/dev/dri/renderD128"));
-		}
-		ffmpeg_command.add_prefix_arg("-hwaccel").add_prefix_arg("vaapi");
-	}
-
-	let video_filter_parts = transcode_video_filter_parts(args, &video_info, hw_acceleration)?;
-	if !video_filter_parts.is_empty() {
-		let video_filter = format!("[0:v]{}[vo]", video_filter_parts.join(","));
-		ffmpeg_command.add_complex_filter(&video_filter).add_mapping("[vo]");
-	} else {
-		ffmpeg_command.add_mapping("0:v");
-	}
-
+	// Audio filters: volume fix and/or tempo adjustment.
 	if video_info.has_audio() {
-		ffmpeg_command.add_mapping("0:a");
 		let mut using_audio_filters = false;
 		let mut atempo_filter_value = None;
 		if let Some(video_audio_fix) = args.video_audio_fix() {
@@ -687,7 +730,6 @@ pub async fn transcode_with_progress<F>(
 where
 	F: Fn(u64, u64) + Send + 'static,
 {
-	// Build the ffmpeg command directly, mirroring what transcode() does but with a callback.
 	let input = &config.input_video_file;
 	if !input.exists() {
 		return Err(TranscodeVideoError::InputVideoFileDoesNotExist);
@@ -696,7 +738,6 @@ where
 	let video_info = probe(input)?;
 	let frame_count = video_info.frame_count();
 
-	// Resolve profile settings manually.
 	let profile_str = config.profile.as_deref();
 	let (video_codec, hw_acceleration) = {
 		#[cfg(feature = "hwaccel")]
@@ -725,7 +766,6 @@ where
 	} else {
 		video_codec.default_video_quality(&hw_acceleration)
 	};
-
 	let video_bitrate = "25M".to_owned();
 
 	let output_video_file = config.output_video_file.clone().unwrap_or_else(|| {
@@ -741,35 +781,26 @@ where
 	}
 	file::touch(&output_video_file)?;
 
-	let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
-	ffmpeg_command
-		.add_input_file(input)
-		.set_output_video_settings(
-			Some(video_codec.ffmpeg_string(hw_acceleration.as_bool())),
-			Some(&video_bitrate),
-			Some(video_quality),
-		)
-		.set_output_file(output_video_file.clone())
-		.set_overwrite_output_file(true);
-
-	if video_info.has_audio() {
-		ffmpeg_command.add_mapping("0:a");
-	}
-
-	if hw_acceleration.is_yes() {
-		#[cfg(feature = "hwaccel")]
-		if let Some(device) = hw_accel::vaapi_device_path() {
-			ffmpeg_command
-				.add_prefix_arg("-vaapi_device")
-				.add_prefix_arg(device.to_str().unwrap_or("/dev/dri/renderD128"));
-		}
-		ffmpeg_command.add_prefix_arg("-hwaccel").add_prefix_arg("vaapi");
-		ffmpeg_command
-			.add_complex_filter("[0:v]format=nv12,hwupload[vo]")
-			.add_mapping("[vo]");
+	// TranscodeConfig doesn't support speed/filters — pass an empty filter list so
+	// build_transcode_command emits a plain `0:v` mapping.
+	let video_filter_parts = if hw_acceleration.is_yes() {
+		vec!["format=nv12,hwupload".to_string()]
 	} else {
-		ffmpeg_command.add_mapping("0:v");
-	}
+		vec![]
+	};
+
+	let ffmpeg_command = build_transcode_command(
+		input,
+		None,
+		None,
+		&output_video_file,
+		&video_info,
+		video_codec,
+		hw_acceleration,
+		&video_bitrate,
+		video_quality,
+		&video_filter_parts,
+	);
 
 	let spawn_options = ffmpeg::SpawnOptionsWithCallback::default()
 		.with_callback(frame_count, Box::new(callback))
