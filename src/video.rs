@@ -600,7 +600,9 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 	if hw_acceleration.is_yes() {
 		#[cfg(feature = "hwaccel")]
 		if let Some(device) = hw_accel::vaapi_device_path() {
-			ffmpeg_command.add_prefix_arg("-vaapi_device").add_prefix_arg(device.to_str().unwrap_or("/dev/dri/renderD128"));
+			ffmpeg_command
+				.add_prefix_arg("-vaapi_device")
+				.add_prefix_arg(device.to_str().unwrap_or("/dev/dri/renderD128"));
 		}
 		ffmpeg_command.add_prefix_arg("-hwaccel").add_prefix_arg("vaapi");
 	}
@@ -755,12 +757,16 @@ where
 	if hw_acceleration.is_yes() {
 		#[cfg(feature = "hwaccel")]
 		if let Some(device) = hw_accel::vaapi_device_path() {
-			ffmpeg_command.add_prefix_arg("-vaapi_device").add_prefix_arg(device.to_str().unwrap_or("/dev/dri/renderD128"));
+			ffmpeg_command
+				.add_prefix_arg("-vaapi_device")
+				.add_prefix_arg(device.to_str().unwrap_or("/dev/dri/renderD128"));
 		}
 		ffmpeg_command.add_prefix_arg("-hwaccel").add_prefix_arg("vaapi");
 		ffmpeg_command
 			.add_complex_filter("[0:v]format=nv12,hwupload[vo]")
 			.add_mapping("[vo]");
+	} else {
+		ffmpeg_command.add_mapping("0:v");
 	}
 
 	let spawn_options = ffmpeg::SpawnOptionsWithCallback::default()
@@ -923,7 +929,9 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 	if hw_acceleration.is_yes() {
 		#[cfg(feature = "hwaccel")]
 		if let Some(device) = hw_accel::vaapi_device_path() {
-			ffmpeg_command.add_prefix_arg("-vaapi_device").add_prefix_arg(device.to_str().unwrap_or("/dev/dri/renderD128"));
+			ffmpeg_command
+				.add_prefix_arg("-vaapi_device")
+				.add_prefix_arg(device.to_str().unwrap_or("/dev/dri/renderD128"));
 		}
 		ffmpeg_command.add_prefix_arg("-hwaccel").add_prefix_arg("vaapi");
 	}

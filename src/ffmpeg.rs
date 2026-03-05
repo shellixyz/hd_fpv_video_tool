@@ -995,7 +995,8 @@ impl Process {
 		self.handle.kill()
 	}
 
-	/// Kill the process synchronously (safe to call from async contexts since it only sends a signal).
+	/// Kill the process synchronously (safe to call from async contexts since it only sends a
+	/// signal).
 	///
 	/// # Errors
 	/// Returns an `IOError` if killing the process fails.
@@ -1003,7 +1004,9 @@ impl Process {
 		// Send SIGKILL via libc directly.
 		let pid = self.handle.id();
 		#[allow(clippy::cast_possible_wrap)]
-		unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
+		unsafe {
+			libc::kill(pid as libc::pid_t, libc::SIGKILL)
+		};
 		Ok(())
 	}
 }

@@ -20,7 +20,10 @@ impl VaapiCapFinder {
 				break;
 			}
 			if let Ok(display) = cros_libva::Display::open_drm_display(&path) {
-				return Some(Self { display, drm_device_path: path });
+				return Some(Self {
+					display,
+					drm_device_path: path,
+				});
 			}
 		}
 		None
