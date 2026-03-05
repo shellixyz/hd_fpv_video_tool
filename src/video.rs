@@ -611,6 +611,8 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 	if !video_filter_parts.is_empty() {
 		let video_filter = format!("[0:v]{}[vo]", video_filter_parts.join(","));
 		ffmpeg_command.add_complex_filter(&video_filter).add_mapping("[vo]");
+	} else {
+		ffmpeg_command.add_mapping("0:v");
 	}
 
 	if video_info.has_audio() {
