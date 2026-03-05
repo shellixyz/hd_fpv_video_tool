@@ -6,7 +6,7 @@ use crate::AsBool;
 pub mod vaapi_cap_finder;
 
 #[cfg(feature = "hwaccel")]
-pub use vaapi_cap_finder::{VaapiCapFinder, vaapi_cap_finder};
+pub use vaapi_cap_finder::{VaapiCapFinder, vaapi_cap_finder, vaapi_device_path};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, derive_more::Display, IsVariant)]
 pub enum HwAcceleratedEncoding {
