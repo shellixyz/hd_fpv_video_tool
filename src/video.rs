@@ -1106,7 +1106,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 		ffmpeg_command.add_prefix_arg("-hwaccel").add_prefix_arg("vaapi");
 	}
 
-	if args.add_audio() {
+	if args.add_audio() && !args.remove_audio() {
 		if video_info.has_audio() {
 			log::warn!("ignoring request to add audio stream to output video as input has one");
 		} else {
@@ -1117,17 +1117,19 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 		}
 	}
 
-	match (video_info.has_audio(), args.video_audio_fix()) {
-		(true, None) => {
-			ffmpeg_command.add_mapping("0:a");
-		},
-		(true, Some(audio_fix_type)) => {
-			ffmpeg_command
-				.add_mapping_with_audio_filter("0:a", &audio_fix_type.ffmpeg_audio_filter_string())
-				.set_output_audio_settings(Some(args.audio_encoder()), Some(args.audio_bitrate()));
-		},
-		(false, None) => {},
-		(false, Some(_)) => return Err(TranscodeVideoError::RequestedAudioFixingButInputHasNoAudio),
+	if !args.remove_audio() {
+		match (video_info.has_audio(), args.video_audio_fix()) {
+			(true, None) => {
+				ffmpeg_command.add_mapping("0:a");
+			},
+			(true, Some(audio_fix_type)) => {
+				ffmpeg_command
+					.add_mapping_with_audio_filter("0:a", &audio_fix_type.ffmpeg_audio_filter_string())
+					.set_output_audio_settings(Some(args.audio_encoder()), Some(args.audio_bitrate()));
+			},
+			(false, None) => {},
+			(false, Some(_)) => return Err(TranscodeVideoError::RequestedAudioFixingButInputHasNoAudio),
+		}
 	}
 
 	let spawn_options = ffmpeg::SpawnOptions::default()
