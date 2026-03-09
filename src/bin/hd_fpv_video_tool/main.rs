@@ -255,6 +255,43 @@ async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
 	Ok(())
 }
 
+async fn remove_audio_stream_command(command: &Commands) -> anyhow::Result<()> {
+        if let Commands::RemoveAudioStream {
+                input_video_file,
+                output_video_file,
+                overwrite,
+                ffmpeg_priority,
+        } = command
+        {
+                let output_video_file = if let Some(output_video_file) = output_video_file {
+                        output_video_file.clone()
+                } else {
+                        let mut output_file_stem = Path::new(
+                                input_video_file
+                                        .file_stem()
+                                        .ok_or_else(|| anyhow!("input file has no file name"))?,
+                        )
+                        .as_os_str()
+                        .to_os_string();
+                        output_file_stem.push("_no_audio");
+                        let input_file_extension = input_video_file
+                                .extension()
+                                .ok_or_else(|| anyhow!("input file has no extension"))?;
+                        input_video_file
+                                .with_file_name(output_file_stem)
+                                .with_extension(input_file_extension)
+                };
+                video::remove_audio_stream(
+                        input_video_file,
+                        output_video_file,
+                        *overwrite,
+                        *ffmpeg_priority,
+                )
+                .await?;
+        }
+        Ok(())
+}
+
 async fn add_audio_stream_command(command: &Commands) -> anyhow::Result<()> {
 	if let Commands::AddAudioStream {
 		audio_encoder,
@@ -382,6 +419,7 @@ async fn main() {
 		command @ Commands::GenerateOverlayFrames { .. } => generate_overlay_frames_command(command),
 		command @ Commands::GenerateOverlayVideo { .. } => generate_overlay_video_command(command).await,
 		command @ Commands::TranscodeVideo { .. } => transcode_video_command(command).await,
+		command @ Commands::RemoveAudioStream { .. } => remove_audio_stream_command(command).await,
 		command @ Commands::AddAudioStream { .. } => add_audio_stream_command(command).await,
 		Commands::DisplayOSDFileInfo { osd_file } => display_osd_file_info_command(osd_file),
 		Commands::DisplayProfiles => display_profiles_command(),

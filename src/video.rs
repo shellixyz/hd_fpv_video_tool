@@ -1387,3 +1387,72 @@ pub async fn add_audio_stream(
 
 	Ok(())
 }
+
+#[derive(Debug, Error)]
+pub enum RemoveAudioStreamError {
+	#[error("input file does not exist: {0}")]
+	InputFileDoesNotExist(PathBuf),
+	#[error("output video file exists: {0}")]
+	OutputVideoFileExists(PathBuf),
+	#[error("input file has no audio stream")]
+	InputFileHasNoAudioStream,
+	#[error(transparent)]
+	FailedSpawningFFMpegProcess(#[from] ffmpeg::SpawnError),
+	#[error(transparent)]
+	FFMpegExitedWithError(#[from] ffmpeg::ProcessError),
+	#[error("failed to get input video details")]
+	FailedToGetInputVideoDetails(#[from] VideoProbingError),
+}
+
+/// Remove the audio stream from a video file, copying the video track without re-encoding.
+///
+/// # Errors
+/// Returns an error if the process fails.
+///
+/// # Panics
+/// Panics if the ffmpeg command cannot be built.
+pub async fn remove_audio_stream(
+	input_file: impl AsRef<Path>,
+	output_file: impl AsRef<Path>,
+	overwrite: bool,
+	ffmpeg_priority: Option<i32>,
+) -> Result<(), RemoveAudioStreamError> {
+	let input_file = input_file.as_ref();
+	if !input_file.exists() {
+		return Err(RemoveAudioStreamError::InputFileDoesNotExist(input_file.to_path_buf()));
+	}
+
+	let output_file = output_file.as_ref();
+	if !overwrite && output_file.exists() {
+		return Err(RemoveAudioStreamError::OutputVideoFileExists(output_file.to_path_buf()));
+	}
+
+	let video_info = probe(input_file)?;
+	if !video_info.has_audio() {
+		return Err(RemoveAudioStreamError::InputFileHasNoAudioStream);
+	}
+
+	log::info!(
+		"removing audio stream from video: {} -> {}",
+		input_file.to_string_lossy(),
+		output_file.to_string_lossy()
+	);
+
+	let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
+
+	ffmpeg_command
+		.add_input_file(input_file)
+		.add_mapping("0:v")
+		.set_output_video_codec(Some("copy"))
+		.set_output_file(output_file)
+		.set_overwrite_output_file(true);
+
+	let spawn_options = ffmpeg::SpawnOptions::default()
+		.with_progress(video_info.frame_count())
+		.with_priority(ffmpeg_priority);
+	ffmpeg_command.build().unwrap().spawn(&spawn_options)?.wait().await?;
+
+	log::info!("audio stream removed successfully");
+
+	Ok(())
+}

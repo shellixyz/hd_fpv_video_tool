@@ -212,6 +212,25 @@ pub enum Commands {
 		input_video_files: Vec<PathBuf>,
 	},
 
+	/// Remove the audio stream from a video file
+	///
+	/// The video track is copied directly without re-encoding
+	#[clap(alias = "ras")]
+	RemoveAudioStream {
+		#[clap(short = 'P', long)]
+		ffmpeg_priority: Option<i32>,
+
+		/// input video file path
+		input_video_file: PathBuf,
+
+		/// output video file path
+		output_video_file: Option<PathBuf>,
+
+		/// overwrite output file if it exists
+		#[clap(short = 'y', long, value_parser)]
+		overwrite: bool,
+	},
+
 	/// Add a silent audio stream to a video file
 	///
 	/// Useful when the input video does not have an audio stream and you want to splice it with
