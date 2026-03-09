@@ -194,6 +194,12 @@ pub struct TranscodeVideoArgs {
 	#[getset(get_copy = "pub")]
 	fix_audio_sync: bool,
 
+	/// remove audio stream from the output video
+	#[clap(short = 'R', long, value_parser)]
+	#[getset(skip)]
+	#[getset(get_copy = "pub")]
+	remove_audio: bool,
+
 	#[cfg(feature = "hwaccel")]
 	/// disable hardware acceleration
 	#[clap(short = 'N', long, default_value_t = false)]

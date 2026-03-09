@@ -606,6 +606,7 @@ fn build_transcode_command(
 	video_bitrate: &str,
 	video_quality: VideoQuality,
 	video_filter_parts: &[String],
+	remove_audio: bool,
 ) -> ffmpeg::CommandBuilder {
 	let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
 
@@ -636,7 +637,7 @@ fn build_transcode_command(
 		ffmpeg_command.add_complex_filter(&video_filter).add_mapping("[vo]");
 	}
 
-	if video_info.has_audio() {
+	if video_info.has_audio() && !remove_audio {
 		ffmpeg_command.add_mapping("0:a");
 	}
 
@@ -718,17 +719,20 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		&video_bitrate,
 		video_quality,
 		&video_filter_parts,
+		args.remove_audio(),
 	);
 
-	apply_audio_extras(
-		&mut ffmpeg_command,
-		video_info.has_audio(),
-		args.add_audio(),
-		args.video_audio_fix(),
-		args.speed(),
-		args.audio_encoder(),
-		args.audio_bitrate(),
-	);
+	if !args.remove_audio() {
+		apply_audio_extras(
+			&mut ffmpeg_command,
+			video_info.has_audio(),
+			args.add_audio(),
+			args.video_audio_fix(),
+			args.speed(),
+			args.audio_encoder(),
+			args.audio_bitrate(),
+		);
+	}
 
 	let spawn_options = ffmpeg::SpawnOptions::default()
 		.with_progress(frame_count)
@@ -745,6 +749,7 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 /// `ffmpeg_priority` default to `None` / `false` / empty, giving the same behaviour as
 /// running the `tv` subcommand with no extra flags.
 #[derive(Debug, Clone, Default)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct TranscodeConfig {
 	pub input_video_file: std::path::PathBuf,
 	pub output_video_file: Option<std::path::PathBuf>,
@@ -777,6 +782,8 @@ pub struct TranscodeConfig {
 	pub video_audio_fix: Option<AudioFixType>,
 	/// Inject a silent audio track when the source has none.
 	pub add_audio: bool,
+	/// Remove the audio stream from the output video.
+	pub remove_audio: bool,
 	/// Audio encoder to use when re-encoding audio (e.g. `"aac"`).
 	pub audio_encoder: Option<String>,
 	/// Audio bitrate string to use when re-encoding audio (e.g. `"128k"`).
@@ -911,17 +918,20 @@ where
 		&video_bitrate,
 		video_quality,
 		&video_filter_parts,
+		config.remove_audio,
 	);
 
-	apply_audio_extras(
-		&mut ffmpeg_command,
-		video_info.has_audio(),
-		config.add_audio,
-		config.video_audio_fix,
-		config.speed,
-		config.audio_encoder.as_deref().unwrap_or("aac"),
-		config.audio_bitrate.as_deref().unwrap_or("128k"),
-	);
+	if !config.remove_audio {
+		apply_audio_extras(
+			&mut ffmpeg_command,
+			video_info.has_audio(),
+			config.add_audio,
+			config.video_audio_fix,
+			config.speed,
+			config.audio_encoder.as_deref().unwrap_or("aac"),
+			config.audio_bitrate.as_deref().unwrap_or("128k"),
+		);
+	}
 
 	let spawn_options = ffmpeg::SpawnOptionsWithCallback::default()
 		.with_callback(frame_count, Box::new(callback))
