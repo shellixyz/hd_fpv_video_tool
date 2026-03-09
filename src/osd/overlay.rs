@@ -559,6 +559,7 @@ impl<'a> Generator<'a> {
 		}
 
 		file::touch(output_video_path)?;
+		let guard = crate::file::OutputFileGuard::new(output_video_path);
 
 		log::info!("generating overlay video: {}", output_video_path.to_string_lossy());
 
@@ -591,6 +592,7 @@ impl<'a> Generator<'a> {
 		frames_iter.send_frames_to_ffmpeg_and_wait(ffmpeg_process).await?;
 
 		log::info!("overlay video generation completed: {frame_count} frames");
+		guard.defuse();
 		Ok(())
 	}
 
@@ -630,6 +632,7 @@ impl<'a> Generator<'a> {
 		}
 
 		file::touch(output_video_path)?;
+		let guard = crate::file::OutputFileGuard::new(output_video_path);
 
 		log::info!("generating overlay video: {}", output_video_path.to_string_lossy());
 
@@ -664,6 +667,7 @@ impl<'a> Generator<'a> {
 			.await?;
 
 		log::info!("overlay video generation completed: {frame_count} frames");
+		guard.defuse();
 		Ok(())
 	}
 

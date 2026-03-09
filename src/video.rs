@@ -126,6 +126,7 @@ pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(
 	}
 
 	file::touch(&output_video_file)?;
+	let guard = crate::file::OutputFileGuard::new(&output_video_file);
 
 	log::info!(
 		"cutting video: {} -> {}",
@@ -159,6 +160,7 @@ pub async fn cut<P: AsRef<Path>, Q: AsRef<Path>>(
 	ffmpeg_command.build().unwrap().spawn(&spawn_options)?.wait().await?;
 
 	log::info!("video file cut successfully");
+	guard.defuse();
 	Ok(())
 }
 
@@ -273,6 +275,7 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(
 	}
 
 	file::touch(&output_video_file)?;
+	let guard = crate::file::OutputFileGuard::new(&output_video_file);
 
 	log::info!(
 		"fixing video file audio: {} -> {}",
@@ -302,6 +305,7 @@ pub async fn fix_dji_air_unit_audio<P: AsRef<Path>, Q: AsRef<Path>>(
 	ffmpeg_command.build().unwrap().spawn(&spawn_options)?.wait().await?;
 
 	log::info!("video file's audio stream fixed successfully");
+	guard.defuse();
 	Ok(())
 }
 
@@ -349,6 +353,7 @@ where
 		return Err(FixVideoFileAudioError::OutputVideoFileExists);
 	}
 	file::touch(&output_video_file)?;
+	let guard = crate::file::OutputFileGuard::new(&output_video_file);
 	let video_info = probe(input_video_file)?;
 	if !video_info.has_audio() {
 		return Err(FixVideoFileAudioError::InputVideoDoesNotHaveAnAudioStream);
@@ -372,6 +377,7 @@ where
 		.wait()
 		.await?;
 	log::info!("video file's audio stream fixed successfully");
+	guard.defuse();
 	Ok(())
 }
 
@@ -664,6 +670,7 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		return Err(TranscodeVideoError::InputAndOutputFileIsTheSame);
 	}
 	file::touch(&output_video_file)?;
+	let guard = crate::file::OutputFileGuard::new(&output_video_file);
 	if args.start_end().start().is_some() && matches!(args.video_audio_fix(), Some(fix) if fix.sync()) {
 		return Err(TranscodeVideoError::IncompatibleArguments(
 			"cannot fix video audio sync while not starting at the beginning of the file".to_owned(),
@@ -742,6 +749,7 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 	ffmpeg_command.build().unwrap().spawn(&spawn_options)?.wait().await?;
 
 	log::info!("{frame_count} frames transcoded successfully");
+	guard.defuse();
 	Ok(output_video_file)
 }
 
@@ -900,6 +908,7 @@ where
 		return Err(TranscodeVideoError::OutputVideoFileExists);
 	}
 	file::touch(&output_video_file)?;
+	let guard = crate::file::OutputFileGuard::new(&output_video_file);
 
 	let video_filter_parts = build_video_filter_parts(
 		&config.remove_video_defects,
@@ -948,6 +957,7 @@ where
 		.await?;
 
 	log::info!("{frame_count} frames transcoded successfully");
+	guard.defuse();
 	Ok(output_video_file)
 }
 
@@ -976,6 +986,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 		return Err(TranscodeVideoError::InputAndOutputFileIsTheSame);
 	}
 	file::touch(&output_video_file)?;
+	let guard = crate::file::OutputFileGuard::new(&output_video_file);
 	if args.start_end().start().is_some() && matches!(args.video_audio_fix(), Some(fix) if fix.sync()) {
 		return Err(TranscodeVideoError::IncompatibleArguments(
 			"cannot fix video audio sync while not starting at the beginning of the file".to_owned(),
@@ -1144,6 +1155,7 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 	osd_frames_iter.send_frames_to_ffmpeg_and_wait(ffmpeg_process).await?;
 
 	log::info!("{frame_count} frames transcoded successfully");
+	guard.defuse();
 	Ok(())
 }
 
@@ -1382,13 +1394,14 @@ pub async fn add_audio_stream(
 		.set_output_file(output_file)
 		.set_overwrite_output_file(true);
 
+	let guard = crate::file::OutputFileGuard::new(output_file);
 	let spawn_options = ffmpeg::SpawnOptions::default()
 		.with_progress(video_info.frame_count())
 		.with_priority(ffmpeg_priority);
 	ffmpeg_command.build().unwrap().spawn(&spawn_options)?.wait().await?;
 
 	log::info!("audio stream added successfully");
-
+	guard.defuse();
 	Ok(())
 }
 
@@ -1451,12 +1464,13 @@ pub async fn remove_audio_stream(
 		.set_output_file(output_file)
 		.set_overwrite_output_file(true);
 
+	let guard = crate::file::OutputFileGuard::new(output_file);
 	let spawn_options = ffmpeg::SpawnOptions::default()
 		.with_progress(video_info.frame_count())
 		.with_priority(ffmpeg_priority);
 	ffmpeg_command.build().unwrap().spawn(&spawn_options)?.wait().await?;
 
 	log::info!("audio stream removed successfully");
-
+	guard.defuse();
 	Ok(())
 }
