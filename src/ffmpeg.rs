@@ -13,7 +13,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use path_absolutize::Absolutize;
 use regex::Regex;
-use ringbuffer::{self, ConstGenericRingBuffer, RingBufferExt, RingBufferWrite};
+use ringbuffer::{self, ConstGenericRingBuffer, RingBuffer};
 use tempfile::TempPath;
 use thiserror::Error;
 use tokio::task::JoinHandle;
@@ -782,7 +782,7 @@ impl Process {
 			output_buf.clear();
 
 			if last_line.ends_with('\n') {
-				last_lines.push(last_line);
+				last_lines.enqueue(last_line);
 			} else {
 				let last_cr_line = last_cr_lines.last().unwrap();
 				if !last_cr_line.ends_with('\r') {

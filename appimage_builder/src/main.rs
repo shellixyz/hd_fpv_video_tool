@@ -10,7 +10,6 @@ use std::{
 };
 
 use anyhow::{Context, anyhow};
-use env_logger::fmt::Color;
 use futures_util::stream::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use indoc::indoc;
@@ -193,10 +192,14 @@ fn setup_logger() {
 	env_logger::builder()
 		.format(|buf, record| {
 			let level_style = buf.default_level_style(record.level());
-			write!(buf, "{:<5}", level_style.value(record.level()))?;
-			let mut style = buf.style();
-			style.set_color(Color::White).set_bold(true);
-			write!(buf, "{}", style.value(" > "))?;
+			write!(
+				buf,
+				"{}{:<5}{}",
+				level_style.render(),
+				record.level(),
+				level_style.render_reset()
+			)?;
+			write!(buf, " > ")?;
 			writeln!(buf, "{}", record.args())
 		})
 		.parse_filters("info")
@@ -366,7 +369,7 @@ async fn main() -> anyhow::Result<()> {
 
 	let toml = cargo_toml::Manifest::from_path("../Cargo.toml")?;
 	let application_name = toml.package().name();
-	let application_version = toml.package().version();
+	let application_version = toml.package().version().to_string();
 	let application_binary_path = Path::new("target/release").join(application_name);
 	let appdir_path = Path::new("target").join(application_name).with_extension("AppDir");
 	let lib_dir_path = appdir_path.join("lib64");
@@ -386,7 +389,7 @@ async fn main() -> anyhow::Result<()> {
 	log::info!("creating app bin dir: {}", bin_dir_path.to_string_lossy());
 	create_path(&bin_dir_path)?;
 
-	install_desktop_file(&appdir_path, application_name, application_version)?;
+	install_desktop_file(&appdir_path, application_name, &application_version)?;
 	install_icon_file(&appdir_path)?;
 	install_runner(&appdir_path)?;
 	install_application_binary(application_binary_path, &bin_dir_path)?;

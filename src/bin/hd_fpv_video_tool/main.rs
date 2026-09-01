@@ -10,7 +10,6 @@ use std::{
 
 use anyhow::anyhow;
 use clap::Parser;
-use env_logger::fmt::Color;
 use hd_fpv_video_tool::{
 	cli::{generate_overlay_args::GenerateOverlayArgsBuilder, transcode_video_args::transcode_profiles_display},
 	osd::file::GenericReader,
@@ -366,10 +365,14 @@ async fn main() {
 	env_logger::builder()
 		.format(|buf, record| {
 			let level_style = buf.default_level_style(record.level());
-			write!(buf, "{:<5}", level_style.value(record.level()))?;
-			let mut style = buf.style();
-			style.set_color(Color::White).set_bold(true);
-			write!(buf, "{}", style.value(" > "))?;
+			write!(
+				buf,
+				"{}{:<5}{}",
+				level_style.render(),
+				record.level(),
+				level_style.render_reset()
+			)?;
+			write!(buf, " > ")?;
 			writeln!(buf, "{}", record.args())
 		})
 		.parse_filters(cli.log_level().to_string().as_str())
