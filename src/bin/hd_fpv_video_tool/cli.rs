@@ -4,9 +4,12 @@ use clap::{Parser, Subcommand};
 use getset::CopyGetters;
 use hd_fpv_video_tool::{cli::start_end_args::CutVideoStartEndArgs, prelude::*};
 
-use crate::shell_autocompletion::{GenerateShellAutoCompletionFilesArg, generate_shell_autocompletion_files_arg_parser};
+use crate::shell_autocompletion::{
+	GenerateShellAutoCompletionFilesArg, generate_shell_autocompletion_files_arg_parser,
+};
 
-/// `hd_fpv_video_tool` is a command line tool for manipulating video files and OSD files recorded with the DJI and Walksnail Avatar FPV systems
+/// `hd_fpv_video_tool` is a command line tool for manipulating video files and OSD files recorded
+/// with the DJI and Walksnail Avatar FPV systems
 ///
 /// Author: Michel Pastor <shellixyz@gmail.com>
 ///
@@ -36,21 +39,23 @@ pub enum Commands {
 
 	/// Generate a transparent overlay frame sequence as PNG files from a .osd file
 	///
-	/// This command generates numbered OSD frame images from the specified WTF.FPV OSD file and writes
-	/// them into the specified output directory.
+	/// This command generates numbered OSD frame images from the specified WTF.FPV OSD file and
+	/// writes them into the specified output directory.
 	///
 	/// Use this command when you want to generate OSD frame images to check what the OSD looks like
 	/// or when you want to manually burn the OSD onto a video.
 	///
-	/// If you specify a target resolution with --target-resolution or a video file to read the resolution from
-	/// with --target-video-file then the kind of tiles (HD/SD) to use and whether to use scaling or not
-	/// will be decided to best match the target video resolution and to get the best OSD sharpness.
-	/// If neither of these options are specified no scaling will be used and the kind of tiles used will be
-	/// the native kind of tiles corresponding to the kind of OSD layout read from the FPV.WTF .osd file.
+	/// If you specify a target resolution with --target-resolution or a video file to read the
+	/// resolution from with --target-video-file then the kind of tiles (HD/SD) to use and whether
+	/// to use scaling or not will be decided to best match the target video resolution and to get
+	/// the best OSD sharpness. If neither of these options are specified no scaling will be used
+	/// and the kind of tiles used will be the native kind of tiles corresponding to the kind of
+	/// OSD layout read from the FPV.WTF .osd file.
 	///
 	/// Fonts are loaded either from the directory specified with the --font-dir option or
 	/// from the directory found in the environment variable `FONTS_DIR` or
-	/// if neither of these are available it falls back to the `fonts` directory inside the current directory.
+	/// if neither of these are available it falls back to the `fonts` directory inside the current
+	/// directory.
 	#[clap(alias = "gof")]
 	GenerateOverlayFrames {
 		#[clap(flatten)]
@@ -62,24 +67,28 @@ pub enum Commands {
 
 	/// Generate an OSD overlay video to be displayed over another video
 	///
-	/// This command generates a transparent video with the OSD frames rendered from the specified WTF.FPV OSD file.
-	/// The generated video can then be used to play an FPV video with OSD without having to burn the OSD into the video.
+	/// This command generates a transparent video with the OSD frames rendered from the specified
+	/// WTF.FPV OSD file. The generated video can then be used to play an FPV video with OSD
+	/// without having to burn the OSD into the video.
 	///
-	/// If you specify a target resolution with --target-resolution or a video file to read the resolution from
-	/// with --target-video-file then the kind of tiles (HD/SD) to use and whether to use scaling or not
-	/// will be decided to best match the target video resolution and to get the best OSD sharpness.
-	/// If neither of these options are specified no scaling will be used and the kind of tiles used will be
-	/// the native kind of tiles corresponding to the kind of OSD layout read from the FPV.WTF .osd file.
+	/// If you specify a target resolution with --target-resolution or a video file to read the
+	/// resolution from with --target-video-file then the kind of tiles (HD/SD) to use and whether
+	/// to use scaling or not will be decided to best match the target video resolution and to get
+	/// the best OSD sharpness. If neither of these options are specified no scaling will be used
+	/// and the kind of tiles used will be the native kind of tiles corresponding to the kind of
+	/// OSD layout read from the FPV.WTF .osd file.
 	///
-	/// VP8 or VP9 codecs can be selected with the --codec option. Files generated with the VP9 codec are smaller
-	/// but also it is roughly twice as slow as encoding with the VP8 codec which is already unfortunately pretty slow.
+	/// VP8 or VP9 codecs can be selected with the --codec option. Files generated with the VP9
+	/// codec are smaller but also it is roughly twice as slow as encoding with the VP8 codec which
+	/// is already unfortunately pretty slow.
 	///
 	/// Fonts are loaded either from the directory specified with the --font-dir option or
 	/// from the directory found in the environment variable `FONTS_DIR` or
-	/// if neither of these are available it falls back to the `fonts` directory inside the current directory.
+	/// if neither of these are available it falls back to the `fonts` directory inside the current
+	/// directory.
 	///
-	/// NOTE: unfortunately this is very slow right now because only a handful of video formats support transparency
-	/// and their encoders are very slow
+	/// NOTE: unfortunately this is very slow right now because only a handful of video formats
+	/// support transparency and their encoders are very slow
 	#[clap(alias = "gov")]
 	GenerateOverlayVideo {
 		#[clap(flatten)]
@@ -101,8 +110,9 @@ pub enum Commands {
 
 	/// Cut a video file without transcoding by specifying the desired start and/or end timestamp
 	///
-	/// Note that without transcoding videos can only be cut at the nearest P-frame so the cuts may not
-	/// be at exactly the start/end points. If you need precise slicing use the `transcode` command instead.
+	/// Note that without transcoding videos can only be cut at the nearest P-frame so the cuts may
+	/// not be at exactly the start/end points. If you need precise slicing use the `transcode`
+	/// command instead.
 	#[clap(alias = "cv")]
 	CutVideo {
 		#[clap(flatten)]
@@ -124,8 +134,8 @@ pub enum Commands {
 
 	/// Fix a DJI Air Unit video's audio sync and/or volume
 	///
-	/// If the output video file is not provided the output video will be written in the same directory
-	/// as the input video with the same file name with suffix `_fixed_audio`
+	/// If the output video file is not provided the output video will be written in the same
+	/// directory as the input video with the same file name with suffix `_fixed_audio`
 	///
 	/// Note that fixing the audio/video sync will only work if the start of the original video from
 	/// the DJI FPV air unit has NOT been cut off.
@@ -159,7 +169,8 @@ pub enum Commands {
 	///
 	/// Fonts are loaded either from the directory specified with the --font-dir option or
 	/// from the directory found in the environment variable `FONTS_DIR` or
-	/// if neither of these are available it falls back to the `fonts` directory inside the current directory
+	/// if neither of these are available it falls back to the `fonts` directory inside the current
+	/// directory
 	#[clap(alias = "tv")]
 	TranscodeVideo {
 		#[clap(flatten)]
@@ -171,10 +182,11 @@ pub enum Commands {
 
 	/// Play a video with OSD by overlaying a transparent OSD video in real time
 	///
-	/// You can generate a compatible OSD overlay video file with the `generate-overlay-video` command.
+	/// You can generate a compatible OSD overlay video file with the `generate-overlay-video`
+	/// command.
 	///
-	/// If the <`OSD_VIDEO_FILE`> argument is not provided it will try to use the file with the same base name
-	/// as the <`VIDEO_FILE`> argument with suffix `_osd` and with `webm` extension.
+	/// If the <`OSD_VIDEO_FILE`> argument is not provided it will try to use the file with the same
+	/// base name as the <`VIDEO_FILE`> argument with suffix `_osd` and with `webm` extension.
 	#[clap(alias = "pvwo")]
 	PlayVideoWithOSD {
 		video_file: PathBuf,
@@ -202,8 +214,8 @@ pub enum Commands {
 
 	/// Add a silent audio stream to a video file
 	///
-	/// Useful when the input video does not have an audio stream and you want to splice it with other videos
-	/// that do have audio and you want to keep the audio from the other videos
+	/// Useful when the input video does not have an audio stream and you want to splice it with
+	/// other videos that do have audio and you want to keep the audio from the other videos
 	#[clap(alias = "aas")]
 	AddAudioStream {
 		/// audio encoder to use

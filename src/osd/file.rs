@@ -13,7 +13,6 @@ pub mod sorted_frames;
 pub use frame::Frame;
 
 pub use self::sorted_frames::SortedUniqFrames;
-
 use super::{FontVariant, tile_indices::TileIndex};
 
 #[derive(Debug, Error, From)]
@@ -34,7 +33,8 @@ impl ReadError {
 
 #[delegatable_trait]
 pub trait GenericReader {
-	/// Reads the next frame from the OSD file. Returns `Ok(None)` if there are no more frames to read.
+	/// Reads the next frame from the OSD file. Returns `Ok(None)` if there are no more frames to
+	/// read.
 	///
 	/// # Errors
 	/// Returns a `ReadError` if there is an error reading the frame.

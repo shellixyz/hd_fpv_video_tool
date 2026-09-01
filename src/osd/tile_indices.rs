@@ -3,13 +3,13 @@ use std::{iter::Enumerate, ops::Index};
 use derive_more::Deref;
 use thiserror::Error;
 
-use crate::osd;
-
 use super::{Dimensions, FontVariant, Kind};
+use crate::osd;
 
 pub type TileIndex = u16;
 
-// frame payloads are always 1320*2=2640 bytes representing a 60x22 grid which corresponds to the FakeHD OSD format
+// frame payloads are always 1320*2=2640 bytes representing a 60x22 grid which corresponds to the
+// FakeHD OSD format
 pub const DIMENSIONS: Dimensions = Kind::DJI_FakeHD.dimensions_tiles();
 pub const COUNT: usize = DIMENSIONS.width as usize * DIMENSIONS.height as usize;
 
@@ -112,7 +112,8 @@ impl TileIndices {
 	/// Erases the specified OSD items from the tile indices.
 	///
 	/// # Errors
-	/// Returns `UnknownOSDItem` if any of the specified OSD items are not found for the given font variant.
+	/// Returns `UnknownOSDItem` if any of the specified OSD items are not found for the given font
+	/// variant.
 	pub fn erase_osd_items(
 		&mut self,
 		font_variant: FontVariant,

@@ -139,23 +139,21 @@ impl TranscodeVideoOSDArgs {
 	/// If no OSD file is provided and OSD is requested, tries to find the associated OSD file.
 	///
 	/// # Errors
-	/// - Returns `RequestedOSDButNoFileProvidedNorFound` if OSD is requested, `--optional-osd` is disabled and no
-	///   file is provided nor found.
+	/// - Returns `RequestedOSDButNoFileProvidedNorFound` if OSD is requested, `--optional-osd` is
+	///   disabled and no file is provided nor found.
 	pub fn osd_file_path<P: AsRef<Path>>(
 		&self,
 		video_file_path: P,
 	) -> Result<Option<PathBuf>, RequestedOSDButNoFileProvidedNorFound> {
 		let osd_requested = self.osd || self.osd_overlay_video || self.optional_osd;
 		let osd_file_path = match (osd_requested, &self.osd_file) {
-			(true, None) => {
-				match find_associated_to_video_file(video_file_path) {
-					Some(osd_file_path) => Some(osd_file_path),
-					None if self.optional_osd => {
-						log::warn!("no associated .osd file found, continuing without OSD due to --optional-osd");
-						None
-					},
-					None => return Err(RequestedOSDButNoFileProvidedNorFound),
-				}
+			(true, None) => match find_associated_to_video_file(video_file_path) {
+				Some(osd_file_path) => Some(osd_file_path),
+				None if self.optional_osd => {
+					log::warn!("no associated .osd file found, continuing without OSD due to --optional-osd");
+					None
+				},
+				None => return Err(RequestedOSDButNoFileProvidedNorFound),
 			},
 			(_, Some(osd_file_path)) => Some(osd_file_path.clone()),
 			(false, None) => None,
@@ -281,20 +279,16 @@ fn transcode_video_args_video_codec_help() -> String {
 		.collect::<Vec<_>>()
 		.join(", ");
 	#[cfg(feature = "hwaccel")]
-	let default_selection_help = "If omitted:{n}\
-		- uses codec defined by --profile (if any){n}\
-		- otherwise, if hardware acceleration is enabled, tries AV1 then H265 and picks the first codec that can be \
-		hardware-encoded{n}\
-		- if no hardware-encodable codec is found, falls back to H265 software encoding{n}\
-		- with --no-hwaccel, falls back to H265 software encoding";
+	let default_selection_help = "If omitted:{n}- uses codec defined by --profile (if any){n}- otherwise, if hardware \
+	                           acceleration is enabled, tries AV1 then H265 and picks the first codec that can be \
+	                           hardware-encoded{n}- if no hardware-encodable codec is found, falls back to H265 \
+	                           software encoding{n}- with --no-hwaccel, falls back to H265 software encoding";
 	#[cfg(not(feature = "hwaccel"))]
-	let default_selection_help = "If omitted:{n}\
-		- uses codec defined by --profile (if any){n}\
-		- otherwise falls back to H265 software encoding";
+	let default_selection_help =
+		"If omitted:{n}- uses codec defined by --profile (if any){n}- otherwise falls back to H265 software encoding";
 	format!(
-		"video codec to use. Possible values: {video_codecs}.{n}\
-		 This option overrides codec selected by --profile.{n}\
-		 {default_selection_help}",
+		"video codec to use. Possible values: {video_codecs}.{n}This option overrides codec selected by \
+		 --profile.{n}{default_selection_help}",
 		n = '\n'
 	)
 }
@@ -626,8 +620,10 @@ impl TranscodeVideoArgs {
 	/// Returns the output video file path.
 	///
 	/// # Errors
-	/// - Returns `OutputVideoFileError::InputHasNoFileName` if the input video file has no file name.
-	/// - Returns `OutputVideoFileError::InputHasNoExtension` if the input video file has no extension.
+	/// - Returns `OutputVideoFileError::InputHasNoFileName` if the input video file has no file
+	///   name.
+	/// - Returns `OutputVideoFileError::InputHasNoExtension` if the input video file has no
+	///   extension.
 	pub fn output_video_file(&self, with_osd: bool) -> Result<PathBuf, OutputVideoFileError> {
 		Ok(if let Some(output_video_file) = &self.output_video_file {
 			output_video_file.clone()

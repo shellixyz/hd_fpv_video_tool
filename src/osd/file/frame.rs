@@ -40,7 +40,8 @@ impl Frame {
 	/// Erases OSD items by their names for the given font variant.
 	///
 	/// # Errors
-	/// - Returns `UnknownOSDItem` if any of the provided item names do not correspond to known OSD items for the specified font variant.
+	/// - Returns `UnknownOSDItem` if any of the provided item names do not correspond to known OSD
+	///   items for the specified font variant.
 	pub fn with_erased_osd_items(
 		&self,
 		font_variant: FontVariant,

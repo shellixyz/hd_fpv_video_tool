@@ -1,8 +1,7 @@
-use std::{ops::RangeInclusive, str::FromStr};
+use std::{ops::RangeInclusive, str::FromStr, sync::LazyLock};
 
 use derive_more::From;
 use getset::CopyGetters;
-use lazy_static::lazy_static;
 use regex::Regex;
 use thiserror::Error;
 
@@ -65,9 +64,7 @@ impl FromStr for Coordinates {
 	type Err = FormatError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		lazy_static! {
-			static ref ORIGIN_RE: Regex = Regex::new(r"\A(?P<x>\d{1,2}),(?P<y>\d{1,2})\z").unwrap();
-		}
+		static ORIGIN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\A(?P<x>\d{1,2}),(?P<y>\d{1,2})\z").unwrap());
 		match ORIGIN_RE.captures(s) {
 			Some(captures) => {
 				let x = captures.name("x").unwrap().as_str().parse().unwrap();

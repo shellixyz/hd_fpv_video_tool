@@ -3,9 +3,7 @@ use std::collections::HashMap;
 use getset::{CopyGetters, Getters};
 use strum::IntoEnumIterator;
 
-use super::Dimensions;
-use super::font_variant::FontVariant;
-use super::tile_indices::TileIndex;
+use super::{Dimensions, font_variant::FontVariant, tile_indices::TileIndex};
 use crate::osd;
 
 #[derive(Debug, Clone, Copy, CopyGetters)]

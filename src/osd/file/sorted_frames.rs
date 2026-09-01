@@ -1,14 +1,15 @@
 use derive_more::Deref;
 use getset::CopyGetters;
-use rayon::iter::plumbing::Consumer as RayonConsumer;
-use rayon::iter::plumbing::Producer as RayonProducer;
-use rayon::iter::plumbing::ProducerCallback as RayonProducerCallback;
-use rayon::iter::plumbing::UnindexedConsumer as RayonUnindexedConsumer;
-use rayon::iter::{IndexedParallelIterator, ParallelIterator, plumbing::bridge as rayon_iter_bridge};
+use rayon::iter::{
+	IndexedParallelIterator, ParallelIterator,
+	plumbing::{
+		Consumer as RayonConsumer, Producer as RayonProducer, ProducerCallback as RayonProducerCallback,
+		UnindexedConsumer as RayonUnindexedConsumer, bridge as rayon_iter_bridge,
+	},
+};
 use strum::EnumIter;
 
 use super::Frame;
-
 use crate::{
 	osd::{FontVariant, Kind, tile_indices::TileIndex},
 	video::FrameIndex as VideoFrameIndex,
@@ -163,7 +164,8 @@ where
 			.copied()
 	}
 
-	/// returns the video frame shifted index of the first frame which has a video frame shifted index greater than the specified first video frame
+	/// returns the video frame shifted index of the first frame which has a video frame shifted
+	/// index greater than the specified first video frame
 	fn first_video_frame_index(&self, first_video_frame: u32, video_frame_shift: i32) -> Option<u32> {
 		#[allow(clippy::cast_possible_wrap)]
 		let first_video_frame_index = first_video_frame as i32 - video_frame_shift;
@@ -405,9 +407,8 @@ impl IndexedParallelIterator for ParallelShiftIter<'_> {
 }
 
 impl<'a> RayonProducer for ParallelShiftIter<'a> {
-	type Item = ShiftIterItem<'a>;
-
 	type IntoIter = ShiftIter<'a>;
+	type Item = ShiftIterItem<'a>;
 
 	fn into_iter(self) -> Self::IntoIter {
 		ShiftIter::new(self.frames, self.video_frame_shift)
@@ -555,9 +556,9 @@ impl<'a> Iterator for VideoFramesRelIndexIter<'a> {
 				}
 			},
 			_ => {
-				// if that block is reached it means the frames we are iterating over were either not sorted by index
-				// or each frame did not have an uniq index. Should not be possible if the iterator was created
-				// from SortedUniqFrames or SortedUniqFramesForVideoSlice  iter methods
+				// if that block is reached it means the frames we are iterating over were either not sorted by
+				// index or each frame did not have an uniq index. Should not be possible if the iterator was
+				// created from SortedUniqFrames or SortedUniqFramesForVideoSlice  iter methods
 				unreachable!()
 			},
 		};
@@ -649,9 +650,8 @@ impl IndexedParallelIterator for ParallelVideoFramesRelIndexIter<'_> {
 }
 
 impl<'a> RayonProducer for ParallelVideoFramesRelIndexIter<'a> {
-	type Item = VideoFramesRelIndexIterItem<'a>;
-
 	type IntoIter = VideoFramesRelIndexIter<'a>;
+	type Item = VideoFramesRelIndexIterItem<'a>;
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.into()
@@ -719,12 +719,11 @@ mod tests {
 	use rayon::iter::plumbing::Producer;
 	use strum::IntoEnumIterator;
 
-	use crate::osd::{FontVariant, Kind, TileIndices};
-
 	use super::{
 		EndOfFramesAction, ParallelVideoFramesRelIndexIter, SortedUniqFrames, VideoFramesRelIndexIter,
 		VideoFramesRelIndexIterItem,
 	};
+	use crate::osd::{FontVariant, Kind, TileIndices};
 
 	#[derive(PartialEq, Eq, Deref)]
 	struct VideoFramesRelIndexIterItems<'a>(Vec<VideoFramesRelIndexIterItem<'a>>);
@@ -797,7 +796,8 @@ mod tests {
 						println!("----------------------------");
 						for split in 0..frames_slice.len() {
 							println!(
-								"first_video_frame: {first_video_frame}, last_video_frame: {last_video_frame:?}, eof_action: {eof_action}, video_frame_shift: {video_frame_shift}, split: {split}"
+								"first_video_frame: {first_video_frame}, last_video_frame: {last_video_frame:?}, \
+								 eof_action: {eof_action}, video_frame_shift: {video_frame_shift}, split: {split}"
 							);
 							let iter = ParallelVideoFramesRelIndexIter::from(
 								frames_slice.video_frames_rel_index_iter(eof_action),
@@ -809,9 +809,10 @@ mod tests {
 							i1_items.display();
 							i2_items.display();
 
-							// check that the items returned by the split iterator are the same as the non-split iterator
+							// check that the items returned by the split iterator are the same as the non-split
+							// iterator
 							let all_items = VideoFramesRelIndexIterItems(
-								i1_items.0.into_iter().chain(i2_items.0.into_iter()).collect::<Vec<_>>(),
+								i1_items.0.into_iter().chain(i2_items.0).collect::<Vec<_>>(),
 							);
 							assert_eq!(ref_items, all_items);
 							println!("****************************");

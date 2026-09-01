@@ -6,11 +6,11 @@ use std::{
 	os::unix::ffi::OsStrExt,
 	path::{Path, PathBuf},
 	process,
+	sync::LazyLock,
 };
 
 use getset::{CopyGetters, Getters, Setters};
 use indicatif::{ProgressBar, ProgressStyle};
-use lazy_static::lazy_static;
 use path_absolutize::Absolutize;
 use regex::Regex;
 use ringbuffer::{self, ConstGenericRingBuffer, RingBuffer};
@@ -741,62 +741,65 @@ impl Process {
 		}
 	}
 
-	#[allow(clippy::unused_async)]
-	async fn monitor(mut ffmpeg_stderr: process::ChildStderr, frame_count: Option<u64>) -> Vec<String> {
-		let mut output_buf = String::new();
-		let mut read_buf = [0; 1024];
-		let mut last_lines = ConstGenericRingBuffer::<_, 16>::new();
+	fn monitor(
+		mut ffmpeg_stderr: process::ChildStderr,
+		frame_count: Option<u64>,
+	) -> impl std::future::Future<Output = Vec<String>> {
+		static PROGRESS_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\Aframe=\s*(\d+)").unwrap());
 
-		let progress_bar = frame_count.map(|frame_count| {
-			let progress_style = ProgressStyle::with_template("{wide_bar} {percent:>3}% [ETA {eta:>3}]").unwrap();
-			let progress_bar = ProgressBar::new(frame_count).with_style(progress_style);
-			progress_bar.set_position(0);
-			progress_bar
-		});
+		async move {
+			let mut output_buf = String::new();
+			let mut read_buf = [0; 1024];
+			let mut last_lines = ConstGenericRingBuffer::<_, 16>::new();
 
-		loop {
-			let read_count = ffmpeg_stderr.read(&mut read_buf).unwrap();
-			if read_count == 0 {
-				break;
-			}
-			output_buf.push_str(String::from_utf8_lossy(&read_buf[0..read_count]).to_string().as_str());
+			let progress_bar = frame_count.map(|frame_count| {
+				let progress_style = ProgressStyle::with_template("{wide_bar} {percent:>3}% [ETA {eta:>3}]").unwrap();
+				let progress_bar = ProgressBar::new(frame_count).with_style(progress_style);
+				progress_bar.set_position(0);
+				progress_bar
+			});
 
-			let mut lines = output_buf.split_inclusive('\n').map(str::to_string);
-			let last_line = lines.next_back().unwrap();
+			loop {
+				let read_count = ffmpeg_stderr.read(&mut read_buf).unwrap();
+				if read_count == 0 {
+					break;
+				}
+				output_buf.push_str(String::from_utf8_lossy(&read_buf[0..read_count]).to_string().as_str());
 
-			let last_cr_lines = last_line.split_inclusive('\r').map(str::to_string).collect::<Vec<_>>();
+				let mut lines = output_buf.split_inclusive('\n').map(str::to_string);
+				let last_line = lines.next_back().unwrap();
 
-			if let Some(progress_bar) = &progress_bar {
-				if let Some(cr_line) = last_cr_lines.iter().rfind(|cr_pl| cr_pl.ends_with('\r')) {
-					lazy_static! {
-						static ref PROGRESS_RE: Regex = Regex::new(r"\Aframe=\s*(\d+)").unwrap();
+				let last_cr_lines = last_line.split_inclusive('\r').map(str::to_string).collect::<Vec<_>>();
+
+				if let Some(progress_bar) = &progress_bar {
+					if let Some(cr_line) = last_cr_lines.iter().rfind(|cr_pl| cr_pl.ends_with('\r')) {
+						if let Some(captures) = PROGRESS_RE.captures(cr_line) {
+							let frame: u64 = captures.get(1).unwrap().as_str().parse().unwrap();
+							progress_bar.set_position(frame);
+						}
 					}
-					if let Some(captures) = PROGRESS_RE.captures(cr_line) {
-						let frame: u64 = captures.get(1).unwrap().as_str().parse().unwrap();
-						progress_bar.set_position(frame);
+				}
+
+				last_lines.extend(lines);
+				output_buf.clear();
+
+				if last_line.ends_with('\n') {
+					last_lines.enqueue(last_line);
+				} else {
+					let last_cr_line = last_cr_lines.last().unwrap();
+					if !last_cr_line.ends_with('\r') {
+						output_buf.push_str(last_cr_line);
 					}
 				}
 			}
 
-			last_lines.extend(lines);
-			output_buf.clear();
-
-			if last_line.ends_with('\n') {
-				last_lines.enqueue(last_line);
-			} else {
-				let last_cr_line = last_cr_lines.last().unwrap();
-				if !last_cr_line.ends_with('\r') {
-					output_buf.push_str(last_cr_line);
-				}
+			if let Some(progress_bar) = progress_bar {
+				progress_bar.set_position(frame_count.unwrap());
+				progress_bar.finish_and_clear();
 			}
-		}
 
-		if let Some(progress_bar) = progress_bar {
-			progress_bar.set_position(frame_count.unwrap());
-			progress_bar.finish_and_clear();
+			last_lines.to_vec()
 		}
-
-		last_lines.to_vec()
 	}
 
 	pub fn take_stdin(&mut self) -> Option<process::ChildStdin> {

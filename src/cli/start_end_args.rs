@@ -33,7 +33,8 @@ impl StartEndArgs {
 	/// Validates the start and end timestamps.
 	///
 	/// # Errors
-	/// - Returns `StartGreaterThanEndError` if the start timestamp is greater than or equal to the end timestamp.
+	/// - Returns `StartGreaterThanEndError` if the start timestamp is greater than or equal to the
+	///   end timestamp.
 	pub fn check_valid(&self) -> Result<(), StartGreaterThanEndError> {
 		if !self.are_valid() {
 			return Err(StartGreaterThanEndError);
@@ -67,7 +68,8 @@ impl CutVideoStartEndArgs {
 	/// Validates the start and end timestamps.
 	///
 	/// # Errors
-	/// - Returns `StartGreaterThanEndError` if the start timestamp is greater than or equal to the end timestamp.
+	/// - Returns `StartGreaterThanEndError` if the start timestamp is greater than or equal to the
+	///   end timestamp.
 	pub fn check_valid(&self) -> Result<(), StartGreaterThanEndError> {
 		if !self.are_valid() {
 			return Err(StartGreaterThanEndError);

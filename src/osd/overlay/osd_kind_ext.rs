@@ -2,9 +2,7 @@ use hd_fpv_osd_font_tool::prelude::*;
 use strum::IntoEnumIterator;
 
 use super::{Dimensions as OverlayFrameDimensions, VideoResolutionTooSmallError};
-
-use crate::osd;
-use crate::video::resolution::Resolution as VideoResolution;
+use crate::{osd, video::resolution::Resolution as VideoResolution};
 
 impl osd::Kind {
 	#[must_use]
@@ -22,10 +20,12 @@ impl osd::Kind {
 		self.dimensions_tiles() * self.tile_kind().dimensions()
 	}
 
-	/// Returns the best kind of tile to use without rescaling tiles so that the OSD fills as much as the screen as possible
+	/// Returns the best kind of tile to use without rescaling tiles so that the OSD fills as much
+	/// as the screen as possible
 	///
 	/// # Errors
-	/// Returns `VideoResolutionTooSmallError` if the provided video resolution is too small to fit the OSD of this kind with any tile kind without scaling.
+	/// Returns `VideoResolutionTooSmallError` if the provided video resolution is too small to fit
+	/// the OSD of this kind with any tile kind without scaling.
 	pub fn best_kind_of_tiles_to_use_without_scaling(
 		&self,
 		video_resolution: VideoResolution,
@@ -35,7 +35,7 @@ impl osd::Kind {
 			let (margin_width, margin_height) = crate::video::margins(video_resolution, osd_dimensions);
 			if margin_width >= 0 && margin_height >= 0 {
 				#[allow(clippy::cast_sign_loss)]
-				let margin_avg = (margin_width as u32 + margin_height as u32) / 2;
+				let margin_avg = u32::midpoint(margin_width as u32, margin_height as u32);
 				Some((tile_kind, margin_avg))
 			} else {
 				None
@@ -50,7 +50,8 @@ impl osd::Kind {
 		}
 	}
 
-	/// Returns the best kind of tile to use with rescaling tiles so that the OSD fills as much as the screen as possible
+	/// Returns the best kind of tile to use with rescaling tiles so that the OSD fills as much as
+	/// the screen as possible
 	///
 	/// # Panics
 	/// In case it panics don't panic
@@ -83,14 +84,16 @@ impl osd::Kind {
 			.collect::<Vec<_>>();
 
 		let (tile_kind, width_diff, height_diff, _) = match downscaling_tile_kinds_data.len() {
-			// all kinds would need to be upscaled, chose the kind for which the tiles would need to be upscaled the least
+			// all kinds would need to be upscaled, chose the kind for which the tiles would need to be upscaled the
+			// least
 			0 => tile_kinds_data
 				.iter()
 				.min_by_key(|(_, _, _, min_diff)| *min_diff)
 				.unwrap(),
 			// exactly one kind match for which the tiles would need to be downscaled
 			1 => downscaling_tile_kinds_data.first().unwrap(),
-			// more than one kind match for which the tiles would need to be downscaled, chose the kind with the least downscaling
+			// more than one kind match for which the tiles would need to be downscaled, chose the kind with the least
+			// downscaling
 			_ => downscaling_tile_kinds_data
 				.iter()
 				.min_by_key(|(_, _, _, min_diff)| *min_diff)

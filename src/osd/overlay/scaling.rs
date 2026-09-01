@@ -7,7 +7,6 @@ use getset::{CopyGetters, Getters};
 use thiserror::Error;
 
 use super::margins::Margins;
-
 use crate::video::{
 	probe::{Error as VideoProbeError, probe as video_probe},
 	resolution::{Resolution as VideoResolution, TargetResolution},
@@ -46,7 +45,8 @@ pub enum ScalingArgsError {
 #[derive(Args, Getters, CopyGetters, Builder, Clone)]
 #[getset(get_copy = "pub")]
 pub struct ScalingArgs {
-	/// resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
+	/// resolution used to decide what kind of tiles (SD/HD) would best fit and also whether scaling
+	/// should be used when in auto scaling mode
 	///
 	/// [possible values: 720p, 720p4:3, 1080p, 1080p4:3, <width>x<height>]
 	#[clap(short = 'r', long, group("target_resolution_group"))]
@@ -64,7 +64,8 @@ pub struct ScalingArgs {
 	#[clap(long, value_parser, value_name = "horizontal:vertical", default_value = "20:20")]
 	min_margins: Margins,
 
-	/// minimum percentage of OSD coverage under which scaling will be used if --scaling/--no-scaling options are not provided
+	/// minimum percentage of OSD coverage under which scaling will be used if
+	/// --scaling/--no-scaling options are not provided
 	#[clap(long, value_parser = clap::value_parser!(u8).range(1..=100), value_name = "percent", default_value = "90")]
 	min_coverage: u8,
 }
@@ -108,7 +109,8 @@ pub struct OSDScalingArgs {
 	#[clap(long, value_parser, value_name = "horizontal:vertical", default_value = "20:20")]
 	min_osd_margins: Margins,
 
-	/// minimum percentage of OSD coverage under which scaling will be used if --scaling/--no-scaling options are not provided
+	/// minimum percentage of OSD coverage under which scaling will be used if
+	/// --scaling/--no-scaling options are not provided
 	#[clap(long, value_parser = clap::value_parser!(u8).range(1..=100), value_name = "percent", default_value = "90")]
 	min_osd_coverage: u8,
 }

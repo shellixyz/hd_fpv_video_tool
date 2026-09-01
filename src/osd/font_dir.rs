@@ -29,7 +29,8 @@ impl FontDir {
 		}
 	}
 
-	/// Loads tiles from the font directory for the given tile kind and font variant, with fallback to generic font if specific font is missing.
+	/// Loads tiles from the font directory for the given tile kind and font variant, with fallback
+	/// to generic font if specific font is missing.
 	///
 	/// # Errors
 	/// Returns `bin_file::LoadError` if there is an error loading the tiles.
@@ -56,7 +57,8 @@ impl FontDir {
 		Ok(tiles)
 	}
 
-	/// Loads tiles from the font directory for the given tile kind and optional ident, with fallback to generic font if specific font is missing.
+	/// Loads tiles from the font directory for the given tile kind and optional ident, with
+	/// fallback to generic font if specific font is missing.
 	///
 	/// # Errors
 	/// Returns `bin_file::LoadError` if there is an error loading the tiles.

@@ -2,16 +2,17 @@ use std::{
 	borrow::{Borrow, Cow},
 	io::{Error as IOError, Read, Seek, SeekFrom},
 	path::{Path, PathBuf},
+	sync::LazyLock,
 };
 
 use byte_struct::{ByteStruct, ByteStructLen, ByteStructUnspecifiedByteOrder};
 use fs_err::File;
 use getset::{CopyGetters, Getters};
 use itertools::Itertools;
-use lazy_static::lazy_static;
 use regex::Regex;
 use thiserror::Error;
 
+use super::DIMENSIONS;
 use crate::{
 	osd::{
 		Dimensions, FontVariant, Kind, TileIndex, TileIndices,
@@ -20,8 +21,6 @@ use crate::{
 	},
 	video::FrameIndex as VideoFrameIndex,
 };
-
-use super::DIMENSIONS;
 
 #[derive(Debug, Error)]
 pub enum OpenError {
@@ -125,7 +124,7 @@ impl Reader {
 		if header.osd_dimensions != DIMENSIONS {
 			return Err(OpenError::InvalidHeader(file_path.as_ref().to_owned()));
 		}
-		if (file.metadata()?.len() - FileHeaderRaw::BYTE_LEN as u64) % FrameRaw::BYTE_LEN as u64 != 0 {
+		if !(file.metadata()?.len() - FileHeaderRaw::BYTE_LEN as u64).is_multiple_of(FrameRaw::BYTE_LEN as u64) {
 			return Err(OpenError::InvalidSize(file_path.as_ref().to_owned()));
 		}
 		Ok(Self { file, header })
@@ -189,10 +188,7 @@ impl GenericReader for Reader {
 		let font_variant = self.header.font_variant();
 		let mut frames = vec![];
 		for frame_read_result in self {
-			match frame_read_result {
-				Ok(frame) => frames.push(frame),
-				Err(error) => return Err(error),
-			}
+			frames.push(frame_read_result?);
 		}
 		let frames = frames
 			.into_iter()
@@ -235,9 +231,8 @@ impl Iterator for IntoIter {
 }
 
 impl IntoIterator for Reader {
-	type Item = Result<Frame, ReadError>;
-
 	type IntoIter = IntoIter;
+	type Item = Result<Frame, ReadError>;
 
 	fn into_iter(self) -> Self::IntoIter {
 		Self::IntoIter { reader: self }
@@ -257,9 +252,8 @@ impl Iterator for Iter<'_> {
 }
 
 impl<'a> IntoIterator for &'a mut Reader {
-	type Item = Result<Frame, ReadError>;
-
 	type IntoIter = Iter<'a>;
+	type Item = Result<Frame, ReadError>;
 
 	fn into_iter(self) -> Self::IntoIter {
 		Self::IntoIter { reader: self }
@@ -268,11 +262,10 @@ impl<'a> IntoIterator for &'a mut Reader {
 
 /// Attempts to find an associated WSA OSD file for the given video file path.
 pub fn find_associated_to_video_file<P: AsRef<Path>>(video_file_path: P) -> Option<PathBuf> {
+	static DJI_VIDEO_FILE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\A(?:Avatar(?:G|S)(\d{4}))").unwrap());
+
 	let video_file_path = video_file_path.as_ref();
 	let file_stem = video_file_path.file_stem()?.to_string_lossy();
-	lazy_static! {
-		static ref DJI_VIDEO_FILE_RE: Regex = Regex::new(r"\A(?:Avatar(?:G|S)(\d{4}))").unwrap();
-	}
 
 	if let Some(captures) = DJI_VIDEO_FILE_RE.captures(&file_stem) {
 		let Some(dji_file_number) = captures.get(1) else {

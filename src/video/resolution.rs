@@ -1,10 +1,8 @@
-use std::{fmt::Display, str::FromStr};
-
-use lazy_static::lazy_static;
-use regex::Regex;
-use strum::{EnumIter, IntoEnumIterator};
+use std::{fmt::Display, str::FromStr, sync::LazyLock};
 
 use hd_fpv_osd_font_tool::dimensions::Dimensions as GenericDimensions;
+use regex::Regex;
+use strum::{EnumIter, IntoEnumIterator};
 use thiserror::Error;
 
 pub type Resolution = GenericDimensions<u32>;
@@ -84,29 +82,27 @@ impl FromStr for TargetResolution {
 	type Err = InvalidTargetResolutionError;
 
 	fn from_str(value: &str) -> Result<Self, Self::Err> {
+		static RES_RE: LazyLock<Regex> =
+			LazyLock::new(|| Regex::new(r"\A(?P<width>\d{1,5})x(?P<height>\d{1,5})\z").unwrap());
+
 		use TargetResolution as TR;
 		let resolution = match value {
 			"720p" => TR::Standard(StandardResolution::Tr720p),
 			"720p4:3" => TR::Standard(StandardResolution::Tr720p4By3),
 			"1080p" => TR::Standard(StandardResolution::Tr1080p),
 			"1080p4:3" => TR::Standard(StandardResolution::Tr1080p4by3),
-			custom_res_str => {
-				lazy_static! {
-					static ref RES_RE: Regex = Regex::new(r"\A(?P<width>\d{1,5})x(?P<height>\d{1,5})\z").unwrap();
-				}
-				match RES_RE.captures(custom_res_str) {
-					Some(captures) => {
-						let width = captures.name("width").unwrap().as_str().parse().unwrap();
-						let height = captures.name("height").unwrap().as_str().parse().unwrap();
-						TR::Custom(Resolution::new(width, height))
-					},
-					None => {
-						return Err(InvalidTargetResolutionError {
-							given: custom_res_str.to_owned(),
-							valid: Self::valid_list().join(", "),
-						});
-					},
-				}
+			custom_res_str => match RES_RE.captures(custom_res_str) {
+				Some(captures) => {
+					let width = captures.name("width").unwrap().as_str().parse().unwrap();
+					let height = captures.name("height").unwrap().as_str().parse().unwrap();
+					TR::Custom(Resolution::new(width, height))
+				},
+				None => {
+					return Err(InvalidTargetResolutionError {
+						given: custom_res_str.to_owned(),
+						valid: Self::valid_list().join(", "),
+					});
+				},
 			},
 		};
 		Ok(resolution)

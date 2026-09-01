@@ -131,10 +131,12 @@ pub fn format_overlay_frame_file_index(frame_index: VideoFrameIndex) -> String {
 	format!("{frame_index:010}.png")
 }
 
-/// Constructs the file path for an overlay frame image file given a directory path and a frame index.
+/// Constructs the file path for an overlay frame image file given a directory path and a frame
+/// index.
 ///
 /// # Panics
-/// Panics if the directory path cannot be converted to a string slice (i.e., if it contains invalid UTF-8).
+/// Panics if the directory path cannot be converted to a string slice (i.e., if it contains invalid
+/// UTF-8).
 pub fn make_overlay_frame_file_path<P: AsRef<Path>>(dir_path: P, frame_index: VideoFrameIndex) -> PathBuf {
 	[
 		dir_path.as_ref().to_str().unwrap(),
@@ -347,7 +349,8 @@ impl<'a> Generator<'a> {
 	/// Creates a new `Generator` instance for rendering OSD frames.
 	///
 	/// # Errors
-	/// Returns `DrawFrameOverlayError` if the OSD file is empty or if there are issues loading the font or determining the best settings for scaling.
+	/// Returns `DrawFrameOverlayError` if the OSD file is empty or if there are issues loading the
+	/// font or determining the best settings for scaling.
 	pub fn new(
 		osd_file_frames: OSDFileSortedFrames,
 		font_variant: FontVariant,
@@ -385,10 +388,11 @@ impl<'a> Generator<'a> {
 			target_resolution: Some(target_resolution),
 		} = scaling
 		{
-			let overlay_res_scale = ((f64::from(overlay_resolution.width)
-				/ f64::from(target_resolution.dimensions().width))
-				+ (f64::from(overlay_resolution.height) / f64::from(target_resolution.dimensions().height)))
-				/ 2.0;
+			let overlay_width_scale =
+				f64::from(overlay_resolution.width) / f64::from(target_resolution.dimensions().width);
+			let overlay_height_scale =
+				f64::from(overlay_resolution.height) / f64::from(target_resolution.dimensions().height);
+			let overlay_res_scale = f64::midpoint(overlay_width_scale, overlay_height_scale);
 
 			if overlay_res_scale < 0.8 {
 				log::warn!(
@@ -429,7 +433,8 @@ impl<'a> Generator<'a> {
 				.collect::<Vec<_>>()
 				.join(", ");
 			log::warn!(
-				"the OSD file contains invalid tile indices, it is probably corrupted or the font you are trying to render this OSD file does not have that many tiles: {invalid_tile_indices_str}"
+				"the OSD file contains invalid tile indices, it is probably corrupted or the font you are trying to \
+				 render this OSD file does not have that many tiles: {invalid_tile_indices_str}"
 			);
 		}
 	}
@@ -447,7 +452,8 @@ impl<'a> Generator<'a> {
 	/// Saves rendered overlay frames to the specified directory.
 	///
 	/// # Errors
-	/// Returns `SaveFramesToDirError` if there are issues creating the directory, reading frames, writing images, or if there are no frames to write.
+	/// Returns `SaveFramesToDirError` if there are issues creating the directory, reading frames,
+	/// writing images, or if there are no frames to write.
 	///
 	/// # Panics
 	/// Panics if the provided path cannot be absolutized.
@@ -494,7 +500,7 @@ impl<'a> Generator<'a> {
 			use crate::osd::file::sorted_frames::VideoFramesRelIndexIterItem as VFRIII;
 			match item {
 				VFRIII::Existing { rel_index, frame } => {
-					log::debug!("existing {}", &rel_index);
+					log::debug!("existing {rel_index}");
 					let frame_image = self.draw_frame(frame)?;
 					frame_image.write_image_file(make_overlay_frame_file_path(&path, rel_index))?;
 				},
@@ -523,7 +529,8 @@ impl<'a> Generator<'a> {
 	/// Generates an overlay video from the OSD frames.
 	///
 	/// # Errors
-	/// Returns `GenerateOverlayVideoError` if there are issues reading frames, writing the output video file, or if the output file already exists.
+	/// Returns `GenerateOverlayVideoError` if there are issues reading frames, writing the output
+	/// video file, or if the output file already exists.
 	///
 	/// # Panics
 	/// It does not panic.
@@ -642,7 +649,8 @@ impl FramesIter<'_> {
 	/// Sends rendered frames to the provided ffmpeg process.
 	///
 	/// # Errors
-	/// Returns `SendFramesToFFMpegError` if there are issues writing to ffmpeg's stdin or if there are unknown OSD items.
+	/// Returns `SendFramesToFFMpegError` if there are issues writing to ffmpeg's stdin or if there
+	/// are unknown OSD items.
 	///
 	/// # Panics
 	/// Panics if the stdin of the ffmpeg process has already been taken.
@@ -661,7 +669,8 @@ impl FramesIter<'_> {
 	/// Sends rendered frames to the provided ffmpeg process and waits for it to finish.
 	///
 	/// # Errors
-	/// Returns `SendFramesToFFMpegError` if there are issues writing to ffmpeg's stdin, if there are unknown OSD items, or if ffmpeg exits with an error
+	/// Returns `SendFramesToFFMpegError` if there are issues writing to ffmpeg's stdin, if there
+	/// are unknown OSD items, or if ffmpeg exits with an error
 	pub async fn send_frames_to_ffmpeg_and_wait(
 		mut self,
 		mut ffmpeg_process: ffmpeg::Process,

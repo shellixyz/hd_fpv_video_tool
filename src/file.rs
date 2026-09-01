@@ -1,10 +1,9 @@
-use fs_err::File;
-
 use std::{
 	io::Error as IOError,
 	path::{Path, PathBuf},
 };
 
+use fs_err::File;
 use thiserror::Error;
 
 #[derive(Debug, Error)]

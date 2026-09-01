@@ -1,9 +1,8 @@
-use std::{fmt::Display, str::FromStr};
+use std::{fmt::Display, str::FromStr, sync::LazyLock};
 
 use derive_more::Constructor;
 use ffmpeg_next::Rational;
 use getset::{CopyGetters, Setters};
-use lazy_static::lazy_static;
 use regex::Regex;
 use thiserror::Error;
 
@@ -94,10 +93,9 @@ impl FromStr for Timestamp {
 	type Err = TimestampFormatError;
 
 	fn from_str(value: &str) -> Result<Self, Self::Err> {
-		lazy_static! {
-			static ref TIMESTAMP_RE: Regex =
-				Regex::new(r"\A(?:(?P<hours>\d{1,3}):)?(?P<minutes>\d{1,2}):(?P<seconds>\d{1,2})\z").unwrap();
-		}
+		static TIMESTAMP_RE: LazyLock<Regex> = LazyLock::new(|| {
+			Regex::new(r"\A(?:(?P<hours>\d{1,3}):)?(?P<minutes>\d{1,2}):(?P<seconds>\d{1,2})\z").unwrap()
+		});
 		Ok(match TIMESTAMP_RE.captures(value) {
 			Some(captures) => {
 				let hours = captures

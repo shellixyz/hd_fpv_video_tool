@@ -1,7 +1,8 @@
 #![warn(clippy::pedantic)]
 
-use anyhow::anyhow;
 use std::{env, env::current_exe, path::PathBuf};
+
+use anyhow::anyhow;
 
 fn main() -> anyhow::Result<()> {
 	let appimage_exe = current_exe()?;

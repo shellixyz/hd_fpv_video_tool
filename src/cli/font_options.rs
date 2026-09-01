@@ -1,5 +1,4 @@
-use std::io::Error as IOError;
-use std::path::PathBuf;
+use std::{io::Error as IOError, path::PathBuf};
 
 use clap::Args;
 use derive_more::From;
@@ -56,11 +55,13 @@ pub enum OSDFontDirError {
 	CanonicalizeError { font_dir: PathBuf, error: IOError },
 }
 
-/// Resolves the OSD font directory path, using the provided path, environment variable, or default path.
+/// Resolves the OSD font directory path, using the provided path, environment variable, or default
+/// path.
 ///
 /// # Errors
 /// - Returns `OSDFontDirError::UnableToLocateHomeDir` if the home directory cannot be located.
-/// - Returns `OSDFontDirError::CanonicalizeError` if the font directory path cannot be canonicalized.
+/// - Returns `OSDFontDirError::CanonicalizeError` if the font directory path cannot be
+///   canonicalized.
 fn font_dir_base(font_dir: Option<&PathBuf>) -> Result<PathBuf, OSDFontDirError> {
 	let font_dir = match font_dir {
 		Some(font_dir) => font_dir.clone(),
@@ -82,7 +83,8 @@ fn font_dir_base(font_dir: Option<&PathBuf>) -> Result<PathBuf, OSDFontDirError>
 }
 
 impl FontOptions {
-	/// Resolves the OSD font directory path, using the provided path, environment variable, or default path.
+	/// Resolves the OSD font directory path, using the provided path, environment variable, or
+	/// default path.
 	///
 	/// # Errors
 	/// See `font_dir_base` for error details.
@@ -101,7 +103,8 @@ impl FontOptions {
 }
 
 impl OSDFontOptions {
-	/// Resolves the OSD font directory path, using the provided path, environment variable, or default path.
+	/// Resolves the OSD font directory path, using the provided path, environment variable, or
+	/// default path.
 	///
 	/// # Errors
 	/// See `font_dir_base` for error details.

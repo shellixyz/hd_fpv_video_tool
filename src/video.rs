@@ -7,6 +7,7 @@ use std::{
 
 use derive_more::From;
 use ffmpeg_next::Rational;
+pub use hw_accel::HwAcceleratedEncoding;
 use itertools::Itertools;
 use thiserror::Error;
 
@@ -28,7 +29,6 @@ use crate::{
 	prelude::{Scaling, TranscodeVideoArgs, *},
 	process::Command as ProcessCommand,
 };
-pub use hw_accel::HwAcceleratedEncoding;
 
 pub mod codec;
 pub mod coordinates;
@@ -785,7 +785,8 @@ pub enum PlayWithOSDError {
 /// # Errors
 /// - Returns `PlayWithOSDError::InvalidVideoFilePath` if the video file path is invalid.
 /// - Returns `PlayWithOSDError::OSDVideoFileNotFound` if the OSD video file is not found.
-/// - Returns `PlayWithOSDError::CanOnlyUseVP8OrVP9OSDVideoFiles` if the OSD video file is not encoded with VP8 or VP9.
+/// - Returns `PlayWithOSDError::CanOnlyUseVP8OrVP9OSDVideoFiles` if the OSD video file is not
+///   encoded with VP8 or VP9.
 /// - Returns `PlayWithOSDError::FailedToStartMPV` if MPV fails to start.
 /// - Returns `PlayWithOSDError::MPVExitedWithAnError` if MPV exits with an error.
 ///

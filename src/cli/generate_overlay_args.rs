@@ -7,19 +7,19 @@ use getset::{CopyGetters, Getters};
 use itertools::Itertools;
 use strum::IntoEnumIterator;
 
+use super::{font_options::FontOptions, start_end_args::StartEndArgs};
 use crate::{
+	osd,
 	osd::{font_variant::FontVariant, item::LocationData},
 	prelude::ScalingArgs,
 	video,
 };
 
-use super::{font_options::FontOptions, start_end_args::StartEndArgs};
-use crate::osd;
-
 #[derive(Args, Getters, CopyGetters, Builder, Clone)]
 #[getset(get = "pub")]
 pub struct GenerateOverlayArgs {
-	/// use the resolution from the specified video file to decide what kind of tiles (SD/HD) would best fit and also whether scaling should be used when in auto scaling mode
+	/// use the resolution from the specified video file to decide what kind of tiles (SD/HD) would
+	/// best fit and also whether scaling should be used when in auto scaling mode
 	#[clap(short = 'v', long, group("target_resolution_group"), value_parser)]
 	#[getset(skip)]
 	#[getset(get = "pub")]
@@ -46,7 +46,8 @@ pub struct GenerateOverlayArgs {
 	#[clap(flatten)]
 	font_options: FontOptions,
 
-	/// Shift the output by that number of frames. Use this option to sync the OSD to a particular video.
+	/// Shift the output by that number of frames. Use this option to sync the OSD to a particular
+	/// video.
 	#[clap(short = 'o', long, value_parser, value_name = "frames", allow_negative_numbers(true))]
 	#[getset(skip)]
 	frame_shift: Option<i32>,
@@ -94,7 +95,8 @@ impl GenerateOverlayArgs {
 		Ok(())
 	}
 
-	/// Determines the frame shift to apply based on the provided arguments and the target video file.
+	/// Determines the frame shift to apply based on the provided arguments and the target video
+	/// file.
 	///
 	/// # Errors
 	/// - Returns an error if there is an issue probing the target video file.
@@ -105,7 +107,8 @@ impl GenerateOverlayArgs {
 				if video::probe(target_video_file)?.has_audio() {
 					let frame_shift = crate::osd::dji::AU_OSD_FRAME_SHIFT;
 					log::info!(
-						"target video file contains audio, assuming DJI AU origin, applying {frame_shift} OSD frames shift"
+						"target video file contains audio, assuming DJI AU origin, applying {frame_shift} OSD frames \
+						 shift"
 					);
 					frame_shift
 				} else {

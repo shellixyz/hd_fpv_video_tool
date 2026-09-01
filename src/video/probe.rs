@@ -3,9 +3,8 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use ffmpeg_next as ffmpeg;
-
 use ffmpeg::Rational;
+use ffmpeg_next as ffmpeg;
 use getset::{CopyGetters, Getters};
 use thiserror::Error;
 
