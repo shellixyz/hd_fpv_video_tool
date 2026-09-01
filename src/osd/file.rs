@@ -113,10 +113,10 @@ pub fn open(path: impl AsRef<Path>) -> Result<Reader, UnrecognizedOSDFile> {
 			if let Ok(reader) = super::dji::file::Reader::open(path) {
 				return Ok(Reader::DJI(reader));
 			}
-		} else if file_stem.starts_with("AvatarG") {
-			if let Ok(reader) = super::wsa::file::Reader::open(path) {
-				return Ok(Reader::WSA(reader));
-			}
+		} else if file_stem.starts_with("AvatarG")
+			&& let Ok(reader) = super::wsa::file::Reader::open(path)
+		{
+			return Ok(Reader::WSA(reader));
 		}
 	}
 

@@ -405,15 +405,15 @@ fn transcode_video_filter_parts(
 		video_filter_parts.append(&mut defect_filters);
 	}
 
-	if hw_acceleration.is_no() {
-		if let Some(resolution) = args.video_resolution() {
-			let resolution_dimensions = resolution.dimensions();
-			video_filter_parts.push(format!(
-				"scale={}x{}:flags=lanczos",
-				resolution_dimensions.width(),
-				resolution_dimensions.height()
-			));
-		}
+	if hw_acceleration.is_no()
+		&& let Some(resolution) = args.video_resolution()
+	{
+		let resolution_dimensions = resolution.dimensions();
+		video_filter_parts.push(format!(
+			"scale={}x{}:flags=lanczos",
+			resolution_dimensions.width(),
+			resolution_dimensions.height()
+		));
 	}
 
 	if hw_acceleration.is_yes() {

@@ -771,13 +771,12 @@ impl Process {
 
 				let last_cr_lines = last_line.split_inclusive('\r').map(str::to_string).collect::<Vec<_>>();
 
-				if let Some(progress_bar) = &progress_bar {
-					if let Some(cr_line) = last_cr_lines.iter().rfind(|cr_pl| cr_pl.ends_with('\r')) {
-						if let Some(captures) = PROGRESS_RE.captures(cr_line) {
-							let frame: u64 = captures.get(1).unwrap().as_str().parse().unwrap();
-							progress_bar.set_position(frame);
-						}
-					}
+				if let Some(progress_bar) = &progress_bar
+					&& let Some(cr_line) = last_cr_lines.iter().rfind(|cr_pl| cr_pl.ends_with('\r'))
+					&& let Some(captures) = PROGRESS_RE.captures(cr_line)
+				{
+					let frame: u64 = captures.get(1).unwrap().as_str().parse().unwrap();
+					progress_bar.set_position(frame);
 				}
 
 				last_lines.extend(lines);
