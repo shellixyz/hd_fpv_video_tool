@@ -8,7 +8,7 @@ jobs:
   build_and_test:
     runs-on: ubuntu-latest
     container:
-      image: rust:1-bookworm
+      image: rust:1-trixie
     steps:
       - uses: actions/checkout@v4
 
@@ -30,4 +30,3 @@ jobs:
 
       - name: Test
         run: cargo test --verbose
-
