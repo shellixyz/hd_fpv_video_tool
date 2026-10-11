@@ -259,25 +259,26 @@ fn install_desktop_file<P: AsRef<Path>>(
 	let mut file = std::fs::File::create(&desktop_file_path)
 		.with_context(|| format!("failed to create desktop file: {}", desktop_file_path.to_string_lossy()))?;
 	file.write_all("[Desktop Entry]\n".as_bytes())?;
-	write!(file, "Name={application_name}")?;
+	writeln!(file, "Name={application_name}")?;
+	writeln!(file, "Exec={application_name}")?;
 	file.write_all(
 		indoc! {"
-        Exec=bin
         Icon=icon
         Type=Application
-        Categories=Utility
+        Terminal=true
+        Categories=Utility;
     "}
 		.as_bytes(),
 	)?;
-	write!(file, "X-AppImage-Version={application_version}")?;
+	writeln!(file, "X-AppImage-Version={application_version}")?;
 	Ok(())
 }
 
 fn install_icon_file<P: AsRef<Path>>(appdir_path: P) -> anyhow::Result<()> {
 	log::info!("installing icon file");
 	let icon_file_path = appdir_path.as_ref().join("icon.png");
-	std::fs::write(&icon_file_path, [])
-		.with_context(|| format!("failed to icon file: {}", icon_file_path.to_string_lossy()))?;
+	std::fs::write(&icon_file_path, include_bytes!("../icon.png"))
+		.with_context(|| format!("failed to write icon file: {}", icon_file_path.to_string_lossy()))?;
 	Ok(())
 }
 

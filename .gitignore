@@ -13,3 +13,4 @@
 /libs
 /appimagetool
 /.direnv
+!/appimage_builder/icon.png
