@@ -26,61 +26,23 @@ const APPIMAGETOOL_URL: &str =
 
 const DEP_BINARIES: [&str; 2] = ["ffmpeg", "mpv"];
 
-const EXCLUDE_LIBS: [&str; 53] = [
-	"libasound",
-	"libcdio_paranoia",
-	"libcdio_cdda",
-	"libcdio",
-	"libm",
-	"libdrm",
-	"libEGL",
-	"libgbm",
-	"libwayland-egl",
-	"libwayland-client",
-	"libGL",
-	"libjack",
-	"liblcms2",
-	"libarchive",
-	"libpulse",
-	"libsamplerate",
-	"libuchardet",
-	"libvulkan",
-	"libwayland-cursor",
-	"libxkbcommon",
-	"libX11",
-	"libXss",
-	"libXext",
-	"libXinerama",
-	"libXrandr",
-	"libXv",
-	"libz",
-	"libgcc_s",
-	"libc",
-	"libGLdispatch",
-	"libwayland-server",
-	"libexpat",
-	"libstdc++",
-	"libffi",
-	"libGLX",
-	"libacl",
-	"liblzma",
-	"libzstd",
-	"liblz4",
-	"libxml2",
-	"libdbus-1",
-	"libxcb",
-	"libXrender",
-	"libsndfile",
-	"libsystemd",
-	"libasyncns",
-	"libXau",
-	"libFLAC",
-	"libvorbis",
-	"libvorbisenc",
-	"libopus",
-	"libogg",
-	"libcap",
-];
+// Libraries assumed to be present on the host system, which must not be bundled
+const EXCLUDE_LIST: &str = include_str!("../excludelist");
+
+// Libraries from EXCLUDE_LIST which are bundled anyway:
+// - libjack.so.0: hard linked by libavdevice and mpv but not installed by default on Ubuntu
+//   (26.04), it is only needed when actually using JACK which this tool does not do
+const FORCE_BUNDLE_LIBS: [&str; 1] = ["libjack.so.0"];
+
+fn is_excluded_lib(lib_file_name: &str) -> bool {
+	if FORCE_BUNDLE_LIBS.contains(&lib_file_name) {
+		return false;
+	}
+	EXCLUDE_LIST
+		.lines()
+		.map(|line| line.split('#').next().unwrap_or_default().trim())
+		.any(|excluded| excluded == lib_file_name)
+}
 
 const RUNNER_BIN_PATH: &str = "target/release/appimage_runner";
 
@@ -126,10 +88,7 @@ fn install_binary_shared_libs<P: AsRef<Path>, Q: AsRef<Path>>(binary_path: P, li
 	create_path(&lib_dir_path)?;
 	for lib_path in binary_linked_libs(&binary_path)? {
 		let lib_file_name = lib_path.file_name().unwrap().to_str().unwrap();
-		if EXCLUDE_LIBS
-			.iter()
-			.any(|ex_name| lib_file_name.starts_with(&format!("{ex_name}.")))
-		{
+		if is_excluded_lib(lib_file_name) {
 			continue;
 		}
 		let to_path = lib_dir_path.as_ref().join(lib_path.file_name().unwrap());
@@ -381,6 +340,12 @@ async fn main() -> anyhow::Result<()> {
 
 	set_current_dir("..").context("failed to change current dir")?;
 
+	if appdir_path.exists() {
+		log::info!("removing previous app dir: {}", appdir_path.to_string_lossy());
+		fs::remove_dir_all(&appdir_path)
+			.with_context(|| format!("failed to remove app dir: {}", appdir_path.to_string_lossy()))?;
+	}
+
 	log::info!("creating app dir: {}", appdir_path.to_string_lossy());
 	create_path(&appdir_path)?;
 
@@ -393,7 +358,9 @@ async fn main() -> anyhow::Result<()> {
 	install_desktop_file(&appdir_path, application_name, &application_version)?;
 	install_icon_file(&appdir_path)?;
 	install_runner(&appdir_path)?;
-	install_application_binary(application_binary_path, &bin_dir_path)?;
+	install_application_binary(&application_binary_path, &bin_dir_path)?;
+	log::info!("installing shared libs for application binary");
+	install_binary_shared_libs(&application_binary_path, &lib_dir_path)?;
 
 	for binary_path in DEP_BINARIES {
 		let Ok(binary_path) = which(binary_path) else {
