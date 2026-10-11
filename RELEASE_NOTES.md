@@ -1,3 +1,15 @@
+# v2.2.1
+
+This release only changes how the AppImage is packaged, the application itself is unchanged.
+
+## AppImage Fixes
+
+- **Runs on more distributions**: the AppImage is now built on Ubuntu 22.04 and runs on any distribution with glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora, ...). The previous one required glibc 2.38+.
+- Fixed startup failures caused by missing shared libraries (`libXss.so.1` on Fedora, `libxml2.so.2` on Ubuntu 26.04, `libjack.so.0` on Ubuntu). The libraries which are bundled are now chosen using the official AppImage exclude list.
+- **Hardware acceleration**: the bundled libva now finds the VA-API drivers on Debian/Ubuntu, Fedora/openSUSE, Arch and NixOS, previously only on Debian-based distributions.
+- Bundled FFmpeg updated to 8.1. The bundled mpv is now 0.34.
+- Fixed the desktop entry (name, `Exec`, `Terminal=true`) and added a real icon, so the AppImage can be listed in the [AppImage catalog](https://appimage.github.io/).
+
 # v2.2.0
 
 ## New Features
