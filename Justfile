@@ -1,4 +1,7 @@
 
+install:
+	cargo install --path . --locked --force
+
 test:
     cargo nextest run
 
