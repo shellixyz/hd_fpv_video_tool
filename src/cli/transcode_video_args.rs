@@ -286,9 +286,9 @@ fn transcode_video_args_video_codec_help() -> String {
 		.join(", ");
 	#[cfg(feature = "hwaccel")]
 	let default_selection_help = "If omitted:{n}- uses codec defined by --profile (if any){n}- otherwise, if hardware \
-	                           acceleration is enabled, tries AV1 then H265 and picks the first codec that can be \
-	                           hardware-encoded{n}- if no hardware-encodable codec is found, falls back to H265 \
-	                           software encoding{n}- with --no-hwaccel, falls back to H265 software encoding";
+	                              acceleration is enabled, tries AV1 then H265 and picks the first codec that can be \
+	                              hardware-encoded{n}- if no hardware-encodable codec is found, falls back to H265 \
+	                              software encoding{n}- with --no-hwaccel, falls back to H265 software encoding";
 	#[cfg(not(feature = "hwaccel"))]
 	let default_selection_help =
 		"If omitted:{n}- uses codec defined by --profile (if any){n}- otherwise falls back to H265 software encoding";

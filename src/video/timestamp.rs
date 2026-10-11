@@ -59,7 +59,8 @@ impl Timestamp {
 		}
 		let frames_exact = fps * ffmpeg_next::Rational::new(interval_seconds, 1);
 		#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-		let interval_frames = (f64::from(frames_exact.numerator()) / f64::from(frames_exact.denominator())).round() as u64;
+		let interval_frames =
+			(f64::from(frames_exact.numerator()) / f64::from(frames_exact.denominator())).round() as u64;
 		interval_frames
 	}
 }

@@ -556,9 +556,10 @@ impl<'a> Iterator for VideoFramesRelIndexIter<'a> {
 				}
 			},
 			_ => {
-				// if that block is reached it means the frames we are iterating over were either not sorted by
-				// index or each frame did not have an uniq index. Should not be possible if the iterator was
-				// created from SortedUniqFrames or SortedUniqFramesForVideoSlice  iter methods
+				// if that block is reached it means the frames we are iterating over were either
+				// not sorted by index or each frame did not have an uniq index.
+				// Should not be possible if the iterator was created from
+				// SortedUniqFrames or SortedUniqFramesForVideoSlice  iter methods
 				unreachable!()
 			},
 		};
@@ -809,8 +810,8 @@ mod tests {
 							i1_items.display();
 							i2_items.display();
 
-							// check that the items returned by the split iterator are the same as the non-split
-							// iterator
+							// check that the items returned by the split iterator are the same as
+							// the non-split iterator
 							let all_items = VideoFramesRelIndexIterItems(
 								i1_items.0.into_iter().chain(i2_items.0).collect::<Vec<_>>(),
 							);
