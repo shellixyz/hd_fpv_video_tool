@@ -9,9 +9,9 @@ GitHub issue #14 reported the v2 rejection. Whether to comment on or close it is
 nothing was posted. The fix is tested only with synthetic files, because the sample recording
 linked from #13 is gone.
 
-Next: no open ticket. Ask the user what to take. The candidate from
-`.scratch/handoffs/2026-11-15-packed-alpha-sidecars.md` is still unwritten: fall back to software
-encoding when a packed-alpha frame exceeds the hardware encoder's limits.
+Next: `.scratch/chroma-key-overlays/issues/05-software-fallback-for-oversized-frames.md`, written
+up from the gap in ticket 04 of that feature. Its status is `needs-triage`, so settle its open
+questions with the user first, starting with whether overlays above 2048 px wide are a real case.
 
 Format with `cargo +nightly fmt`: the tracked `.githooks/config` sets `FMT_TOOLCHAIN=nightly`,
 overriding the pinned toolchain in `.githooks/pre-commit`.
