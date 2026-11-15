@@ -204,6 +204,44 @@ async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()
 	Ok(())
 }
 
+fn transcode_overlay_video_command(
+	osd_args: &TranscodeVideoOSDArgs,
+	transcode_args: &TranscodeVideoArgs,
+	osd_file_path: PathBuf,
+	transcode_output_video_file: PathBuf,
+) -> anyhow::Result<Commands> {
+	let codec = osd_args.osd_overlay_video_codec();
+	let osd_overlay_video_file_name = if let Some(osd_overlay_video_file_name) = osd_args.osd_overlay_video_file() {
+		if !matches!(osd_overlay_video_file_name.extension(), Some(extension) if extension == codec.file_extension()) {
+			return Err(anyhow!(
+				"OSD overlay video file name should have the .{} extension",
+				codec.file_extension()
+			));
+		}
+		osd_overlay_video_file_name.clone()
+	} else {
+		overlay_video_file_name_from_target_video_file_name(&transcode_output_video_file, codec)?
+	};
+
+	Ok(Commands::GenerateOverlayVideo {
+		common_args: GenerateOverlayArgsBuilder::default()
+			.target_video_file(Some(transcode_output_video_file))
+			.hide_regions(osd_args.osd_hide_regions().clone())
+			.hide_items(osd_args.osd_hide_items().clone())
+			.start_end(transcode_args.start_end().clone())
+			.scaling_args(osd_args.osd_scaling_args().into())
+			.font_options(osd_args.osd_font_options().into())
+			.frame_shift(osd_args.osd_frame_shift())
+			.osd_file(osd_file_path)
+			.build()?,
+		codec,
+		key_color: osd_args.osd_overlay_video_key_color(),
+		video_file: Some(osd_overlay_video_file_name),
+		overwrite: transcode_args.overwrite(),
+		ffmpeg_priority: *transcode_args.ffmpeg_priority(),
+	})
+}
+
 async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
 	if let Commands::TranscodeVideo {
 		osd_args,
@@ -225,41 +263,12 @@ async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
 		match osd_file_path {
 			Some(osd_file_path) if osd_args.osd_overlay_video() => {
 				let transcode_output_video_file = video::transcode(transcode_args).await?;
-				let osd_overlay_video_file_name =
-					if let Some(osd_overlay_video_file_name) = osd_args.osd_overlay_video_file() {
-						let codec = osd_args.osd_overlay_video_codec();
-						if !matches!(osd_overlay_video_file_name.extension(), Some(extension) if extension == codec.file_extension())
-						{
-							return Err(anyhow!(
-								"OSD overlay video file name should have the .{} extension",
-								codec.file_extension()
-							));
-						}
-						osd_overlay_video_file_name.clone()
-					} else {
-						overlay_video_file_name_from_target_video_file_name(
-							&transcode_output_video_file,
-							osd_args.osd_overlay_video_codec(),
-						)?
-					};
-				let gov_command = Commands::GenerateOverlayVideo {
-					common_args: GenerateOverlayArgsBuilder::default()
-						.target_video_file(Some(transcode_output_video_file))
-						.hide_regions(osd_args.osd_hide_regions().clone())
-						.hide_items(osd_args.osd_hide_items().clone())
-						.start_end(transcode_args.start_end().clone())
-						.scaling_args(osd_args.osd_scaling_args().into())
-						.font_options(osd_args.osd_font_options().into())
-						.frame_shift(osd_args.osd_frame_shift())
-						.osd_file(osd_file_path)
-						.build()
-						.unwrap(),
-					codec: osd_args.osd_overlay_video_codec(),
-					key_color: osd_args.osd_overlay_video_key_color(),
-					video_file: Some(osd_overlay_video_file_name),
-					overwrite: transcode_args.overwrite(),
-					ffmpeg_priority: *transcode_args.ffmpeg_priority(),
-				};
+				let gov_command = transcode_overlay_video_command(
+					osd_args,
+					transcode_args,
+					osd_file_path,
+					transcode_output_video_file,
+				)?;
 				generate_overlay_video_command(&gov_command).await?;
 			},
 			Some(osd_file_path) => video::transcode_burn_osd(transcode_args, osd_file_path, osd_args).await?,
@@ -487,5 +496,82 @@ async fn main() {
 	if let Err(error) = command_result {
 		log::error!("{error}");
 		exit(1);
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::path::PathBuf;
+
+	use clap::Parser;
+	use hd_fpv_video_tool::prelude::OverlayVideoCodec;
+
+	use super::{Cli, Commands, transcode_overlay_video_command};
+
+	#[test]
+	fn transcode_overlay_video_should_match_direct_overlay_generation_configuration() {
+		let direct_cli = Cli::try_parse_from([
+			"hd_fpv_video_tool",
+			"generate-overlay-video",
+			"--codec",
+			"chroma-key",
+			"--key-color",
+			"00FF00",
+			"--target-video-file",
+			"flight_transcoded.mp4",
+			"flight.osd",
+		])
+		.unwrap();
+		let Commands::GenerateOverlayVideo {
+			codec: direct_codec,
+			key_color: direct_key_color,
+			..
+		} = direct_cli.command
+		else {
+			panic!("expected generate-overlay-video command");
+		};
+
+		let transcode_cli = Cli::try_parse_from([
+			"hd_fpv_video_tool",
+			"transcode-video",
+			"--osd-overlay-video",
+			"--osd-overlay-video-codec",
+			"chroma-key",
+			"--osd-overlay-video-key-color",
+			"00FF00",
+			"flight.mp4",
+		])
+		.unwrap();
+		let Commands::TranscodeVideo {
+			osd_args,
+			transcode_args,
+		} = transcode_cli.command
+		else {
+			panic!("expected transcode-video command");
+		};
+
+		let transcode_command = transcode_overlay_video_command(
+			&osd_args,
+			&transcode_args,
+			PathBuf::from("flight.osd"),
+			PathBuf::from("flight_transcoded.mp4"),
+		)
+		.unwrap();
+		let Commands::GenerateOverlayVideo {
+			codec: transcode_codec,
+			key_color: transcode_key_color,
+			video_file: Some(transcode_video_file),
+			..
+		} = transcode_command
+		else {
+			panic!("expected generated overlay-video command");
+		};
+
+		assert!(matches!(
+			(direct_codec, transcode_codec),
+			(OverlayVideoCodec::ChromaKey, OverlayVideoCodec::ChromaKey)
+		));
+		assert_eq!(transcode_key_color, direct_key_color);
+		assert_eq!(transcode_video_file, PathBuf::from("flight_transcoded_osd.mp4"));
 	}
 }
