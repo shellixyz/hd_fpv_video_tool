@@ -1,8 +1,12 @@
-use std::{borrow::Borrow, env, path::PathBuf, rc::Rc};
+use std::{env, path::PathBuf, rc::Rc};
 
-use cros_libva::{VAEntrypoint, VAProfile};
+use cros_libva::{VA_ATTRIB_NOT_SUPPORTED, VAConfigAttrib, VAConfigAttribType, VAEntrypoint, VAProfile};
 
-use crate::video::Codec;
+use crate::video::{
+	Codec,
+	encoder_selection::{EncoderCaps, HardwareEncoder},
+	resolution::Resolution,
+};
 
 pub struct VaapiCapFinder {
 	display: Rc<cros_libva::Display>,
@@ -36,20 +40,44 @@ impl VaapiCapFinder {
 		&self.drm_device_path
 	}
 
-	pub fn can_encode(&self, codec: impl Borrow<Codec>) -> bool {
-		let va_profile = match codec.borrow() {
+	/// The largest frame the encoder for `profile` and `entrypoint` accepts, or `None` when the
+	/// driver reports neither a maximum width nor a maximum height. A dimension the driver does not
+	/// report is unlimited.
+	fn max_frame_size(&self, profile: VAProfile::Type, entrypoint: VAEntrypoint::Type) -> Option<Resolution> {
+		let mut attributes = [
+			VAConfigAttribType::VAConfigAttribMaxPictureWidth,
+			VAConfigAttribType::VAConfigAttribMaxPictureHeight,
+		]
+		.map(|type_| VAConfigAttrib { type_, value: 0 });
+		self.display
+			.get_config_attributes(profile, entrypoint, &mut attributes)
+			.ok()?;
+		let [width, height] =
+			attributes.map(|attribute| (attribute.value != VA_ATTRIB_NOT_SUPPORTED).then_some(attribute.value));
+		if width.is_none() && height.is_none() {
+			return None;
+		}
+		Some(Resolution::new(width.unwrap_or(u32::MAX), height.unwrap_or(u32::MAX)))
+	}
+}
+
+impl EncoderCaps for VaapiCapFinder {
+	fn hardware_encoder(&self, codec: Codec) -> Option<HardwareEncoder> {
+		let va_profile = match codec {
 			Codec::AV1 => VAProfile::VAProfileAV1Profile0,
 			Codec::H264 => VAProfile::VAProfileH264High,
 			Codec::H265 => VAProfile::VAProfileHEVCMain,
 			Codec::VP8 => VAProfile::VAProfileVP8Version0_3,
 			Codec::VP9 => VAProfile::VAProfileVP9Profile0,
 		};
-		match self.display.query_config_entrypoints(va_profile) {
-			Ok(entrypoints) => [VAEntrypoint::VAEntrypointEncSlice, VAEntrypoint::VAEntrypointEncSliceLP]
-				.iter()
-				.any(|&entrypoint| entrypoints.contains(&entrypoint)),
-			Err(_) => false,
-		}
+		let entrypoints = self.display.query_config_entrypoints(va_profile).ok()?;
+		// FFmpeg prefers the full-power entrypoint and falls back to the low-power one.
+		let entrypoint = [VAEntrypoint::VAEntrypointEncSlice, VAEntrypoint::VAEntrypointEncSliceLP]
+			.into_iter()
+			.find(|entrypoint| entrypoints.contains(entrypoint))?;
+		Some(HardwareEncoder {
+			max_frame_size: self.max_frame_size(va_profile, entrypoint),
+		})
 	}
 }
 

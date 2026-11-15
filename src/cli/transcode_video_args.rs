@@ -286,10 +286,12 @@ fn transcode_video_args_video_codec_help() -> String {
 		.collect::<Vec<_>>()
 		.join(", ");
 	#[cfg(feature = "hwaccel")]
-	let default_selection_help = "If omitted:{n}- uses codec defined by --profile (if any){n}- otherwise, if hardware \
-	                              acceleration is enabled, tries AV1 then H265 and picks the first codec that can be \
-	                              hardware-encoded{n}- if no hardware-encodable codec is found, falls back to H265 \
-	                              software encoding{n}- with --no-hwaccel, falls back to H265 software encoding";
+	let default_selection_help = "A codec whose hardware encoder cannot take the output frame size is \
+	                              software-encoded instead.{n}If omitted:{n}- uses codec defined by --profile (if \
+	                              any){n}- otherwise, if hardware acceleration is enabled, tries AV1 then H265 and \
+	                              picks the first codec that can be hardware-encoded at the output frame size{n}- if \
+	                              no such codec is found, falls back to H265 software encoding{n}- with --no-hwaccel, \
+	                              falls back to H265 software encoding";
 	#[cfg(not(feature = "hwaccel"))]
 	let default_selection_help =
 		"If omitted:{n}- uses codec defined by --profile (if any){n}- otherwise falls back to H265 software encoding";
@@ -541,8 +543,6 @@ pub enum OutputVideoFileError {
 	InputHasNoFileName,
 	#[error("input has no extension")]
 	InputHasNoExtension,
-	#[error(transparent)]
-	TranscodeVideoProfileError(#[from] TranscodeVideoProfileError),
 }
 
 impl TranscodeVideoArgs {
@@ -631,7 +631,12 @@ impl TranscodeVideoArgs {
 	///   name.
 	/// - Returns `OutputVideoFileError::InputHasNoExtension` if the input video file has no
 	///   extension.
-	pub fn output_video_file(&self, with_osd: bool) -> Result<PathBuf, OutputVideoFileError> {
+	pub fn output_video_file(
+		&self,
+		with_osd: bool,
+		video_codec: video::Codec,
+		hw_acceleration: HwAcceleratedEncoding,
+	) -> Result<PathBuf, OutputVideoFileError> {
 		Ok(if let Some(output_video_file) = &self.output_video_file {
 			output_video_file.clone()
 		} else {
@@ -648,7 +653,6 @@ impl TranscodeVideoArgs {
 				.input_video_file
 				.extension()
 				.ok_or(OutputVideoFileError::InputHasNoExtension)?;
-			let (video_codec, hw_acceleration) = self.video_codec()?;
 			let output_extension = if hw_acceleration.is_yes() {
 				match video_codec {
 					video::Codec::AV1 | video::Codec::H264 | video::Codec::H265 => OsString::from("mp4"),
@@ -663,39 +667,24 @@ impl TranscodeVideoArgs {
 		})
 	}
 
-	#[cfg(not(feature = "hwaccel"))]
-	/// Resolves the output codec and hardware acceleration mode.
+	/// Resolves the output codec and hardware acceleration mode for frames of `frame_size`.
 	///
 	/// # Errors
 	/// Returns `TranscodeVideoProfileError` if profile loading/parsing fails.
-	pub fn video_codec(&self) -> Result<(video::Codec, HwAcceleratedEncoding), TranscodeVideoProfileError> {
-		Ok((
-			self.video_codec
-				.or(self.profile_requested_video_codec()?)
-				.unwrap_or(video::Codec::H265),
-			HwAcceleratedEncoding::No,
-		))
-	}
-
-	#[cfg(feature = "hwaccel")]
-	/// Resolves the output codec and hardware acceleration mode.
-	///
-	/// # Errors
-	/// Returns `TranscodeVideoProfileError` if profile loading/parsing fails.
-	pub fn video_codec(&self) -> Result<(video::Codec, HwAcceleratedEncoding), TranscodeVideoProfileError> {
-		const FALLBACK: (video::Codec, HwAcceleratedEncoding) = (video::Codec::H265, HwAcceleratedEncoding::No);
-		let selected_video_codec = self.video_codec.or(self.profile_requested_video_codec()?);
-		Ok(match selected_video_codec {
-			None if self.no_hwaccel => FALLBACK,
-			Some(video_codec) if self.no_hwaccel => (video_codec, HwAcceleratedEncoding::No),
-			Some(video_codec) => match video::hw_accel::vaapi_cap_finder() {
-				Some(hw_accel_cap) => (
-					video_codec,
-					HwAcceleratedEncoding::from(hw_accel_cap.can_encode(video_codec)),
-				),
-				None => (video_codec, HwAcceleratedEncoding::No),
-			},
-			None => video::default_video_codec(false),
-		})
+	pub fn video_codec(
+		&self,
+		frame_size: video::resolution::Resolution,
+	) -> Result<(video::Codec, HwAcceleratedEncoding), TranscodeVideoProfileError> {
+		let requested = self.video_codec.or(self.profile_requested_video_codec()?);
+		#[cfg(feature = "hwaccel")]
+		let no_hwaccel = self.no_hwaccel;
+		#[cfg(not(feature = "hwaccel"))]
+		let no_hwaccel = true;
+		let choice = video::encoder_selection::select_encoder(
+			requested,
+			frame_size,
+			video::encoder_selection::device_caps(no_hwaccel).as_deref(),
+		);
+		Ok((choice.codec, choice.hw_acceleration))
 	}
 }

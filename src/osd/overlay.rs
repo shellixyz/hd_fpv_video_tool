@@ -39,6 +39,7 @@ use crate::{
 	osd::file::sorted_frames::EndOfFramesAction,
 	video::{
 		Codec, FrameIndex as VideoFrameIndex, HwAcceleratedEncoding,
+		encoder_selection::{EncoderCaps, EncoderChoice, device_caps, select_encoder},
 		resolution::Resolution as VideoResolution,
 		timestamp::{StartEndOverlayFrameIndex, Timestamp},
 	},
@@ -324,13 +325,23 @@ fn packed_alpha_quality(codec: Codec, hw_acceleration: HwAcceleratedEncoding) ->
 	}
 }
 
+/// Chooses the default encoder for a packed-alpha sidecar, whose frames hold the color and alpha
+/// planes side by side.
+fn packed_alpha_encoder(layout: PackedAlphaLayout, caps: Option<&dyn EncoderCaps>) -> EncoderChoice {
+	select_encoder(None, layout.packed_dimensions(), caps)
+}
+
 fn configure_overlay_video_output(
 	ffmpeg_command: &mut ffmpeg::CommandBuilder,
 	codec: OverlayVideoCodec,
 	packed_alpha_layout: Option<PackedAlphaLayout>,
 ) {
 	if let Some(layout) = packed_alpha_layout {
-		let (video_codec, hw_acceleration) = crate::video::default_video_codec(false);
+		let EncoderChoice {
+			codec: video_codec,
+			hw_acceleration,
+			..
+		} = packed_alpha_encoder(layout, device_caps(false).as_deref());
 		let quality = packed_alpha_quality(video_codec, hw_acceleration);
 		ffmpeg_command
 			.set_output_video_settings(
@@ -1026,11 +1037,11 @@ mod tests {
 
 	use super::{
 		Dimensions, Frame, OVERLAY_ALPHA_X_METADATA, OVERLAY_MODE_METADATA, OVERLAY_SIZE_METADATA, OverlayVideoCodec,
-		PackedAlphaLayout, configure_overlay_video_output, packed_alpha_quality, tile_images,
+		PackedAlphaLayout, configure_overlay_video_output, packed_alpha_encoder, packed_alpha_quality, tile_images,
 	};
 	use crate::{
 		ffmpeg::VideoQuality,
-		video::{Codec, HwAcceleratedEncoding},
+		video::{Codec, HwAcceleratedEncoding, encoder_selection::test_support::FakeCaps},
 	};
 
 	fn first_image_dimensions(images: &[tile::Image]) -> (u32, u32) {
@@ -1152,6 +1163,18 @@ mod tests {
 	fn packed_alpha_codec_should_be_the_mp4_default() {
 		assert!(OverlayVideoCodec::default().is_packed_alpha());
 		assert_eq!(OverlayVideoCodec::PackedAlpha.file_extension(), "mp4");
+	}
+
+	#[test]
+	fn packed_alpha_encoder_checks_the_packed_frame_against_hardware_limits() {
+		// The overlay is 2100 px wide, within the limit, but its packed frame is 2112 + 2100 px.
+		let limit = Some(Dimensions::new(4096, 4096));
+		let caps = FakeCaps(vec![(Codec::AV1, limit), (Codec::H265, limit)]);
+		let choice = packed_alpha_encoder(PackedAlphaLayout::new(Dimensions::new(2100, 1188)), Some(&caps));
+		assert_eq!(
+			(choice.codec, choice.hw_acceleration),
+			(Codec::H265, HwAcceleratedEncoding::No)
+		);
 	}
 
 	#[test]

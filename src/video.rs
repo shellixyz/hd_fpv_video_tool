@@ -36,6 +36,7 @@ use crate::{
 
 pub mod codec;
 pub mod coordinates;
+pub mod encoder_selection;
 pub mod hw_accel;
 pub mod probe;
 pub mod region;
@@ -56,34 +57,6 @@ pub type FrameIndex = u32;
 
 const DJI_AUDIO_FIX_ATEMPO: f64 = 1.001_480;
 const DJI_AUDIO_FIX_VOLUME: isize = 20;
-
-/// Selects the normal default video encoder, preferring VAAPI AV1 then H.265.
-#[must_use]
-pub fn default_video_codec(no_hwaccel: bool) -> (Codec, HwAcceleratedEncoding) {
-	#[cfg(feature = "hwaccel")]
-	{
-		const FALLBACK: (Codec, HwAcceleratedEncoding) = (Codec::H265, HwAcceleratedEncoding::No);
-		if no_hwaccel {
-			return FALLBACK;
-		}
-		let Some(hw_accel_cap) = hw_accel::vaapi_cap_finder() else {
-			return FALLBACK;
-		};
-		if let Some(codec) = [Codec::AV1, Codec::H265]
-			.iter()
-			.find(|&&codec| hw_accel_cap.can_encode(codec))
-		{
-			(*codec, HwAcceleratedEncoding::Yes)
-		} else {
-			FALLBACK
-		}
-	}
-	#[cfg(not(feature = "hwaccel"))]
-	{
-		let _ = no_hwaccel;
-		(Codec::H265, HwAcceleratedEncoding::No)
-	}
-}
 
 #[derive(Debug, Error, From)]
 pub enum CutVideoError {
@@ -560,6 +533,15 @@ fn apply_audio_extras(
 	}
 }
 
+/// The size of the frames a transcode encodes: the target resolution when scaling, else the input
+/// resolution.
+fn encoded_frame_size(
+	video_resolution: Option<video::resolution::TargetResolution>,
+	input_resolution: video::resolution::Resolution,
+) -> video::resolution::Resolution {
+	video_resolution.map_or(input_resolution, |resolution| resolution.dimensions())
+}
+
 fn build_video_filter_parts(
 	remove_video_defects: &[Region],
 	video_resolution: Option<video::resolution::TargetResolution>,
@@ -691,10 +673,13 @@ fn build_transcode_command(
 /// Panics if the ffmpeg command cannot be built.
 #[allow(clippy::too_many_lines)]
 pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVideoError> {
-	let output_video_file = args.output_video_file(false)?;
 	if !args.input_video_file().exists() {
 		return Err(TranscodeVideoError::InputVideoFileDoesNotExist);
 	}
+	let video_info = probe(args.input_video_file())?;
+	let (video_codec, hw_acceleration) =
+		args.video_codec(encoded_frame_size(args.video_resolution(), video_info.resolution()))?;
+	let output_video_file = args.output_video_file(false, video_codec, hw_acceleration)?;
 	if !args.overwrite() && output_video_file.exists() {
 		return Err(TranscodeVideoError::OutputVideoFileExists);
 	}
@@ -715,15 +700,12 @@ pub async fn transcode(args: &TranscodeVideoArgs) -> Result<PathBuf, TranscodeVi
 		output_video_file.to_string_lossy()
 	);
 
-	let (video_codec, hw_acceleration) = args.video_codec()?;
-
 	log::info!(
 		"using codec: {} (hw accel: {})",
 		video_codec,
 		hw_acceleration.to_string().to_lowercase()
 	);
 
-	let video_info = probe(args.input_video_file())?;
 	let frame_count = frame_count_for_interval(
 		video_info.frame_count(),
 		video_info.frame_rate(),
@@ -839,33 +821,14 @@ pub struct TranscodeConfig {
 }
 
 impl TranscodeConfig {
-	/// Resolves the output codec and hardware-acceleration mode, mirroring
-	/// `TranscodeVideoArgs::video_codec()`.
-	fn resolve_codec(&self) -> (Codec, HwAcceleratedEncoding) {
-		#[cfg(feature = "hwaccel")]
-		{
-			const FALLBACK: (Codec, HwAcceleratedEncoding) = (Codec::H265, HwAcceleratedEncoding::No);
-			if self.no_hwaccel {
-				return (self.video_codec.unwrap_or(Codec::H265), HwAcceleratedEncoding::No);
-			}
-			if let Some(codec) = self.video_codec {
-				match hw_accel::vaapi_cap_finder() {
-					Some(hw_accel_cap) => (codec, HwAcceleratedEncoding::from(hw_accel_cap.can_encode(codec))),
-					None => (codec, HwAcceleratedEncoding::No),
-				}
-			} else {
-				let found = hw_accel::vaapi_cap_finder()
-					.and_then(|cap| [Codec::AV1, Codec::H265].iter().find(|&&c| cap.can_encode(c)).copied());
-				match found {
-					Some(codec) => (codec, HwAcceleratedEncoding::Yes),
-					None => FALLBACK,
-				}
-			}
-		}
-		#[cfg(not(feature = "hwaccel"))]
-		{
-			(self.video_codec.unwrap_or(Codec::H265), HwAcceleratedEncoding::No)
-		}
+	/// Resolves the output codec and hardware-acceleration mode for frames of `frame_size`.
+	fn resolve_codec(&self, frame_size: video::resolution::Resolution) -> (Codec, HwAcceleratedEncoding) {
+		let choice = encoder_selection::select_encoder(
+			self.video_codec,
+			frame_size,
+			encoder_selection::device_caps(self.no_hwaccel).as_deref(),
+		);
+		(choice.codec, choice.hw_acceleration)
 	}
 
 	/// Resolves the video quality, honouring `video_quality` then the profile
@@ -924,7 +887,8 @@ where
 		config.end.as_ref(),
 	);
 
-	let (video_codec, hw_acceleration) = config.resolve_codec();
+	let (video_codec, hw_acceleration) =
+		config.resolve_codec(encoded_frame_size(config.video_resolution, video_info.resolution()));
 	let video_quality = config.resolve_quality(video_codec, hw_acceleration);
 	let video_bitrate = config.video_bitrate.clone().unwrap_or_else(|| "25M".to_owned());
 
@@ -1006,11 +970,13 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 	osd_file_path: P,
 	osd_args: &TranscodeVideoOSDArgs,
 ) -> Result<(), TranscodeVideoError> {
-	let output_video_file = args.output_video_file(true)?;
-
 	if !args.input_video_file().exists() {
 		return Err(TranscodeVideoError::InputVideoFileDoesNotExist);
 	}
+	let video_info = probe(args.input_video_file())?;
+	let (video_codec, hw_acceleration) =
+		args.video_codec(encoded_frame_size(args.video_resolution(), video_info.resolution()))?;
+	let output_video_file = args.output_video_file(true, video_codec, hw_acceleration)?;
 	if !args.overwrite() && output_video_file.exists() {
 		return Err(TranscodeVideoError::OutputVideoFileExists);
 	}
@@ -1024,8 +990,6 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 			"cannot fix video audio sync while not starting at the beginning of the file".to_owned(),
 		));
 	}
-
-	let video_info = probe(args.input_video_file())?;
 
 	let osd_frame_shift = match osd_args.osd_frame_shift() {
 		Some(frame_shift) => frame_shift,
@@ -1047,8 +1011,6 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 		args.input_video_file().to_string_lossy(),
 		output_video_file.to_string_lossy()
 	);
-
-	let (video_codec, hw_acceleration) = args.video_codec()?;
 
 	log::info!(
 		"using codec: {} (hw accel: {})",
@@ -1561,7 +1523,10 @@ pub async fn remove_audio_stream(
 mod tests {
 	use std::collections::BTreeMap;
 
-	use super::{OSDVideoMode, PlayWithOSDError, default_osd_video_file, mpv_overlay_filter, osd_video_mode};
+	use super::{
+		OSDVideoMode, PlayWithOSDError, default_osd_video_file, encoded_frame_size, mpv_overlay_filter, osd_video_mode,
+		resolution::{Resolution, StandardResolution, TargetResolution},
+	};
 	use crate::osd::overlay::{
 		Dimensions, OVERLAY_ALPHA_X_METADATA, OVERLAY_MODE_METADATA, OVERLAY_SIZE_METADATA, PACKED_ALPHA_MODE,
 		PackedAlphaLayout,
@@ -1638,5 +1603,24 @@ mod tests {
 		std::fs::File::create(&packed_alpha_sidecar).unwrap();
 
 		assert_eq!(default_osd_video_file(&video_file).unwrap(), packed_alpha_sidecar);
+	}
+
+	#[test]
+	fn a_transcode_encodes_frames_at_the_target_resolution() {
+		assert_eq!(
+			encoded_frame_size(
+				Some(TargetResolution::Standard(StandardResolution::Tr720p)),
+				Resolution::new(1920, 1080)
+			),
+			Resolution::new(1280, 720)
+		);
+	}
+
+	#[test]
+	fn a_transcode_without_a_target_resolution_encodes_frames_at_the_input_resolution() {
+		assert_eq!(
+			encoded_frame_size(None, Resolution::new(3840, 2160)),
+			Resolution::new(3840, 2160)
+		);
 	}
 }
