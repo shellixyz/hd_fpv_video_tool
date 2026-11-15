@@ -67,7 +67,7 @@ The font is picked from the flight controller firmware the recording names. For 
 3. the generic `font_hd.png`
 4. the generic `font_hd.bin`
 
-The other firmware names are `inav` (INAV), `ardu` (ArduPilot) and `ultr` with the legacy alias `ultra` (KISS Ultra); their bin fonts use `inav`, `ardu` and `ultra`. Walksnail recordings name INAV and ArduPilot only; other recordings use the generic font. `--font-ident` or `--osd-font-ident` forces an ident, which is used as given (for example `quic` for Quicksilver): `font_<ident>[_hd].png`, then `font_<ident>[_hd].bin`, then the generic fonts; an empty ident loads the generic fonts only. The font file loaded is logged.
+The other firmware names are `inav` (INAV), `ardu` (ArduPilot), `ultr` with the legacy alias `ultra` (KISS Ultra) and `quic` (Quicksilver); their bin fonts use `inav`, `ardu` and `ultra`, and Quicksilver has no bin font. Recordings that name no known firmware use the generic font. `--font-ident` or `--osd-font-ident` forces an ident, which is used as given: `font_<ident>[_hd].png`, then `font_<ident>[_hd].bin`, then the generic fonts; an empty ident loads the generic fonts only. The font file loaded is logged.
 
 Walksnail font files are not looked up by their own names. Either load one directly with `--font-file` or `--osd-font-file`, depending on the command, or rename `<name>_36.png` to `font_<ident>.png` and `<name>_24.png` to `font_<ident>_hd.png`.
 

@@ -105,6 +105,7 @@ impl FileHeader {
 			2 => FV::INAV,
 			3 => FV::Ardupilot,
 			4 => FV::KISSUltra,
+			5 => FV::Quicksilver,
 			_ => FV::Unknown,
 		}
 	}
@@ -407,4 +408,28 @@ pub fn find_associated_to_video_file<P: AsRef<Path>>(video_file_path: P) -> Opti
 	}
 
 	None
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{FileHeader, FileHeaderRaw};
+	use crate::osd::FontVariant;
+
+	fn header_with_variant_id(font_variant: u8) -> FileHeader {
+		FileHeader::from(FileHeaderRaw {
+			format_version: 1,
+			width_tiles: 50,
+			height_tiles: 18,
+			tile_width: 36,
+			tile_height: 54,
+			x_offset: 0,
+			y_offset: 0,
+			font_variant,
+		})
+	}
+
+	#[test]
+	fn variant_id_5_is_quicksilver() {
+		assert_eq!(header_with_variant_id(5).font_variant(), FontVariant::Quicksilver);
+	}
 }

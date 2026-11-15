@@ -7,6 +7,7 @@ pub enum FontVariant {
 	Betaflight,
 	INAV,
 	KISSUltra,
+	Quicksilver,
 	Unknown,
 }
 
@@ -19,7 +20,7 @@ impl FontVariant {
 			FV::INAV => Some("inav"),
 			FV::Betaflight => Some("bf"),
 			FV::KISSUltra => Some("ultra"),
-			FV::Generic | FV::Unknown => None,
+			FV::Quicksilver | FV::Generic | FV::Unknown => None,
 		}
 	}
 
@@ -32,6 +33,7 @@ impl FontVariant {
 			FV::INAV => &["inav"],
 			FV::Betaflight => &["btfl", "bf"],
 			FV::KISSUltra => &["ultr", "ultra"],
+			FV::Quicksilver => &["quic"],
 			FV::Generic | FV::Unknown => &[],
 		}
 	}

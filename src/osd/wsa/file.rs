@@ -47,12 +47,17 @@ impl FileHeaderRaw {
 		String::from_utf8_lossy(&self.font_variant_id)
 	}
 
+	/// Walksnail records the MSP FC variant ID. `INAV` and `ARDU` are seen in recordings; the
+	/// other IDs are inferred from the MSP FC variants msp-osd recognises.
 	#[must_use]
 	pub fn font_variant(&self) -> FontVariant {
 		use FontVariant as FV;
 		match self.font_variant_id().borrow() {
+			"BTFL" => FV::Betaflight,
 			"INAV" => FV::INAV,
 			"ARDU" => FV::Ardupilot,
+			"ULTR" => FV::KISSUltra,
+			"QUIC" => FV::Quicksilver,
 			_ => FV::Unknown,
 		}
 	}
@@ -282,4 +287,43 @@ pub fn find_associated_to_video_file<P: AsRef<Path>>(video_file_path: P) -> Opti
 	}
 
 	None
+}
+
+#[cfg(test)]
+mod tests {
+	use super::FileHeaderRaw;
+	use crate::osd::FontVariant;
+
+	fn header_with_variant_id(font_variant_id: [u8; 4]) -> FileHeaderRaw {
+		FileHeaderRaw {
+			font_variant_id,
+			unused: [0; 32],
+			width_tiles: 53,
+			height_tiles: 20,
+		}
+	}
+
+	#[test]
+	fn msp_fc_variant_ids_select_their_font_variant() {
+		let cases = [
+			(b"BTFL", FontVariant::Betaflight),
+			(b"INAV", FontVariant::INAV),
+			(b"ARDU", FontVariant::Ardupilot),
+			(b"ULTR", FontVariant::KISSUltra),
+			(b"QUIC", FontVariant::Quicksilver),
+		];
+		for (id, variant) in cases {
+			assert_eq!(
+				header_with_variant_id(*id).font_variant(),
+				variant,
+				"{}",
+				String::from_utf8_lossy(id)
+			);
+		}
+	}
+
+	#[test]
+	fn unrecognised_id_is_unknown() {
+		assert_eq!(header_with_variant_id(*b"XYZW").font_variant(), FontVariant::Unknown);
+	}
 }

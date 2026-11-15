@@ -24,18 +24,23 @@ pub enum FontLoadError {
 	NotFound { dir: PathBuf, looked_up: Vec<String> },
 }
 
-/// One lookup step: the PNG fonts named by `png_idents`, in order, then the bin font named by
-/// `bin_ident`. `None` is the generic font.
-struct LookupStep<'a> {
-	png_idents: Vec<Option<&'a str>>,
-	bin_ident: Option<&'a str>,
+/// One lookup step.
+enum LookupStep<'a> {
+	/// The PNG fonts named by `png_idents`, in order, then the bin font named by `bin_ident`, if
+	/// any.
+	Named {
+		png_idents: Vec<&'a str>,
+		bin_ident: Option<&'a str>,
+	},
+	/// The generic PNG font, then the generic bin font.
+	Generic,
 }
 
 impl LookupStep<'_> {
-	fn generic() -> LookupStep<'static> {
-		LookupStep {
-			png_idents: vec![None],
-			bin_ident: None,
+	fn has_candidates(&self) -> bool {
+		match self {
+			Self::Named { png_idents, bin_ident } => !png_idents.is_empty() || bin_ident.is_some(),
+			Self::Generic => true,
 		}
 	}
 }
@@ -111,12 +116,12 @@ impl FontDir {
 		variant: &FontVariant,
 		highest_used_tile_index: TileIndex,
 	) -> Result<Vec<Tile>, FontLoadError> {
-		let variant_step = LookupStep {
-			png_idents: variant.png_font_idents().iter().copied().map(Some).collect(),
+		let variant_step = LookupStep::Named {
+			png_idents: variant.png_font_idents().to_vec(),
 			bin_ident: variant.font_set_ident(),
 		};
 		let fallback_warning = || {
-			if let Some(ident) = variant.font_set_ident() {
+			if let Some(ident) = variant.png_font_idents().first().copied().or(variant.font_set_ident()) {
 				log::warn!("font for {variant} ({ident} ident) not found, falling back to generic font");
 			}
 		};
@@ -135,8 +140,8 @@ impl FontDir {
 		ident: Option<&str>,
 		highest_used_tile_index: TileIndex,
 	) -> Result<Vec<Tile>, FontLoadError> {
-		let ident_step = LookupStep {
-			png_idents: ident.map(Some).into_iter().collect(),
+		let ident_step = LookupStep::Named {
+			png_idents: ident.into_iter().collect(),
 			bin_ident: ident,
 		};
 		let fallback_warning = || {
@@ -155,18 +160,13 @@ impl FontDir {
 		fallback_warning: impl FnOnce(),
 	) -> Result<Vec<Tile>, FontLoadError> {
 		let mut looked_up = vec![];
-		if first_step.bin_ident.is_some() {
+		if first_step.has_candidates() {
 			if let Some(tiles) = self.load_step(tile_kind, first_step, highest_used_tile_index, &mut looked_up)? {
 				return Ok(tiles);
 			}
 			fallback_warning();
 		}
-		if let Some(tiles) = self.load_step(
-			tile_kind,
-			&LookupStep::generic(),
-			highest_used_tile_index,
-			&mut looked_up,
-		)? {
+		if let Some(tiles) = self.load_step(tile_kind, &LookupStep::Generic, highest_used_tile_index, &mut looked_up)? {
 			return Ok(tiles);
 		}
 		Err(FontLoadError::NotFound {
@@ -184,7 +184,34 @@ impl FontDir {
 		highest_used_tile_index: TileIndex,
 		looked_up: &mut Vec<String>,
 	) -> Result<Option<Vec<Tile>>, FontLoadError> {
-		for &ident in &step.png_idents {
+		match step {
+			LookupStep::Named { png_idents, bin_ident } => {
+				let png_idents: Vec<_> = png_idents.iter().copied().map(Some).collect();
+				if let Some(tiles) = self.load_first_png(tile_kind, &png_idents, looked_up)? {
+					return Ok(Some(tiles));
+				}
+				match bin_ident {
+					Some(bin_ident) => self.load_bin(tile_kind, Some(bin_ident), highest_used_tile_index, looked_up),
+					None => Ok(None),
+				}
+			},
+			LookupStep::Generic => {
+				if let Some(tiles) = self.load_first_png(tile_kind, &[None], looked_up)? {
+					return Ok(Some(tiles));
+				}
+				self.load_bin(tile_kind, None, highest_used_tile_index, looked_up)
+			},
+		}
+	}
+
+	/// Loads the first PNG font named by `idents` that exists. `None` is the generic font.
+	fn load_first_png(
+		&self,
+		tile_kind: tile::Kind,
+		idents: &[Option<&str>],
+		looked_up: &mut Vec<String>,
+	) -> Result<Option<Vec<Tile>>, FontLoadError> {
+		for &ident in idents {
 			let file_name = png_font_file_name(tile_kind, ident);
 			let file_path = self.0.join(&file_name);
 			looked_up.push(file_name);
@@ -192,7 +219,7 @@ impl FontDir {
 				return load_png(Some(tile_kind), &file_path).map(Some);
 			}
 		}
-		self.load_bin(tile_kind, step.bin_ident, highest_used_tile_index, looked_up)
+		Ok(None)
 	}
 
 	fn load_bin(
@@ -346,6 +373,20 @@ mod tests {
 		let tiles = load_variant(&dir, tile::Kind::SD, FontVariant::KISSUltra).unwrap();
 
 		assert_eq!(marker(&tiles), 1);
+	}
+
+	#[test]
+	fn quicksilver_looks_up_the_quic_png_then_the_generic_font() {
+		let dir = TempDir::new().unwrap();
+		write_png(dir.path(), "font_quic.png", tile::Kind::SD, 256, 1);
+		write_png(dir.path(), "font.png", tile::Kind::SD, 256, 2);
+
+		let tiles = load_variant(&dir, tile::Kind::SD, FontVariant::Quicksilver).unwrap();
+		assert_eq!(marker(&tiles), 1);
+
+		std::fs::remove_file(dir.path().join("font_quic.png")).unwrap();
+		let tiles = load_variant(&dir, tile::Kind::SD, FontVariant::Quicksilver).unwrap();
+		assert_eq!(marker(&tiles), 2);
 	}
 
 	#[test]

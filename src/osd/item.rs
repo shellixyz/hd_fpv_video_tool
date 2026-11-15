@@ -118,6 +118,7 @@ impl FontVariant {
 			FontVariant::Betaflight => &[],
 			FontVariant::INAV => &location_data::INAV,
 			FontVariant::KISSUltra => &[],
+			FontVariant::Quicksilver => &[],
 			FontVariant::Unknown => &[],
 		}
 	}
@@ -140,5 +141,18 @@ impl FontVariant {
 			);
 		}
 		map
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::osd::FontVariant;
+
+	#[test]
+	fn quicksilver_has_no_osd_item_names() {
+		assert_eq!(
+			FontVariant::osd_item_names().get(&FontVariant::Quicksilver),
+			Some(&vec![])
+		);
 	}
 }
