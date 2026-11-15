@@ -1,12 +1,11 @@
 use std::{fmt::Display, str::FromStr, sync::LazyLock};
 
-use derive_more::Constructor;
 use ffmpeg_next::Rational;
 use getset::{CopyGetters, Setters};
 use regex::Regex;
 use thiserror::Error;
 
-#[derive(Debug, CopyGetters, Setters, Constructor, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, CopyGetters, Setters, Clone, Copy, Default, PartialEq, Eq)]
 #[getset(get_copy = "pub", set = "pub")]
 pub struct Timestamp {
 	hours: u16,
@@ -15,6 +14,15 @@ pub struct Timestamp {
 }
 
 impl Timestamp {
+	#[must_use]
+	pub const fn new(hours: u16, minutes: u8, seconds: u8) -> Self {
+		Self {
+			hours,
+			minutes,
+			seconds,
+		}
+	}
+
 	#[must_use]
 	pub fn total_seconds(&self) -> u32 {
 		u32::from(self.hours) * 3600 + u32::from(self.minutes) * 60 + u32::from(self.seconds)
