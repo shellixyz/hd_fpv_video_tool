@@ -102,9 +102,10 @@ pub enum Commands {
 		#[clap(short, long, default_value = "chroma-key")]
 		codec: OverlayVideoCodec,
 
-		/// RGB chroma key color for chroma-key output
+		/// RGB chroma key color for chroma-key output, or `auto` to select the color furthest from
+		/// visible glyph colors
 		#[clap(long, default_value_t)]
-		key_color: ChromaKeyColor,
+		key_color: ChromaKeyColorSelection,
 
 		/// path of the video file to generate
 		video_file: Option<PathBuf>,
@@ -286,7 +287,7 @@ pub enum Commands {
 #[cfg(test)]
 mod tests {
 	use clap::Parser;
-	use hd_fpv_video_tool::{osd::overlay::ChromaKeyColor, prelude::OverlayVideoCodec};
+	use hd_fpv_video_tool::{osd::overlay::ChromaKeyColorSelection, prelude::OverlayVideoCodec};
 
 	use super::{Cli, Commands};
 
@@ -307,7 +308,10 @@ mod tests {
 			osd_args.osd_overlay_video_codec(),
 			OverlayVideoCodec::ChromaKey
 		));
-		assert_eq!(osd_args.osd_overlay_video_key_color(), ChromaKeyColor::default());
+		assert_eq!(
+			osd_args.osd_overlay_video_key_color(),
+			ChromaKeyColorSelection::Automatic
+		);
 	}
 
 	#[test]
@@ -328,6 +332,9 @@ mod tests {
 		};
 
 		assert!(matches!(osd_args.osd_overlay_video_codec(), OverlayVideoCodec::Vp9));
-		assert_eq!(osd_args.osd_overlay_video_key_color(), "#00FF00".parse().unwrap());
+		assert_eq!(
+			osd_args.osd_overlay_video_key_color(),
+			ChromaKeyColorSelection::Explicit("#00FF00".parse().unwrap())
+		);
 	}
 }

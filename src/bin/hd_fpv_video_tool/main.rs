@@ -188,10 +188,22 @@ async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()
 			},
 		};
 		let mut overlay_generator = generate_overlay_prepare_generator(common_args)?;
+		let key_color = if codec.is_chroma_key() {
+			match *key_color {
+				ChromaKeyColorSelection::Automatic => {
+					let color = overlay_generator.automatic_chroma_key_color();
+					log::info!("automatically selected chroma key color: {color}");
+					color
+				},
+				ChromaKeyColorSelection::Explicit(color) => color,
+			}
+		} else {
+			ChromaKeyColor::default()
+		};
 		overlay_generator
 			.generate_overlay_video(
 				*codec,
-				*key_color,
+				key_color,
 				common_args.start_end().start(),
 				common_args.start_end().end(),
 				output_video_path,

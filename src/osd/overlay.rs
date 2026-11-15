@@ -11,7 +11,7 @@ use image::{GenericImage, ImageBuffer, ImageResult, Rgba};
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use path_absolutize::Absolutize;
-use rayon::prelude::{IndexedParallelIterator, ParallelIterator};
+use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use thiserror::Error;
 use tokio::io::AsyncWriteExt as _;
 
@@ -50,6 +50,37 @@ pub type Dimensions = GenericDimensions<u32>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChromaKeyColor([u8; 3]);
 
+/// Configures whether a chroma key is chosen automatically or explicitly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ChromaKeyColorSelection {
+	/// Select the color furthest from visible glyph colors.
+	#[default]
+	Automatic,
+	/// Use the supplied RGB color.
+	Explicit(ChromaKeyColor),
+}
+
+impl Display for ChromaKeyColorSelection {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Automatic => formatter.write_str("auto"),
+			Self::Explicit(color) => color.fmt(formatter),
+		}
+	}
+}
+
+impl FromStr for ChromaKeyColorSelection {
+	type Err = String;
+
+	fn from_str(value: &str) -> Result<Self, Self::Err> {
+		if value.eq_ignore_ascii_case("auto") {
+			Ok(Self::Automatic)
+		} else {
+			value.parse().map(Self::Explicit)
+		}
+	}
+}
+
 impl ChromaKeyColor {
 	#[must_use]
 	pub const fn legacy_magenta() -> Self {
@@ -65,12 +96,76 @@ impl ChromaKeyColor {
 	pub fn ffmpeg_color(self) -> String {
 		format!("0x{:02X}{:02X}{:02X}", self.0[0], self.0[1], self.0[2])
 	}
+
+	fn furthest_from_visible_colors(images: &[tile::Image]) -> Self {
+		let mut colors = images
+			.iter()
+			.flat_map(tile::Image::pixels)
+			.filter(|pixel| pixel[3] != 0)
+			.map(|pixel| [pixel[0], pixel[1], pixel[2]])
+			.collect::<Vec<_>>();
+		colors.sort_unstable();
+		colors.dedup();
+
+		Self::furthest_from_colors(&colors)
+	}
+
+	fn furthest_from_colors(colors: &[[u8; 3]]) -> Self {
+		if colors.is_empty() {
+			return Self::default();
+		}
+
+		let (_, color) = (u8::MIN..=u8::MAX)
+			.into_par_iter()
+			.map(|red| {
+				let mut furthest = (0, [red, 0, 0]);
+				for green in u8::MIN..=u8::MAX {
+					for blue in u8::MIN..=u8::MAX {
+						let color = [red, green, blue];
+						let closest_distance = colors
+							.iter()
+							.map(|glyph_color| color_distance_squared(color, *glyph_color))
+							.min()
+							.unwrap_or_default();
+						let candidate = (closest_distance, color);
+						if is_further_color(candidate, furthest) {
+							furthest = candidate;
+						}
+					}
+				}
+				furthest
+			})
+			.reduce(
+				|| (0, [0, 0, 0]),
+				|first, second| {
+					if is_further_color(first, second) { first } else { second }
+				},
+			);
+
+		Self(color)
+	}
 }
 
 impl Default for ChromaKeyColor {
 	fn default() -> Self {
 		Self([0, 0, 64])
 	}
+}
+
+fn color_distance_squared(first: [u8; 3], second: [u8; 3]) -> u32 {
+	first
+		.into_iter()
+		.zip(second)
+		.map(|(first, second)| {
+			let difference = i32::from(first) - i32::from(second);
+			let difference = difference.unsigned_abs();
+			difference * difference
+		})
+		.sum()
+}
+
+fn is_further_color(first: (u32, [u8; 3]), second: (u32, [u8; 3])) -> bool {
+	first.0 > second.0 || (first.0 == second.0 && first.1 < second.1)
 }
 
 impl Display for ChromaKeyColor {
@@ -608,6 +703,12 @@ impl<'a> Generator<'a> {
 		})
 	}
 
+	/// Selects the RGB color with the greatest distance from every visible loaded glyph color.
+	#[must_use]
+	pub fn automatic_chroma_key_color(&self) -> ChromaKeyColor {
+		ChromaKeyColor::furthest_from_visible_colors(&self.tile_images)
+	}
+
 	fn check_osd_file_frames_tile_indices(osd_file_frames: &OSDFileSortedFrames, tile_images: &[tile::Image]) {
 		let mut invalid_tile_indices = vec![];
 		for osd_frame in osd_file_frames.frames() {
@@ -1038,13 +1139,34 @@ mod tests {
 	use image::Rgba;
 
 	use super::{
-		CHROMA_KEY_COLOR_METADATA, CHROMA_KEY_FILTER_METADATA, CHROMA_KEY_MODE_METADATA, ChromaKeyColor, Dimensions,
-		Frame, OverlayVideoCodec, chroma_key_filter, configure_overlay_video_output, is_supported_chroma_key_filter,
+		CHROMA_KEY_COLOR_METADATA, CHROMA_KEY_FILTER_METADATA, CHROMA_KEY_MODE_METADATA, ChromaKeyColor,
+		ChromaKeyColorSelection, Dimensions, Frame, OverlayVideoCodec, chroma_key_filter,
+		configure_overlay_video_output, is_supported_chroma_key_filter,
 	};
 
 	#[test]
 	fn chroma_key_default_should_use_the_validated_color() {
 		assert_eq!(ChromaKeyColor::default().rgb(), [0, 0, 64]);
+	}
+
+	#[test]
+	fn automatic_chroma_key_color_should_be_furthest_from_visible_glyph_colors() {
+		assert_eq!(
+			ChromaKeyColor::furthest_from_colors(&[[255, 255, 255]]).rgb(),
+			[0, 0, 0]
+		);
+	}
+
+	#[test]
+	fn chroma_key_color_selection_should_parse_automatic_and_explicit_values() {
+		assert_eq!(
+			"auto".parse::<ChromaKeyColorSelection>().unwrap(),
+			ChromaKeyColorSelection::Automatic
+		);
+		assert_eq!(
+			"00FF00".parse::<ChromaKeyColorSelection>().unwrap(),
+			ChromaKeyColorSelection::Explicit("00FF00".parse().unwrap())
+		);
 	}
 
 	#[test]
