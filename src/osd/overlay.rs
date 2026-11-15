@@ -26,6 +26,7 @@ use super::{
 		Frame as OSDFileFrame, ReadError, SortedUniqFrames as OSDFileSortedFrames,
 		sorted_frames::{GetFrames, GetFramesExt, VideoFramesIter},
 	},
+	font_dir::FontLoadError,
 	font_variant::FontVariant,
 	tile_indices::UnknownOSDItem,
 	tile_resize::ResizeTiles,
@@ -205,8 +206,8 @@ pub enum DrawFrameOverlayError {
 	OSDFileIsEmpty,
 	#[error(transparent)]
 	ReadError(ReadError),
-	#[error("failed to load font file: {0}")]
-	FontLoadError(bin_file::LoadError),
+	#[error("failed to load font: {0}")]
+	FontLoadError(FontLoadError),
 	#[error("video resolution {video_resolution} too small to render {osd_kind} OSD kind without scaling")]
 	VideoResolutionTooSmallError {
 		osd_kind: super::Kind,

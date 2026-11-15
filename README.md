@@ -53,7 +53,23 @@ For example the `generate-overlay-video` command can also be called with the `go
 
 ### OSD fonts
 
-To generate OSD overlays the OSD fonts in WTF.FPV bin format are needed. This program is using the fonts in the WTF.FPV bin format for rendering the OSD for both the DJI and Walksnail system. If needed you can convert your custom OSD font from Walksnail format to WTF.FPV bin format using [hd_fpv_osd_font_tool](https://github.com/shellixyz/hd_fpv_osd_font_tool). If you are using DJI goggles the same OSD font files you are using on your goggles can be used. You can put the files inside the `~/.local/share/hd_fpv_video_tool/fonts` directory so that the program will use them automatically. You can also put them in any location on your filesystem and tell the program where to look using the `DJI_OSD_FONTS_DIR` environment variable or using the `--font-dir` or `--osd-font-dir` options depending on the command.
+Rendering an OSD needs the OSD font, for both DJI and Walksnail recordings. Two font formats are read:
+
+* **PNG fonts**, the format of msp-osd v0.12.0 and later and of Walksnail Avatar: one PNG 256 glyphs tall, with 1 to 4 pages of 256 glyphs side by side.
+* **Bin fonts**, the WTF.FPV format of msp-osd before v0.12.0: one file per page of 256 glyphs, `font[_<ident>][_hd].bin` and `font[_<ident>][_hd]_2.bin`.
+
+Fonts are looked up in the font directory, `~/.local/share/hd_fpv_video_tool/fonts` by default. The `DJI_OSD_FONTS_DIR` environment variable or the `--font-dir` or `--osd-font-dir` option, depending on the command, picks another directory. The files use msp-osd's names, so the fonts on your DJI goggles' SD card can be copied as they are. `_hd` fonts are used for HD (24×36) glyphs and fonts without it for SD (36×54) glyphs.
+
+The font is picked from the flight controller firmware the recording names. For Betaflight with HD glyphs the files looked up are, in order:
+
+1. `font_btfl_hd.png`, then the legacy alias `font_bf_hd.png`
+2. `font_bf_hd.bin`
+3. the generic `font_hd.png`
+4. the generic `font_hd.bin`
+
+The other firmware names are `inav` (INAV), `ardu` (ArduPilot) and `ultr` with the legacy alias `ultra` (KISS Ultra); their bin fonts use `inav`, `ardu` and `ultra`. Walksnail recordings name INAV and ArduPilot only; other recordings use the generic font. `--font-ident` or `--osd-font-ident` forces an ident, which is used as given (for example `quic` for Quicksilver): `font_<ident>[_hd].png`, then `font_<ident>[_hd].bin`, then the generic fonts; an empty ident loads the generic fonts only. The font file loaded is logged.
+
+Walksnail font files are not looked up by their own names: rename `<name>_36.png` to `font_<ident>.png` and `<name>_24.png` to `font_<ident>_hd.png`. [hd_fpv_osd_font_tool](https://github.com/shellixyz/hd_fpv_osd_font_tool) converts fonts between formats.
 
 * [Fonts from the WTF.FPV project](https://github.com/fpv-wtf/msp-osd/tree/main/fonts)
 * [Latest ArduPilot fonts](https://github.com/ArduPilot/ardupilot/tree/master/libraries/AP_OSD/fonts/HDFonts)

@@ -22,4 +22,17 @@ impl FontVariant {
 			FV::Generic | FV::Unknown => None,
 		}
 	}
+
+	/// The idents msp-osd looks up PNG fonts by, then the legacy aliases it accepts.
+	#[must_use]
+	pub fn png_font_idents(&self) -> &'static [&'static str] {
+		use FontVariant as FV;
+		match self {
+			FV::Ardupilot => &["ardu"],
+			FV::INAV => &["inav"],
+			FV::Betaflight => &["btfl", "bf"],
+			FV::KISSUltra => &["ultr", "ultra"],
+			FV::Generic | FV::Unknown => &[],
+		}
+	}
 }
