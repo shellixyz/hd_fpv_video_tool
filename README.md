@@ -95,6 +95,9 @@ This command will encode a chroma-key OSD overlay video and write it into the `D
 
 `hd_fpv_video_tool play-video-with-osd DJIG0000.mp4`
 
+See [chroma-key sidecar quality validation](docs/chroma-key-quality.md) for the opt-in fixture
+check, visual review criteria, and benchmark procedure.
+
 ## Installation
 
 ### Easiest way

@@ -336,6 +336,15 @@ fn configure_overlay_video_output(
 			.add_arg(&format!("{CHROMA_KEY_COLOR_METADATA}={key_color}"))
 			.add_arg("-metadata")
 			.add_arg(&format!("{CHROMA_KEY_FILTER_METADATA}={filter}"));
+		if hw_acceleration.is_yes() {
+			ffmpeg_command.add_video_filter("format=nv12,hwupload");
+			#[cfg(feature = "hwaccel")]
+			if let Some(device) = crate::video::hw_accel::vaapi_device_path() {
+				ffmpeg_command
+					.add_prefix_arg("-vaapi_device")
+					.add_prefix_arg(device.to_str().unwrap_or("/dev/dri/renderD128"));
+			}
+		}
 	} else if let Some(params) = codec.params() {
 		ffmpeg_command
 			.set_output_video_settings(
