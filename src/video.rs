@@ -26,7 +26,7 @@ use crate::{
 		file::{GenericReader, ReadError as OSDFileReadError, UnrecognizedOSDFile},
 		overlay::{
 			CHROMA_KEY_COLOR_METADATA, CHROMA_KEY_FILTER_METADATA, CHROMA_KEY_MODE_METADATA, ChromaKeyColor,
-			SendFramesToFFMpegError, chroma_key_filter, scaling::ScalingArgsError,
+			SendFramesToFFMpegError, chroma_key_filter, is_supported_chroma_key_filter, scaling::ScalingArgsError,
 		},
 		tile_indices::UnknownOSDItem,
 	},
@@ -1236,7 +1236,12 @@ fn osd_video_mode(
 			.ok_or(PlayWithOSDError::InvalidChromaKeyMetadata)?
 			.parse()
 			.map_err(|_| PlayWithOSDError::InvalidChromaKeyMetadata)?;
-		if video_metadata.get(CHROMA_KEY_FILTER_METADATA) != Some(&chroma_key_filter(key_color)) {
+		if !is_supported_chroma_key_filter(
+			key_color,
+			video_metadata
+				.get(CHROMA_KEY_FILTER_METADATA)
+				.map_or("", String::as_str),
+		) {
 			return Err(PlayWithOSDError::InvalidChromaKeyMetadata);
 		}
 		return Ok(OSDVideoMode::ChromaKey(key_color));
@@ -1244,7 +1249,7 @@ fn osd_video_mode(
 
 	match video_codec {
 		Some("vp8" | "vp9") => Ok(OSDVideoMode::Transparent),
-		Some(_) if allow_untagged_opaque_osd => Ok(OSDVideoMode::ChromaKey(ChromaKeyColor::default())),
+		Some(_) if allow_untagged_opaque_osd => Ok(OSDVideoMode::ChromaKey(ChromaKeyColor::legacy_magenta())),
 		Some(_) => Err(PlayWithOSDError::UntaggedOpaqueOSDVideoFile),
 		None => Err(PlayWithOSDError::UnsupportedOSDVideoFile),
 	}
@@ -1633,7 +1638,15 @@ mod tests {
 	fn chroma_key_playback_should_construct_keying_filter() {
 		assert_eq!(
 			mpv_overlay_filter(OSDVideoMode::ChromaKey(ChromaKeyColor::default())),
-			"[vid2]chromakey=0xFF00FF:0.01:0.0[osd];[vid1][osd]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2[vo]"
+			"[vid2]chromakey=0x000040:0.05:0.0[osd];[vid1][osd]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2[vo]"
+		);
+	}
+
+	#[test]
+	fn untagged_opaque_sidecar_should_use_legacy_magenta() {
+		assert_eq!(
+			osd_video_mode(Some("hevc"), &BTreeMap::new(), true).unwrap(),
+			OSDVideoMode::ChromaKey(ChromaKeyColor::legacy_magenta())
 		);
 	}
 

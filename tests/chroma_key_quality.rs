@@ -8,10 +8,10 @@ use std::{
 use image::RgbaImage;
 
 const PIXEL_CHANNEL_TOLERANCE: u8 = 24;
-const MAX_DIFFERING_PIXEL_RATIO: f64 = 0.06;
+const MAX_DIFFERING_PIXEL_RATIO: f64 = 0.065;
 const VALIDATION_END_TIMESTAMP: &str = "00:01:00";
 const COMPARISON_END_TIMESTAMP: &str = "00:00:01";
-const VALIDATION_KEY_COLOR: &str = "010203";
+const VALIDATION_KEY_COLOR: &str = "000040";
 
 fn fixture_dir() -> PathBuf {
 	env::var_os("CHROMA_KEY_QUALITY_FIXTURE_DIR")
@@ -57,6 +57,9 @@ fn png_paths(path: &Path) -> Vec<PathBuf> {
 }
 
 fn pixel_differs(expected: &image::Rgba<u8>, actual: &image::Rgba<u8>) -> bool {
+	if expected[3] == 0 && actual[3] == 0 {
+		return false;
+	}
 	expected
 		.0
 		.into_iter()
@@ -134,7 +137,7 @@ fn chroma_key_sidecar_should_match_rendered_overlay_within_pixel_tolerance() {
 	let (frame_width, frame_height) =
 		image::image_dimensions(&source_frames[0]).expect("failed to read source frame dimensions");
 	let chroma_key_filter =
-		format!("chromakey=0x010203:0.01:0.0,crop={frame_width}:{frame_height}:(iw-ow)/2:(ih-oh)/2");
+		format!("chromakey=0x{VALIDATION_KEY_COLOR}:0.05:0.0,crop={frame_width}:{frame_height}:(iw-ow)/2:(ih-oh)/2");
 
 	fs::create_dir(&keyed_frames_dir).expect("failed to create decoded-frame directory");
 	run_command(

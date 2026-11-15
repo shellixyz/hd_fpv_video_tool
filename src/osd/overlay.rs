@@ -52,6 +52,11 @@ pub struct ChromaKeyColor([u8; 3]);
 
 impl ChromaKeyColor {
 	#[must_use]
+	pub const fn legacy_magenta() -> Self {
+		Self([255, 0, 255])
+	}
+
+	#[must_use]
 	pub const fn rgb(self) -> [u8; 3] {
 		self.0
 	}
@@ -64,7 +69,7 @@ impl ChromaKeyColor {
 
 impl Default for ChromaKeyColor {
 	fn default() -> Self {
-		Self([255, 0, 255])
+		Self([0, 0, 64])
 	}
 }
 
@@ -95,6 +100,8 @@ impl FromStr for ChromaKeyColor {
 #[derive(Debug, Error)]
 #[error("rendered OSD pixels use the chroma key color {0}")]
 pub struct ChromaKeyCollisionError(ChromaKeyColor);
+
+const MIN_CHROMA_KEY_COLLISION_ALPHA: u8 = 2;
 
 #[derive(Deref, Clone, CopyGetters)]
 pub struct Frame {
@@ -132,13 +139,16 @@ impl Frame {
 	/// Replaces transparent pixels with an opaque key color for chroma-key encoding.
 	///
 	/// # Errors
-	/// Returns [`ChromaKeyCollisionError`] when rendered OSD pixels use the selected key color.
+	/// Returns [`ChromaKeyCollisionError`] when a visible rendered OSD pixel uses the selected key
+	/// color.
 	pub fn apply_chroma_key(&mut self, key_color: ChromaKeyColor) -> Result<(), ChromaKeyCollisionError> {
 		let [key_red, key_green, key_blue] = key_color.rgb();
 		for pixel in self.image.pixels_mut() {
 			if pixel[3] == 0 {
 				*pixel = Rgba([key_red, key_green, key_blue, 255]);
-			} else if [pixel[0], pixel[1], pixel[2]] == [key_red, key_green, key_blue] {
+			} else if pixel[3] >= MIN_CHROMA_KEY_COLLISION_ALPHA
+				&& [pixel[0], pixel[1], pixel[2]] == [key_red, key_green, key_blue]
+			{
 				return Err(ChromaKeyCollisionError(key_color));
 			} else {
 				pixel[0] = blend_chroma_component(pixel[0], key_red, pixel[3]);
@@ -296,7 +306,8 @@ pub const CHROMA_KEY_MODE_METADATA: &str = "hd_fpv_overlay_mode";
 pub const CHROMA_KEY_COLOR_METADATA: &str = "hd_fpv_overlay_key_color";
 pub const CHROMA_KEY_FILTER_METADATA: &str = "hd_fpv_overlay_filter";
 const CHROMA_KEY_BITRATE_CAP: &str = "4M";
-const CHROMA_KEY_SIMILARITY: &str = "0.01";
+const CHROMA_KEY_SIMILARITY: &str = "0.05";
+const LEGACY_CHROMA_KEY_SIMILARITY: &str = "0.01";
 const CHROMA_KEY_BLEND: &str = "0.0";
 
 #[must_use]
@@ -307,6 +318,21 @@ pub fn chroma_key_filter(key_color: ChromaKeyColor) -> String {
 		CHROMA_KEY_SIMILARITY,
 		CHROMA_KEY_BLEND
 	)
+}
+
+#[must_use]
+pub fn is_supported_chroma_key_filter(key_color: ChromaKeyColor, filter: &str) -> bool {
+	[CHROMA_KEY_SIMILARITY, LEGACY_CHROMA_KEY_SIMILARITY]
+		.into_iter()
+		.any(|similarity| {
+			filter
+				== format!(
+					"chromakey={}:{}:{}",
+					key_color.ffmpeg_color(),
+					similarity,
+					CHROMA_KEY_BLEND
+				)
+		})
 }
 
 fn configure_overlay_video_output(
@@ -1013,8 +1039,13 @@ mod tests {
 
 	use super::{
 		CHROMA_KEY_COLOR_METADATA, CHROMA_KEY_FILTER_METADATA, CHROMA_KEY_MODE_METADATA, ChromaKeyColor, Dimensions,
-		Frame, OverlayVideoCodec, chroma_key_filter, configure_overlay_video_output,
+		Frame, OverlayVideoCodec, chroma_key_filter, configure_overlay_video_output, is_supported_chroma_key_filter,
 	};
+
+	#[test]
+	fn chroma_key_default_should_use_the_validated_color() {
+		assert_eq!(ChromaKeyColor::default().rgb(), [0, 0, 64]);
+	}
 
 	#[test]
 	fn chroma_key_should_replace_transparent_pixels_and_preserve_rendered_pixels() {
@@ -1023,15 +1054,25 @@ mod tests {
 
 		frame.apply_chroma_key(ChromaKeyColor::default()).unwrap();
 
-		assert_eq!(frame.image.into_raw(), vec![255, 0, 255, 255, 10, 20, 30, 255],);
+		assert_eq!(frame.image.into_raw(), vec![0, 0, 64, 255, 10, 20, 30, 255],);
 	}
 
 	#[test]
 	fn chroma_key_should_reject_rendered_key_color_pixels() {
 		let mut frame = Frame::new(Dimensions::new(1, 1));
-		frame.image.put_pixel(0, 0, Rgba([255, 0, 255, 255]));
+		frame.image.put_pixel(0, 0, Rgba([0, 0, 64, 255]));
 
 		assert!(frame.apply_chroma_key(ChromaKeyColor::default()).is_err());
+	}
+
+	#[test]
+	fn chroma_key_should_accept_nearly_transparent_key_color_pixels() {
+		let mut frame = Frame::new(Dimensions::new(1, 1));
+		frame.image.put_pixel(0, 0, Rgba([255, 0, 255, 1]));
+
+		frame.apply_chroma_key(ChromaKeyColor([255, 0, 255])).unwrap();
+
+		assert_eq!(frame.image.into_raw(), vec![255, 0, 255, 255]);
 	}
 
 	#[test]
@@ -1046,12 +1087,28 @@ mod tests {
 
 		frame.apply_chroma_key(ChromaKeyColor::default()).unwrap();
 
-		assert_eq!(frame.image.into_raw(), vec![255, 128, 255, 255]);
+		assert_eq!(frame.image.into_raw(), vec![128, 128, 159, 255]);
 	}
 
 	#[test]
 	fn chroma_key_codec_should_use_mp4_sidecars() {
 		assert_eq!(OverlayVideoCodec::ChromaKey.file_extension(), "mp4");
+	}
+
+	#[test]
+	fn chroma_key_filter_should_use_the_validated_default_color() {
+		assert_eq!(
+			chroma_key_filter(ChromaKeyColor::default()),
+			"chromakey=0x000040:0.05:0.0"
+		);
+	}
+
+	#[test]
+	fn chroma_key_filter_should_accept_legacy_similarity() {
+		assert!(is_supported_chroma_key_filter(
+			ChromaKeyColor::legacy_magenta(),
+			"chromakey=0xFF00FF:0.01:0.0"
+		));
 	}
 
 	#[test]
@@ -1068,7 +1125,7 @@ mod tests {
 				"-metadata".to_owned(),
 				format!("{CHROMA_KEY_MODE_METADATA}=chroma-key"),
 				"-metadata".to_owned(),
-				format!("{CHROMA_KEY_COLOR_METADATA}=#FF00FF"),
+				format!("{CHROMA_KEY_COLOR_METADATA}=#000040"),
 				"-metadata".to_owned(),
 				format!(
 					"{CHROMA_KEY_FILTER_METADATA}={}",

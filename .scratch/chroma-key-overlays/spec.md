@@ -8,8 +8,9 @@
   VAAPI AV1, then VAAPI H.265, then software H.265. They use overlay-specific
   constant-quality settings and a bitrate cap.
 - Sidecars are silent and preserve existing dimensions, timing, and standalone generation.
-- Chroma-key output uses a configurable color with magenta (`#FF00FF`) as the default. Generation
-  must fail when rendered OSD pixels collide with the selected key color.
+- Chroma-key output uses a configurable color with `#000040` as the default. Generation must fail
+  when rendered OSD pixels collide with the selected key color. Untagged legacy opaque sidecars
+  retain the former magenta (`#FF00FF`) default during playback.
 - New files carry mode, key color, and fixed filter-tuning metadata. Playback recognizes tagged
   chroma-key files and legacy VP8/VP9 transparent files. Untagged opaque-codec files require an
   explicit playback override.

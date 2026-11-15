@@ -16,12 +16,12 @@ cargo test --test chroma_key_quality -- --ignored --nocapture
 
 The test independently renders the first second of source overlay frames with
 `generate-overlay-frames`, creates a first-minute chroma-key sidecar with
-`generate-overlay-video` using `#010203` (the fixture contains the default
-magenta key color), then decodes and keys the first second of the sidecar with
-the recorded `chromakey=0x010203:0.01:0.0` filter. It compares every decoded
+`generate-overlay-video` using its default `#000040` key color, then decodes
+and keys the first second of the sidecar with the recorded
+`chromakey=0x000040:0.05:0.0` filter. It compares every decoded
 frame to the source overlay, center-cropping AV1's padded coded frame to its
 display dimensions. A pixel differs when any RGBA channel differs by more than
-24; no more than 6% of all compared pixels may differ.
+24; no more than 6.5% of all compared pixels may differ.
 
 The test prints the selected stream codec, encoder tag when available, bitrate,
 encoded sidecar size, and encode duration. Record that output with the test

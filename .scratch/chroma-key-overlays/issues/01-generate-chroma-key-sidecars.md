@@ -1,6 +1,6 @@
 # 01: Generate and play chroma-key sidecars
 
-**What to build:** `generate-overlay-video` creates a tagged, silent, magenta-key MP4 by default,
+**What to build:** `generate-overlay-video` creates a tagged, silent, `#000040`-key MP4 by default,
 and `play-video-with-osd` discovers and keys it correctly while preserving legacy transparent WebM
 playback. It rejects unsafe untagged opaque sidecars unless explicitly overridden.
 
