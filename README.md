@@ -24,7 +24,7 @@ Use this command when you want to generate OSD frame images to check what the OS
 
 #### generate-overlay-video
 
-Generates an OSD overlay video. This command generates a transparent video with the OSD frames rendered from the specified OSD file.  The generated video can then be used to play an FPV video with OSD without having to burn the OSD into the video using the `play-video-with-osd` command (or any other video player which can overlay a VP8/9 transparent video over another video in real time).
+Generates an OSD overlay video. By default, this command generates a chroma-key MP4 with the OSD frames rendered from the specified OSD file. The generated video can then be used to play an FPV video with OSD without burning it into the video using `play-video-with-osd`. Use `--codec vp8` or `--codec vp9` when transparent WebM compatibility output is required.
 
 #### cut-video
 
@@ -83,13 +83,15 @@ If you want to burn the OSD onto a video coming from a DJI FPV air unit with aud
 
 Run `hd_fpv_video_tool transcode-video --help` or `hd_fpv_video_tool help transcode-video` for a list of all the options available for this command.
 
-#### Generating a transparent OSD overlay video and playing an unmodified video with OSD
+Pass `--osd-overlay-video` to generate a sidecar instead of burning the OSD into the transcoded video. It defaults to a chroma-key MP4 sidecar; use `--osd-overlay-video-codec vp8` or `vp9` for transparent WebM compatibility output.
 
-First we need to generate the transparent OSD overlay video:
+#### Generating a chroma-key OSD overlay video and playing an unmodified video with OSD
+
+First we need to generate the chroma-key OSD overlay video:
 
 `hd_fpv_video_tool generate-overlay-video --target-video-file DJIG0000.mp4 DJIG0000.osd`
 
-This command will encode a transparent OSD overlay video encoded with the VP8 codec by default and write it into the `DJIG0000_osd.webm` file. The original video `DJIG0000.mp4` will not be modified. It is only used to choose the right resolution and OSD scaling for the output video. We can then use the `play-video-with-osd` command to play the `DJIG0000.mp4` file with overlayed OSD:
+This command will encode a chroma-key OSD overlay video and write it into the `DJIG0000_osd.mp4` file. The original video `DJIG0000.mp4` will not be modified. It is only used to choose the right resolution and OSD scaling for the output video. We can then use the `play-video-with-osd` command to play the `DJIG0000.mp4` file with overlaid OSD:
 
 `hd_fpv_video_tool play-video-with-osd DJIG0000.mp4`
 

@@ -16,7 +16,11 @@ use super::{font_options::OSDFontOptions, generate_overlay_args, start_end_args:
 use crate::{
 	AsBool,
 	ffmpeg::{self, VideoQuality},
-	osd::{self, file::find_associated_to_video_file, overlay::scaling::OSDScalingArgs},
+	osd::{
+		self,
+		file::find_associated_to_video_file,
+		overlay::{ChromaKeyColor, scaling::OSDScalingArgs},
+	},
 	prelude::OverlayVideoCodec,
 	video::{self, HwAcceleratedEncoding, resolution::TargetResolution},
 };
@@ -111,9 +115,15 @@ pub struct TranscodeVideoOSDArgs {
 	#[getset(get_copy = "pub")]
 	osd_overlay_video: bool,
 
-	#[clap(long, default_value = "vp8", requires = "osd_overlay_video")]
+	/// output mode: chroma-key MP4 (default), or transparent VP8/VP9 `WebM`
+	#[clap(long, default_value = "chroma-key", requires = "osd_overlay_video")]
 	#[getset(get_copy = "pub")]
 	osd_overlay_video_codec: OverlayVideoCodec,
+
+	/// RGB chroma key color for chroma-key output
+	#[clap(long, default_value_t, requires = "osd_overlay_video")]
+	#[getset(get_copy = "pub")]
+	osd_overlay_video_key_color: ChromaKeyColor,
 
 	/// path of the video file to generate
 	#[clap(long, requires = "osd_overlay_video")]

@@ -227,17 +227,20 @@ async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
 				let transcode_output_video_file = video::transcode(transcode_args).await?;
 				let osd_overlay_video_file_name =
 					if let Some(osd_overlay_video_file_name) = osd_args.osd_overlay_video_file() {
-						if !matches!(osd_overlay_video_file_name.extension(), Some(extension) if extension == "webm") {
-							return Err(anyhow!("OSD overlay video file name should have the .webm extension"));
+						let codec = osd_args.osd_overlay_video_codec();
+						if !matches!(osd_overlay_video_file_name.extension(), Some(extension) if extension == codec.file_extension())
+						{
+							return Err(anyhow!(
+								"OSD overlay video file name should have the .{} extension",
+								codec.file_extension()
+							));
 						}
 						osd_overlay_video_file_name.clone()
 					} else {
-						let target_video_file_stem = transcode_output_video_file
-							.file_stem()
-							.ok_or_else(|| anyhow!("target video file has no file name"))?;
-						let mut output_file_stem = target_video_file_stem.to_os_string();
-						output_file_stem.push("_osd");
-						Path::new(&output_file_stem).with_extension("webm")
+						overlay_video_file_name_from_target_video_file_name(
+							&transcode_output_video_file,
+							osd_args.osd_overlay_video_codec(),
+						)?
 					};
 				let gov_command = Commands::GenerateOverlayVideo {
 					common_args: GenerateOverlayArgsBuilder::default()
@@ -252,7 +255,7 @@ async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
 						.build()
 						.unwrap(),
 					codec: osd_args.osd_overlay_video_codec(),
-					key_color: ChromaKeyColor::default(),
+					key_color: osd_args.osd_overlay_video_key_color(),
 					video_file: Some(osd_overlay_video_file_name),
 					overwrite: transcode_args.overwrite(),
 					ffmpeg_priority: *transcode_args.ffmpeg_priority(),

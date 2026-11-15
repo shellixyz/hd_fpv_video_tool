@@ -282,3 +282,52 @@ pub enum Commands {
 	#[clap(hide(true))]
 	GenerateManPages,
 }
+
+#[cfg(test)]
+mod tests {
+	use clap::Parser;
+	use hd_fpv_video_tool::{osd::overlay::ChromaKeyColor, prelude::OverlayVideoCodec};
+
+	use super::{Cli, Commands};
+
+	#[test]
+	fn transcode_overlay_video_should_default_to_chroma_key() {
+		let cli = Cli::try_parse_from([
+			"hd_fpv_video_tool",
+			"transcode-video",
+			"--osd-overlay-video",
+			"flight.mp4",
+		])
+		.unwrap();
+		let Commands::TranscodeVideo { osd_args, .. } = cli.command else {
+			panic!("expected transcode-video command");
+		};
+
+		assert!(matches!(
+			osd_args.osd_overlay_video_codec(),
+			OverlayVideoCodec::ChromaKey
+		));
+		assert_eq!(osd_args.osd_overlay_video_key_color(), ChromaKeyColor::default());
+	}
+
+	#[test]
+	fn transcode_overlay_video_should_preserve_transparent_compatibility_and_key_color_controls() {
+		let cli = Cli::try_parse_from([
+			"hd_fpv_video_tool",
+			"transcode-video",
+			"--osd-overlay-video",
+			"--osd-overlay-video-codec",
+			"vp9",
+			"--osd-overlay-video-key-color",
+			"00FF00",
+			"flight.mp4",
+		])
+		.unwrap();
+		let Commands::TranscodeVideo { osd_args, .. } = cli.command else {
+			panic!("expected transcode-video command");
+		};
+
+		assert!(matches!(osd_args.osd_overlay_video_codec(), OverlayVideoCodec::Vp9));
+		assert_eq!(osd_args.osd_overlay_video_key_color(), "#00FF00".parse().unwrap());
+	}
+}
