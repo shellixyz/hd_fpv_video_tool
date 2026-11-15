@@ -1,4 +1,6 @@
 /target
+/AGENTS.md
+/docs/agents/
 *.osd
 *.srt
 *.png
