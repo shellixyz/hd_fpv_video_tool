@@ -1,8 +1,6 @@
 use std::{
-	fmt::{Display, Formatter},
 	io::{self, Error as IOError, Write},
 	path::{Path, PathBuf},
-	str::FromStr,
 };
 
 use derive_more::{Deref, From};
@@ -11,7 +9,7 @@ use image::{GenericImage, ImageBuffer, ImageResult, Rgba};
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use path_absolutize::Absolutize;
-use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+use rayon::prelude::{IndexedParallelIterator, ParallelIterator};
 use thiserror::Error;
 use tokio::io::AsyncWriteExt as _;
 
@@ -39,7 +37,7 @@ use crate::{
 	image::{WriteError as ImageWriteError, WriteImageFile},
 	osd::file::sorted_frames::EndOfFramesAction,
 	video::{
-		FrameIndex as VideoFrameIndex,
+		Codec, FrameIndex as VideoFrameIndex, HwAcceleratedEncoding,
 		resolution::Resolution as VideoResolution,
 		timestamp::{StartEndOverlayFrameIndex, Timestamp},
 	},
@@ -47,156 +45,69 @@ use crate::{
 
 pub type Dimensions = GenericDimensions<u32>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ChromaKeyColor([u8; 3]);
+/// Alignment of the alpha plane's left edge in a packed-alpha frame, so that encoder blocks do not
+/// straddle the color and alpha planes.
+const PACKED_ALPHA_PLANE_ALIGNMENT: u32 = 64;
 
-/// Configures whether a chroma key is chosen automatically or explicitly.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ChromaKeyColorSelection {
-	/// Select the color furthest from visible glyph colors.
-	#[default]
-	Automatic,
-	/// Use the supplied RGB color.
-	Explicit(ChromaKeyColor),
+/// Placement of an overlay's color and alpha planes inside a packed-alpha video frame.
+///
+/// The color plane holds the overlay's straight RGB at the frame origin. The alpha plane holds its
+/// alpha as gray, at the same height, starting at [`Self::alpha_x`]. Gray converts to luma
+/// independently of the YUV matrix, so codecs without an alpha channel carry it intact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, CopyGetters)]
+#[getset(get_copy = "pub")]
+pub struct PackedAlphaLayout {
+	overlay_dimensions: Dimensions,
+	alpha_x: u32,
 }
 
-impl Display for ChromaKeyColorSelection {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::Automatic => formatter.write_str("auto"),
-			Self::Explicit(color) => color.fmt(formatter),
+impl PackedAlphaLayout {
+	#[must_use]
+	pub fn new(overlay_dimensions: Dimensions) -> Self {
+		Self {
+			overlay_dimensions,
+			alpha_x: overlay_dimensions.width.next_multiple_of(PACKED_ALPHA_PLANE_ALIGNMENT),
 		}
 	}
-}
 
-impl FromStr for ChromaKeyColorSelection {
-	type Err = String;
-
-	fn from_str(value: &str) -> Result<Self, Self::Err> {
-		if value.eq_ignore_ascii_case("auto") {
-			Ok(Self::Automatic)
-		} else {
-			value.parse().map(Self::Explicit)
-		}
-	}
-}
-
-impl ChromaKeyColor {
+	/// Reads a layout from sidecar metadata values: the overlay size as `<width>x<height>` and the
+	/// alpha plane's left edge.
 	#[must_use]
-	pub const fn legacy_magenta() -> Self {
-		Self([255, 0, 255])
-	}
-
-	#[must_use]
-	pub const fn rgb(self) -> [u8; 3] {
-		self.0
-	}
-
-	#[must_use]
-	pub fn ffmpeg_color(self) -> String {
-		format!("0x{:02X}{:02X}{:02X}", self.0[0], self.0[1], self.0[2])
-	}
-
-	fn furthest_from_visible_colors(images: &[tile::Image]) -> Self {
-		let mut colors = images
-			.iter()
-			.flat_map(tile::Image::pixels)
-			.filter(|pixel| pixel[3] != 0)
-			.map(|pixel| [pixel[0], pixel[1], pixel[2]])
-			.collect::<Vec<_>>();
-		colors.sort_unstable();
-		colors.dedup();
-
-		Self::furthest_from_colors(&colors)
-	}
-
-	fn furthest_from_colors(colors: &[[u8; 3]]) -> Self {
-		if colors.is_empty() {
-			return Self::default();
-		}
-
-		let (_, color) = (u8::MIN..=u8::MAX)
-			.into_par_iter()
-			.map(|red| {
-				let mut furthest = (0, [red, 0, 0]);
-				for green in u8::MIN..=u8::MAX {
-					for blue in u8::MIN..=u8::MAX {
-						let color = [red, green, blue];
-						let closest_distance = colors
-							.iter()
-							.map(|glyph_color| color_distance_squared(color, *glyph_color))
-							.min()
-							.unwrap_or_default();
-						let candidate = (closest_distance, color);
-						if is_further_color(candidate, furthest) {
-							furthest = candidate;
-						}
-					}
-				}
-				furthest
+	pub fn from_metadata(size: &str, alpha_x: &str) -> Option<Self> {
+		let overlay_dimensions: Dimensions = size.parse().ok()?;
+		let alpha_x = alpha_x.parse().ok()?;
+		(overlay_dimensions.width > 0 && overlay_dimensions.height > 0 && alpha_x >= overlay_dimensions.width)
+			.then_some(Self {
+				overlay_dimensions,
+				alpha_x,
 			})
-			.reduce(
-				|| (0, [0, 0, 0]),
-				|first, second| {
-					if is_further_color(first, second) { first } else { second }
-				},
-			);
+	}
 
-		Self(color)
+	/// Dimensions of the encoded frame holding both planes.
+	#[must_use]
+	pub fn packed_dimensions(self) -> Dimensions {
+		Dimensions::new(
+			self.alpha_x + self.overlay_dimensions.width,
+			self.overlay_dimensions.height,
+		)
+	}
+
+	/// Builds an `FFmpeg` filter graph fragment that turns the packed frames from the `input` label
+	/// into RGBA overlay frames on the `output` label.
+	///
+	/// Both planes are cropped at explicit coordinates, so padding added by the encoder to the
+	/// right or bottom of the coded frame is discarded.
+	#[must_use]
+	pub fn unpack_filter(self, input: &str, output: &str) -> String {
+		let Dimensions { width, height } = self.overlay_dimensions;
+		let alpha_x = self.alpha_x;
+		format!(
+			"[{input}]split[osd_packed_color][osd_packed_alpha];[osd_packed_color]crop={width}:{height}:0:\
+			 0[osd_color];[osd_packed_alpha]crop={width}:{height}:{alpha_x}:0,format=gray[osd_alpha];\
+			 [osd_color][osd_alpha]alphamerge[{output}]"
+		)
 	}
 }
-
-impl Default for ChromaKeyColor {
-	fn default() -> Self {
-		Self([0, 0, 64])
-	}
-}
-
-fn color_distance_squared(first: [u8; 3], second: [u8; 3]) -> u32 {
-	first
-		.into_iter()
-		.zip(second)
-		.map(|(first, second)| {
-			let difference = i32::from(first) - i32::from(second);
-			let difference = difference.unsigned_abs();
-			difference * difference
-		})
-		.sum()
-}
-
-fn is_further_color(first: (u32, [u8; 3]), second: (u32, [u8; 3])) -> bool {
-	first.0 > second.0 || (first.0 == second.0 && first.1 < second.1)
-}
-
-impl Display for ChromaKeyColor {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(formatter, "#{:02X}{:02X}{:02X}", self.0[0], self.0[1], self.0[2])
-	}
-}
-
-impl FromStr for ChromaKeyColor {
-	type Err = String;
-
-	fn from_str(value: &str) -> Result<Self, Self::Err> {
-		let value = value.strip_prefix('#').unwrap_or(value);
-		if !value.is_ascii() || value.len() != 6 {
-			return Err("key color must be a six-digit RGB value such as #FF00FF".to_owned());
-		}
-		let red = u8::from_str_radix(&value[0..2], 16)
-			.map_err(|_| "key color must be a six-digit RGB value such as #FF00FF".to_owned())?;
-		let green = u8::from_str_radix(&value[2..4], 16)
-			.map_err(|_| "key color must be a six-digit RGB value such as #FF00FF".to_owned())?;
-		let blue = u8::from_str_radix(&value[4..6], 16)
-			.map_err(|_| "key color must be a six-digit RGB value such as #FF00FF".to_owned())?;
-		Ok(Self([red, green, blue]))
-	}
-}
-
-#[derive(Debug, Error)]
-#[error("rendered OSD pixels use the chroma key color {0}")]
-pub struct ChromaKeyCollisionError(ChromaKeyColor);
-
-const MIN_CHROMA_KEY_COLLISION_ALPHA: u8 = 2;
 
 #[derive(Deref, Clone, CopyGetters)]
 pub struct Frame {
@@ -231,37 +142,26 @@ impl Frame {
 		self.image.copy_from(image, x, y)
 	}
 
-	/// Replaces transparent pixels with an opaque key color for chroma-key encoding.
+	/// Packs this frame side by side into an opaque color plane and a gray alpha plane.
 	///
-	/// # Errors
-	/// Returns [`ChromaKeyCollisionError`] when a visible rendered OSD pixel uses the selected key
-	/// color.
-	pub fn apply_chroma_key(&mut self, key_color: ChromaKeyColor) -> Result<(), ChromaKeyCollisionError> {
-		let [key_red, key_green, key_blue] = key_color.rgb();
-		for pixel in self.image.pixels_mut() {
-			if pixel[3] == 0 {
-				*pixel = Rgba([key_red, key_green, key_blue, 255]);
-			} else if pixel[3] >= MIN_CHROMA_KEY_COLLISION_ALPHA
-				&& [pixel[0], pixel[1], pixel[2]] == [key_red, key_green, key_blue]
-			{
-				return Err(ChromaKeyCollisionError(key_color));
-			} else {
-				pixel[0] = blend_chroma_component(pixel[0], key_red, pixel[3]);
-				pixel[1] = blend_chroma_component(pixel[1], key_green, pixel[3]);
-				pixel[2] = blend_chroma_component(pixel[2], key_blue, pixel[3]);
-				pixel[3] = 255;
-			}
+	/// # Panics
+	/// Panics if `layout` was made for different overlay dimensions.
+	#[must_use]
+	pub fn pack_alpha(&self, layout: PackedAlphaLayout) -> Self {
+		assert_eq!(
+			layout.overlay_dimensions(),
+			self.dimensions,
+			"packed-alpha layout does not match the frame"
+		);
+		let mut packed = Self::new(layout.packed_dimensions());
+		for (x, y, pixel) in self.image.enumerate_pixels() {
+			let [red, green, blue, alpha] = pixel.0;
+			packed.image.put_pixel(x, y, Rgba([red, green, blue, u8::MAX]));
+			packed
+				.image
+				.put_pixel(layout.alpha_x + x, y, Rgba([alpha, alpha, alpha, u8::MAX]));
 		}
-		Ok(())
-	}
-}
-
-fn blend_chroma_component(component: u8, key_component: u8, alpha: u8) -> u8 {
-	let alpha = u16::from(alpha);
-	let value = (u16::from(component) * alpha + u16::from(key_component) * (255 - alpha)) / 255;
-	match u8::try_from(value) {
-		Ok(value) => value,
-		Err(_) => unreachable!("blending two u8 values cannot produce a value greater than u8::MAX"),
+		packed
 	}
 }
 
@@ -336,9 +236,12 @@ pub fn make_overlay_frame_file_path<P: AsRef<Path>>(dir_path: P, frame_index: Vi
 
 #[derive(Debug, Default, Clone, Copy, clap::ValueEnum)]
 pub enum OverlayVideoCodec {
+	/// MP4 with the overlay's color and alpha packed side by side, using the default video encoder
 	#[default]
-	ChromaKey,
+	PackedAlpha,
+	/// transparent VP8 `WebM`
 	Vp8,
+	/// transparent VP9 `WebM`
 	Vp9,
 }
 
@@ -375,14 +278,21 @@ impl OverlayVideoCodec {
 	#[must_use]
 	pub fn file_extension(self) -> &'static str {
 		match self {
-			Self::ChromaKey => "mp4",
+			Self::PackedAlpha => "mp4",
 			Self::Vp8 | Self::Vp9 => "webm",
 		}
 	}
 
 	#[must_use]
-	pub fn is_chroma_key(self) -> bool {
-		matches!(self, Self::ChromaKey)
+	pub fn is_packed_alpha(self) -> bool {
+		matches!(self, Self::PackedAlpha)
+	}
+
+	/// Returns the packed-alpha layout of this codec's frames for the given overlay dimensions.
+	#[must_use]
+	pub fn packed_alpha_layout(self, overlay_dimensions: Dimensions) -> Option<PackedAlphaLayout> {
+		self.is_packed_alpha()
+			.then(|| PackedAlphaLayout::new(overlay_dimensions))
 	}
 
 	#[must_use]
@@ -390,73 +300,52 @@ impl OverlayVideoCodec {
 		use OverlayVideoCodec as OVC;
 		use OverlayVideoCodecParams as OVCP;
 		Some(match self {
-			OVC::ChromaKey => return None,
+			OVC::PackedAlpha => return None,
 			OVC::Vp8 => OVCP::new("libvpx", Some("1M"), Some(40), &["-auto-alt-ref", "0"]),
 			OVC::Vp9 => OVCP::new("libvpx-vp9", Some("0"), Some(40), &[]),
 		})
 	}
 }
 
-pub const CHROMA_KEY_MODE_METADATA: &str = "hd_fpv_overlay_mode";
-pub const CHROMA_KEY_COLOR_METADATA: &str = "hd_fpv_overlay_key_color";
-pub const CHROMA_KEY_FILTER_METADATA: &str = "hd_fpv_overlay_filter";
-const CHROMA_KEY_BITRATE_CAP: &str = "4M";
-const CHROMA_KEY_SIMILARITY: &str = "0.05";
-const LEGACY_CHROMA_KEY_SIMILARITY: &str = "0.01";
-const CHROMA_KEY_BLEND: &str = "0.0";
+pub const OVERLAY_MODE_METADATA: &str = "hd_fpv_overlay_mode";
+pub const PACKED_ALPHA_MODE: &str = "packed-alpha";
+pub const OVERLAY_SIZE_METADATA: &str = "hd_fpv_overlay_size";
+pub const OVERLAY_ALPHA_X_METADATA: &str = "hd_fpv_overlay_alpha_x";
+const PACKED_ALPHA_BITRATE_CAP: &str = "4M";
 
-#[must_use]
-pub fn chroma_key_filter(key_color: ChromaKeyColor) -> String {
-	format!(
-		"chromakey={}:{}:{}",
-		key_color.ffmpeg_color(),
-		CHROMA_KEY_SIMILARITY,
-		CHROMA_KEY_BLEND
-	)
-}
-
-#[must_use]
-pub fn is_supported_chroma_key_filter(key_color: ChromaKeyColor, filter: &str) -> bool {
-	[CHROMA_KEY_SIMILARITY, LEGACY_CHROMA_KEY_SIMILARITY]
-		.into_iter()
-		.any(|similarity| {
-			filter
-				== format!(
-					"chromakey={}:{}:{}",
-					key_color.ffmpeg_color(),
-					similarity,
-					CHROMA_KEY_BLEND
-				)
-		})
+/// Constant-quality setting for packed-alpha sidecars. VAAPI's `global_quality` is a quantizer
+/// whose scale depends on the codec: 0-255 for AV1, 0-51 for H.264 and H.265.
+fn packed_alpha_quality(codec: Codec, hw_acceleration: HwAcceleratedEncoding) -> VideoQuality {
+	match (hw_acceleration, codec) {
+		(HwAcceleratedEncoding::Yes, Codec::AV1) => VideoQuality::GlobalQuality(90),
+		(HwAcceleratedEncoding::Yes, _) => VideoQuality::GlobalQuality(24),
+		(HwAcceleratedEncoding::No, _) => VideoQuality::ConstantRateFactor(28),
+	}
 }
 
 fn configure_overlay_video_output(
 	ffmpeg_command: &mut ffmpeg::CommandBuilder,
 	codec: OverlayVideoCodec,
-	key_color: ChromaKeyColor,
+	packed_alpha_layout: Option<PackedAlphaLayout>,
 ) {
-	if codec.is_chroma_key() {
+	if let Some(layout) = packed_alpha_layout {
 		let (video_codec, hw_acceleration) = crate::video::default_video_codec(false);
-		let quality = match hw_acceleration {
-			crate::video::HwAcceleratedEncoding::Yes => VideoQuality::GlobalQuality(90),
-			crate::video::HwAcceleratedEncoding::No => VideoQuality::ConstantRateFactor(28),
-		};
-		let filter = chroma_key_filter(key_color);
+		let quality = packed_alpha_quality(video_codec, hw_acceleration);
 		ffmpeg_command
 			.set_output_video_settings(
 				Some(video_codec.ffmpeg_string(hw_acceleration.is_yes())),
-				Some(CHROMA_KEY_BITRATE_CAP),
+				Some(PACKED_ALPHA_BITRATE_CAP),
 				Some(quality),
 			)
 			.add_arg("-an")
 			.add_arg("-movflags")
 			.add_arg("use_metadata_tags")
 			.add_arg("-metadata")
-			.add_arg(&format!("{CHROMA_KEY_MODE_METADATA}=chroma-key"))
+			.add_arg(&format!("{OVERLAY_MODE_METADATA}={PACKED_ALPHA_MODE}"))
 			.add_arg("-metadata")
-			.add_arg(&format!("{CHROMA_KEY_COLOR_METADATA}={key_color}"))
+			.add_arg(&format!("{OVERLAY_SIZE_METADATA}={}", layout.overlay_dimensions()))
 			.add_arg("-metadata")
-			.add_arg(&format!("{CHROMA_KEY_FILTER_METADATA}={filter}"));
+			.add_arg(&format!("{OVERLAY_ALPHA_X_METADATA}={}", layout.alpha_x()));
 		if hw_acceleration.is_yes() {
 			ffmpeg_command.add_video_filter("format=nv12,hwupload");
 			#[cfg(feature = "hwaccel")]
@@ -515,8 +404,6 @@ pub enum GenerateOverlayVideoError {
 	#[error(transparent)]
 	UnknownOSDItem(UnknownOSDItem),
 	#[error(transparent)]
-	ChromaKeyCollision(ChromaKeyCollisionError),
-	#[error(transparent)]
 	WriteToFileError(TouchError),
 }
 
@@ -525,7 +412,6 @@ impl From<SendFramesToFFMpegError> for GenerateOverlayVideoError {
 		match error {
 			SendFramesToFFMpegError::PipeError(error) => Self::FailedSendingOSDFramesToFFMpeg(error),
 			SendFramesToFFMpegError::UnknownOSDItem(error) => Self::UnknownOSDItem(error),
-			SendFramesToFFMpegError::ChromaKeyCollision(error) => Self::ChromaKeyCollision(error),
 			SendFramesToFFMpegError::FFMpegExitedWithError(error) => Self::FFMpegExitedWithError(error),
 		}
 	}
@@ -703,12 +589,6 @@ impl<'a> Generator<'a> {
 		})
 	}
 
-	/// Selects the RGB color with the greatest distance from every visible loaded glyph color.
-	#[must_use]
-	pub fn automatic_chroma_key_color(&self) -> ChromaKeyColor {
-		ChromaKeyColor::furthest_from_visible_colors(&self.tile_images)
-	}
-
 	fn check_osd_file_frames_tile_indices(osd_file_frames: &OSDFileSortedFrames, tile_images: &[tile::Image]) {
 		let mut invalid_tile_indices = vec![];
 		for osd_frame in osd_file_frames.frames() {
@@ -831,7 +711,6 @@ impl<'a> Generator<'a> {
 	pub async fn generate_overlay_video<P: AsRef<Path>>(
 		&mut self,
 		codec: OverlayVideoCodec,
-		key_color: ChromaKeyColor,
 		start: Option<Timestamp>,
 		end: Option<Timestamp>,
 		output_video_path: P,
@@ -867,12 +746,14 @@ impl<'a> Generator<'a> {
 
 		let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
 
+		let packed_alpha_layout = codec.packed_alpha_layout(self.frame_dimensions);
+		let input_dimensions = packed_alpha_layout.map_or(self.frame_dimensions, PackedAlphaLayout::packed_dimensions);
 		ffmpeg_command
-			.add_stdin_input(self.frame_dimensions, 60)
+			.add_stdin_input(input_dimensions, 60)
 			.unwrap()
 			.set_output_file(output_video_path)
 			.set_overwrite_output_file(true);
-		configure_overlay_video_output(&mut ffmpeg_command, codec, key_color);
+		configure_overlay_video_output(&mut ffmpeg_command, codec, packed_alpha_layout);
 
 		let spawn_options = ffmpeg::SpawnOptions::default()
 			.with_progress(frame_count as u64)
@@ -880,7 +761,7 @@ impl<'a> Generator<'a> {
 		let ffmpeg_process = ffmpeg_command.build().unwrap().spawn(&spawn_options)?;
 
 		frames_iter
-			.send_frames_to_ffmpeg_and_wait(ffmpeg_process, codec.is_chroma_key().then_some(key_color))
+			.send_frames_to_ffmpeg_and_wait(ffmpeg_process, packed_alpha_layout)
 			.await?;
 
 		log::info!("overlay video generation completed: {frame_count} frames");
@@ -899,7 +780,6 @@ impl<'a> Generator<'a> {
 	pub async fn generate_overlay_video_with_progress<P, F>(
 		&mut self,
 		codec: OverlayVideoCodec,
-		key_color: ChromaKeyColor,
 		start: Option<Timestamp>,
 		end: Option<Timestamp>,
 		output_video_path: P,
@@ -940,12 +820,14 @@ impl<'a> Generator<'a> {
 
 		let mut ffmpeg_command = ffmpeg::CommandBuilder::default();
 
+		let packed_alpha_layout = codec.packed_alpha_layout(self.frame_dimensions);
+		let input_dimensions = packed_alpha_layout.map_or(self.frame_dimensions, PackedAlphaLayout::packed_dimensions);
 		ffmpeg_command
-			.add_stdin_input(self.frame_dimensions, 60)
+			.add_stdin_input(input_dimensions, 60)
 			.unwrap()
 			.set_output_file(output_video_path)
 			.set_overwrite_output_file(true);
-		configure_overlay_video_output(&mut ffmpeg_command, codec, key_color);
+		configure_overlay_video_output(&mut ffmpeg_command, codec, packed_alpha_layout);
 
 		let spawn_options = ffmpeg::SpawnOptionsWithCallback::default()
 			.with_callback(frame_count as u64, Box::new(callback))
@@ -953,7 +835,7 @@ impl<'a> Generator<'a> {
 		let ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_callback(spawn_options)?;
 
 		frames_iter
-			.send_frames_to_ffmpeg_callback_and_wait(ffmpeg_process, codec.is_chroma_key().then_some(key_color))
+			.send_frames_to_ffmpeg_callback_and_wait(ffmpeg_process, packed_alpha_layout)
 			.await?;
 
 		log::info!("overlay video generation completed: {frame_count} frames");
@@ -998,8 +880,6 @@ pub enum SendFramesToFFMpegError {
 	#[error(transparent)]
 	UnknownOSDItem(UnknownOSDItem),
 	#[error(transparent)]
-	ChromaKeyCollision(ChromaKeyCollisionError),
-	#[error(transparent)]
 	FFMpegExitedWithError(ffmpeg::ProcessError),
 }
 
@@ -1027,13 +907,13 @@ impl FramesIter<'_> {
 	pub fn send_frames_to_ffmpeg(
 		&mut self,
 		ffmpeg_process: &mut ffmpeg::Process,
-		key_color: Option<ChromaKeyColor>,
+		packed_alpha_layout: Option<PackedAlphaLayout>,
 	) -> Result<(), SendFramesToFFMpegError> {
 		let mut ffmpeg_stdin = ffmpeg_process.take_stdin().unwrap();
 		for osd_frame_image in self {
 			let mut osd_frame_image = osd_frame_image?;
-			if let Some(key_color) = key_color {
-				osd_frame_image.apply_chroma_key(key_color)?;
+			if let Some(layout) = packed_alpha_layout {
+				osd_frame_image = osd_frame_image.pack_alpha(layout);
 			}
 			ffmpeg_stdin.write_all(osd_frame_image.as_raw())?;
 		}
@@ -1049,9 +929,9 @@ impl FramesIter<'_> {
 	pub async fn send_frames_to_ffmpeg_and_wait(
 		mut self,
 		mut ffmpeg_process: ffmpeg::Process,
-		key_color: Option<ChromaKeyColor>,
+		packed_alpha_layout: Option<PackedAlphaLayout>,
 	) -> Result<(), SendFramesToFFMpegError> {
-		let send_result = self.send_frames_to_ffmpeg(&mut ffmpeg_process, key_color);
+		let send_result = self.send_frames_to_ffmpeg(&mut ffmpeg_process, packed_alpha_layout);
 
 		ffmpeg_process.wait().await?;
 		send_result?;
@@ -1072,17 +952,15 @@ impl FramesIter<'_> {
 	pub async fn send_frames_to_ffmpeg_callback_and_wait(
 		self,
 		mut ffmpeg_process: ffmpeg::ProcessWithCallback,
-		key_color: Option<ChromaKeyColor>,
+		packed_alpha_layout: Option<PackedAlphaLayout>,
 	) -> Result<(), SendFramesToFFMpegError> {
 		let mut ffmpeg_stdin = ffmpeg_process.take_stdin().unwrap();
 		let mut frame_error: Option<SendFramesToFFMpegError> = None;
 		for osd_frame_image in self {
 			match osd_frame_image {
 				Ok(mut frame) => {
-					let chroma_key_error = key_color.and_then(|key_color| frame.apply_chroma_key(key_color).err());
-					if let Some(error) = chroma_key_error {
-						frame_error = Some(SendFramesToFFMpegError::ChromaKeyCollision(error));
-						break;
+					if let Some(layout) = packed_alpha_layout {
+						frame = frame.pack_alpha(layout);
 					}
 					if let Err(e) = ffmpeg_stdin.write_all(frame.as_raw()).await {
 						frame_error = Some(SendFramesToFFMpegError::PipeError(e));
@@ -1139,104 +1017,114 @@ mod tests {
 	use image::Rgba;
 
 	use super::{
-		CHROMA_KEY_COLOR_METADATA, CHROMA_KEY_FILTER_METADATA, CHROMA_KEY_MODE_METADATA, ChromaKeyColor,
-		ChromaKeyColorSelection, Dimensions, Frame, OverlayVideoCodec, chroma_key_filter,
-		configure_overlay_video_output, is_supported_chroma_key_filter,
+		Dimensions, Frame, OVERLAY_ALPHA_X_METADATA, OVERLAY_MODE_METADATA, OVERLAY_SIZE_METADATA, OverlayVideoCodec,
+		PackedAlphaLayout, configure_overlay_video_output, packed_alpha_quality,
+	};
+	use crate::{
+		ffmpeg::VideoQuality,
+		video::{Codec, HwAcceleratedEncoding},
 	};
 
 	#[test]
-	fn chroma_key_default_should_use_the_validated_color() {
-		assert_eq!(ChromaKeyColor::default().rgb(), [0, 0, 64]);
-	}
-
-	#[test]
-	fn automatic_chroma_key_color_should_be_furthest_from_visible_glyph_colors() {
-		assert_eq!(
-			ChromaKeyColor::furthest_from_colors(&[[255, 255, 255]]).rgb(),
-			[0, 0, 0]
-		);
-	}
-
-	#[test]
-	fn chroma_key_color_selection_should_parse_automatic_and_explicit_values() {
-		assert_eq!(
-			"auto".parse::<ChromaKeyColorSelection>().unwrap(),
-			ChromaKeyColorSelection::Automatic
-		);
-		assert_eq!(
-			"00FF00".parse::<ChromaKeyColorSelection>().unwrap(),
-			ChromaKeyColorSelection::Explicit("00FF00".parse().unwrap())
-		);
-	}
-
-	#[test]
-	fn chroma_key_should_replace_transparent_pixels_and_preserve_rendered_pixels() {
-		let mut frame = Frame::new(Dimensions::new(2, 1));
-		frame.image.put_pixel(1, 0, Rgba([10, 20, 30, 255]));
-
-		frame.apply_chroma_key(ChromaKeyColor::default()).unwrap();
-
-		assert_eq!(frame.image.into_raw(), vec![0, 0, 64, 255, 10, 20, 30, 255],);
-	}
-
-	#[test]
-	fn chroma_key_should_reject_rendered_key_color_pixels() {
-		let mut frame = Frame::new(Dimensions::new(1, 1));
-		frame.image.put_pixel(0, 0, Rgba([0, 0, 64, 255]));
-
-		assert!(frame.apply_chroma_key(ChromaKeyColor::default()).is_err());
-	}
-
-	#[test]
-	fn chroma_key_should_accept_nearly_transparent_key_color_pixels() {
-		let mut frame = Frame::new(Dimensions::new(1, 1));
-		frame.image.put_pixel(0, 0, Rgba([255, 0, 255, 1]));
-
-		frame.apply_chroma_key(ChromaKeyColor([255, 0, 255])).unwrap();
-
-		assert_eq!(frame.image.into_raw(), vec![255, 0, 255, 255]);
-	}
-
-	#[test]
-	fn chroma_key_color_should_reject_non_ascii_input() {
-		assert!("€abc".parse::<ChromaKeyColor>().is_err());
-	}
-
-	#[test]
-	fn chroma_key_should_blend_translucent_pixels_against_the_key_color() {
-		let mut frame = Frame::new(Dimensions::new(1, 1));
-		frame.image.put_pixel(0, 0, Rgba([255, 255, 255, 128]));
-
-		frame.apply_chroma_key(ChromaKeyColor::default()).unwrap();
-
-		assert_eq!(frame.image.into_raw(), vec![128, 128, 159, 255]);
-	}
-
-	#[test]
-	fn chroma_key_codec_should_use_mp4_sidecars() {
-		assert_eq!(OverlayVideoCodec::ChromaKey.file_extension(), "mp4");
-	}
-
-	#[test]
-	fn chroma_key_filter_should_use_the_validated_default_color() {
-		assert_eq!(
-			chroma_key_filter(ChromaKeyColor::default()),
-			"chromakey=0x000040:0.05:0.0"
-		);
-	}
-
-	#[test]
-	fn chroma_key_filter_should_accept_legacy_similarity() {
-		assert!(is_supported_chroma_key_filter(
-			ChromaKeyColor::legacy_magenta(),
-			"chromakey=0xFF00FF:0.01:0.0"
+	fn packed_alpha_quality_should_use_each_vaapi_codec_scale() {
+		assert!(matches!(
+			packed_alpha_quality(Codec::AV1, HwAcceleratedEncoding::Yes),
+			VideoQuality::GlobalQuality(90)
+		));
+		assert!(matches!(
+			packed_alpha_quality(Codec::H265, HwAcceleratedEncoding::Yes),
+			VideoQuality::GlobalQuality(24)
+		));
+		assert!(matches!(
+			packed_alpha_quality(Codec::H265, HwAcceleratedEncoding::No),
+			VideoQuality::ConstantRateFactor(28)
 		));
 	}
 
 	#[test]
-	fn chroma_key_command_should_include_mode_key_and_filter_metadata() {
+	fn packed_alpha_layout_should_align_the_alpha_plane() {
+		let layout = PackedAlphaLayout::new(Dimensions::new(1200, 648));
+
+		assert_eq!(layout.alpha_x(), 1216);
+		assert_eq!(layout.packed_dimensions(), Dimensions::new(2416, 648));
+	}
+
+	#[test]
+	fn packed_alpha_layout_should_not_pad_aligned_widths() {
+		let layout = PackedAlphaLayout::new(Dimensions::new(1280, 720));
+
+		assert_eq!(layout.alpha_x(), 1280);
+		assert_eq!(layout.packed_dimensions(), Dimensions::new(2560, 720));
+	}
+
+	#[test]
+	fn packed_alpha_should_split_color_and_alpha_planes() {
+		let mut frame = Frame::new(Dimensions::new(3, 1));
+		frame.image.put_pixel(1, 0, Rgba([255, 255, 255, 128]));
+		frame.image.put_pixel(2, 0, Rgba([10, 20, 30, 255]));
+
+		let packed = frame.pack_alpha(PackedAlphaLayout::new(frame.dimensions()));
+
+		assert_eq!(packed.dimensions(), Dimensions::new(67, 1));
+		assert_eq!(packed.image.get_pixel(0, 0), &Rgba([0, 0, 0, 255]));
+		assert_eq!(packed.image.get_pixel(1, 0), &Rgba([255, 255, 255, 255]));
+		assert_eq!(packed.image.get_pixel(2, 0), &Rgba([10, 20, 30, 255]));
+		assert_eq!(packed.image.get_pixel(3, 0), &Rgba([0, 0, 0, 0]));
+		assert_eq!(packed.image.get_pixel(64, 0), &Rgba([0, 0, 0, 255]));
+		assert_eq!(packed.image.get_pixel(65, 0), &Rgba([128, 128, 128, 255]));
+		assert_eq!(packed.image.get_pixel(66, 0), &Rgba([255, 255, 255, 255]));
+	}
+
+	#[test]
+	fn packed_alpha_layout_should_round_trip_through_metadata() {
+		let layout = PackedAlphaLayout::new(Dimensions::new(1200, 648));
+
+		assert_eq!(
+			PackedAlphaLayout::from_metadata(&layout.overlay_dimensions().to_string(), &layout.alpha_x().to_string()),
+			Some(layout)
+		);
+	}
+
+	#[test]
+	fn packed_alpha_layout_should_reject_invalid_metadata() {
+		for (size, alpha_x) in [
+			("1200x648", "1199"),
+			("1200", "1216"),
+			("0x648", "1216"),
+			("1200x648", "-1"),
+			("1200x648x1", "1216"),
+		] {
+			assert_eq!(
+				PackedAlphaLayout::from_metadata(size, alpha_x),
+				None,
+				"{size} {alpha_x}"
+			);
+		}
+	}
+
+	#[test]
+	fn packed_alpha_unpack_filter_should_crop_explicit_planes() {
+		assert_eq!(
+			PackedAlphaLayout::new(Dimensions::new(1200, 648)).unpack_filter("vid2", "osd"),
+			"[vid2]split[osd_packed_color][osd_packed_alpha];[osd_packed_color]crop=1200:648:0:0[osd_color];\
+			 [osd_packed_alpha]crop=1200:648:1216:0,format=gray[osd_alpha];[osd_color][osd_alpha]alphamerge[osd]"
+		);
+	}
+
+	#[test]
+	fn packed_alpha_codec_should_be_the_mp4_default() {
+		assert!(OverlayVideoCodec::default().is_packed_alpha());
+		assert_eq!(OverlayVideoCodec::PackedAlpha.file_extension(), "mp4");
+	}
+
+	#[test]
+	fn packed_alpha_command_should_include_mode_and_geometry_metadata() {
 		let mut command = crate::ffmpeg::CommandBuilder::default();
-		configure_overlay_video_output(&mut command, OverlayVideoCodec::ChromaKey, ChromaKeyColor::default());
+		configure_overlay_video_output(
+			&mut command,
+			OverlayVideoCodec::PackedAlpha,
+			Some(PackedAlphaLayout::new(Dimensions::new(1200, 648))),
+		);
 
 		assert_eq!(
 			command.args(),
@@ -1245,14 +1133,11 @@ mod tests {
 				"-movflags".to_owned(),
 				"use_metadata_tags".to_owned(),
 				"-metadata".to_owned(),
-				format!("{CHROMA_KEY_MODE_METADATA}=chroma-key"),
+				format!("{OVERLAY_MODE_METADATA}=packed-alpha"),
 				"-metadata".to_owned(),
-				format!("{CHROMA_KEY_COLOR_METADATA}=#000040"),
+				format!("{OVERLAY_SIZE_METADATA}=1200x648"),
 				"-metadata".to_owned(),
-				format!(
-					"{CHROMA_KEY_FILTER_METADATA}={}",
-					chroma_key_filter(ChromaKeyColor::default())
-				),
+				format!("{OVERLAY_ALPHA_X_METADATA}=1216"),
 			]
 		);
 	}

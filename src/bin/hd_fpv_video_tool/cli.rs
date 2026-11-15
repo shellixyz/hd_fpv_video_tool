@@ -67,10 +67,10 @@ pub enum Commands {
 
 	/// Generate an OSD overlay video to be displayed over another video
 	///
-	/// This command generates a chroma-key MP4 with the OSD frames rendered from the specified
-	/// WTF.FPV OSD file. The generated video can then be used to play an FPV video with OSD
-	/// without having to burn the OSD into the video. Use `--codec vp8` or `--codec vp9` for
-	/// transparent `WebM` compatibility output.
+	/// This command generates an MP4 with the OSD frames rendered from the specified WTF.FPV OSD
+	/// file. The generated video can then be used to play an FPV video with OSD without having to
+	/// burn the OSD into the video. Use `--codec vp8` or `--codec vp9` for transparent `WebM`
+	/// compatibility output.
 	///
 	/// If you specify a target resolution with --target-resolution or a video file to read the
 	/// resolution from with --target-video-file then the kind of tiles (HD/SD) to use and whether
@@ -79,17 +79,17 @@ pub enum Commands {
 	/// and the kind of tiles used will be the native kind of tiles corresponding to the kind of
 	/// OSD layout read from the FPV.WTF .osd file.
 	///
-	/// Chroma-key output uses the standard video encoder selection and records the keying metadata
-	/// needed for playback. VP8 or VP9 codecs can be selected with the --codec option when a
-	/// transparent `WebM` sidecar is required.
+	/// The MP4 stores each frame's colors and transparency side by side ("packed alpha") so it can
+	/// use the standard video encoder selection, including hardware encoders, while keeping the
+	/// OSD's smooth edges. It records the layout needed for playback. VP8 or VP9 codecs can be
+	/// selected with the --codec option when a transparent `WebM` sidecar is required.
 	///
 	/// Fonts are loaded either from the directory specified with the --font-dir option or
 	/// from the directory found in the environment variable `FONTS_DIR` or
 	/// if neither of these are available it falls back to the `fonts` directory inside the current
 	/// directory.
 	///
-	/// NOTE: unfortunately this is very slow right now because only a handful of video formats
-	/// support transparency and their encoders are very slow
+	/// NOTE: VP8/VP9 transparent output is much slower to encode than the default MP4
 	#[clap(alias = "gov")]
 	GenerateOverlayVideo {
 		#[clap(flatten)]
@@ -98,14 +98,9 @@ pub enum Commands {
 		#[clap(short = 'P', long)]
 		ffmpeg_priority: Option<i32>,
 
-		/// output mode: chroma-key MP4 (default), or transparent VP8/VP9 `WebM`
-		#[clap(short, long, default_value = "chroma-key")]
+		/// output format: packed-alpha MP4 (default), or transparent VP8/VP9 `WebM`
+		#[clap(short, long, value_enum, default_value_t)]
 		codec: OverlayVideoCodec,
-
-		/// RGB chroma key color for chroma-key output, or `auto` to select the color furthest from
-		/// visible glyph colors
-		#[clap(long, default_value_t)]
-		key_color: ChromaKeyColorSelection,
 
 		/// path of the video file to generate
 		video_file: Option<PathBuf>,
@@ -200,10 +195,6 @@ pub enum Commands {
 		video_file: PathBuf,
 
 		osd_video_file: Option<PathBuf>,
-
-		/// permit opaque sidecars without `hd_fpv` overlay metadata
-		#[clap(long)]
-		allow_untagged_opaque_osd: bool,
 	},
 
 	/// Splice videos files together
@@ -287,12 +278,12 @@ pub enum Commands {
 #[cfg(test)]
 mod tests {
 	use clap::Parser;
-	use hd_fpv_video_tool::{osd::overlay::ChromaKeyColorSelection, prelude::OverlayVideoCodec};
+	use hd_fpv_video_tool::prelude::OverlayVideoCodec;
 
 	use super::{Cli, Commands};
 
 	#[test]
-	fn transcode_overlay_video_should_default_to_chroma_key() {
+	fn transcode_overlay_video_should_default_to_packed_alpha() {
 		let cli = Cli::try_parse_from([
 			"hd_fpv_video_tool",
 			"transcode-video",
@@ -306,24 +297,18 @@ mod tests {
 
 		assert!(matches!(
 			osd_args.osd_overlay_video_codec(),
-			OverlayVideoCodec::ChromaKey
+			OverlayVideoCodec::PackedAlpha
 		));
-		assert_eq!(
-			osd_args.osd_overlay_video_key_color(),
-			ChromaKeyColorSelection::Automatic
-		);
 	}
 
 	#[test]
-	fn transcode_overlay_video_should_preserve_transparent_compatibility_and_key_color_controls() {
+	fn transcode_overlay_video_should_preserve_transparent_compatibility() {
 		let cli = Cli::try_parse_from([
 			"hd_fpv_video_tool",
 			"transcode-video",
 			"--osd-overlay-video",
 			"--osd-overlay-video-codec",
 			"vp9",
-			"--osd-overlay-video-key-color",
-			"00FF00",
 			"flight.mp4",
 		])
 		.unwrap();
@@ -332,9 +317,15 @@ mod tests {
 		};
 
 		assert!(matches!(osd_args.osd_overlay_video_codec(), OverlayVideoCodec::Vp9));
-		assert_eq!(
-			osd_args.osd_overlay_video_key_color(),
-			ChromaKeyColorSelection::Explicit("#00FF00".parse().unwrap())
-		);
+	}
+
+	#[test]
+	fn generate_overlay_video_should_default_to_packed_alpha() {
+		let cli = Cli::try_parse_from(["hd_fpv_video_tool", "generate-overlay-video", "flight.osd"]).unwrap();
+		let Commands::GenerateOverlayVideo { codec, .. } = cli.command else {
+			panic!("expected generate-overlay-video command");
+		};
+
+		assert!(matches!(codec, OverlayVideoCodec::PackedAlpha));
 	}
 }

@@ -4,7 +4,7 @@
 .SH NAME
 transcode\-video \- Transcode a video file, optionally burning the OSD onto it
 .SH SYNOPSIS
-\fBtranscode\-video\fR [\fB\-\-osd\fR] [\fB\-s\fR|\fB\-\-osd\-scaling\fR] [\fB\-n\fR|\fB\-\-no\-osd\-scaling\fR] [\fB\-\-min\-osd\-margins\fR] [\fB\-\-min\-osd\-coverage\fR] [\fB\-d\fR|\fB\-\-osd\-font\-dir\fR] [\fB\-i\fR|\fB\-\-osd\-font\-ident\fR] [\fB\-o\fR|\fB\-\-osd\-frame\-shift\fR] [\fB\-\-osd\-hide\-regions\fR] [\fB\-\-osd\-hide\-items\fR] [\fB\-O\fR|\fB\-\-osd\-overlay\-video\fR] [\fB\-\-osd\-overlay\-video\-codec\fR] [\fB\-\-osd\-overlay\-video\-key\-color\fR] [\fB\-\-osd\-overlay\-video\-file\fR] [\fB\-\-optional\-osd\fR] [\fB\-F\fR|\fB\-\-osd\-file\fR] [\fB\-a\fR|\fB\-\-add\-audio\fR] [\fB\-f\fR|\fB\-\-fix\-audio\fR] [\fB\-v\fR|\fB\-\-fix\-audio\-volume\fR] [\fB\-u\fR|\fB\-\-fix\-audio\-sync\fR] [\fB\-R\fR|\fB\-\-remove\-audio\fR] [\fB\-N\fR|\fB\-\-no\-hwaccel\fR] [\fB\-V\fR|\fB\-\-video\-codec\fR] [\fB\-p\fR|\fB\-\-profile\fR] [\fB\-\-video\-bitrate\fR] [\fB\-q\fR|\fB\-\-video\-quality\fR] [\fB\-r\fR|\fB\-\-video\-resolution\fR] [\fB\-\-remove\-video\-defects\fR] [\fB\-\-audio\-encoder\fR] [\fB\-\-audio\-bitrate\fR] [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-P\fR|\fB\-\-ffmpeg\-priority\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-S\fR|\fB\-\-speed\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT_VIDEO_FILE\fR> [\fIOUTPUT_VIDEO_FILE\fR] 
+\fBtranscode\-video\fR [\fB\-\-osd\fR] [\fB\-s\fR|\fB\-\-osd\-scaling\fR] [\fB\-n\fR|\fB\-\-no\-osd\-scaling\fR] [\fB\-\-min\-osd\-margins\fR] [\fB\-\-min\-osd\-coverage\fR] [\fB\-d\fR|\fB\-\-osd\-font\-dir\fR] [\fB\-i\fR|\fB\-\-osd\-font\-ident\fR] [\fB\-o\fR|\fB\-\-osd\-frame\-shift\fR] [\fB\-\-osd\-hide\-regions\fR] [\fB\-\-osd\-hide\-items\fR] [\fB\-O\fR|\fB\-\-osd\-overlay\-video\fR] [\fB\-\-osd\-overlay\-video\-codec\fR] [\fB\-\-osd\-overlay\-video\-file\fR] [\fB\-\-optional\-osd\fR] [\fB\-F\fR|\fB\-\-osd\-file\fR] [\fB\-a\fR|\fB\-\-add\-audio\fR] [\fB\-f\fR|\fB\-\-fix\-audio\fR] [\fB\-v\fR|\fB\-\-fix\-audio\-volume\fR] [\fB\-u\fR|\fB\-\-fix\-audio\-sync\fR] [\fB\-R\fR|\fB\-\-remove\-audio\fR] [\fB\-N\fR|\fB\-\-no\-hwaccel\fR] [\fB\-V\fR|\fB\-\-video\-codec\fR] [\fB\-p\fR|\fB\-\-profile\fR] [\fB\-\-video\-bitrate\fR] [\fB\-q\fR|\fB\-\-video\-quality\fR] [\fB\-r\fR|\fB\-\-video\-resolution\fR] [\fB\-\-remove\-video\-defects\fR] [\fB\-\-audio\-encoder\fR] [\fB\-\-audio\-bitrate\fR] [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-P\fR|\fB\-\-ffmpeg\-priority\fR] [\fB\-y\fR|\fB\-\-overwrite\fR] [\fB\-S\fR|\fB\-\-speed\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIINPUT_VIDEO_FILE\fR> [\fIOUTPUT_VIDEO_FILE\fR] 
 .SH DESCRIPTION
 Transcode a video file, optionally burning the OSD onto it
 .PP
@@ -54,23 +54,20 @@ Available items (font variant: name list):
 \fB\-O\fR, \fB\-\-osd\-overlay\-video\fR
 generate OSD overlay video instead of burning it onto the video
 .TP
-\fB\-\-osd\-overlay\-video\-codec\fR \fI<OSD_OVERLAY_VIDEO_CODEC>\fR [default: chroma\-key]
-output mode: chroma\-key MP4 (default), or transparent VP8/VP9 `WebM`
+\fB\-\-osd\-overlay\-video\-codec\fR \fI<OSD_OVERLAY_VIDEO_CODEC>\fR [default: packed\-alpha]
+output format: packed\-alpha MP4 (default), or transparent VP8/VP9 `WebM`
 .br
 
 .br
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
-chroma\-key
+packed\-alpha: MP4 with the overlay\*(Aqs color and alpha packed side by side, using the default video encoder
 .IP \(bu 2
-vp8
+vp8: transparent VP8 `WebM`
 .IP \(bu 2
-vp9
+vp9: transparent VP9 `WebM`
 .RE
-.TP
-\fB\-\-osd\-overlay\-video\-key\-color\fR \fI<OSD_OVERLAY_VIDEO_KEY_COLOR>\fR [default: auto]
-RGB chroma key color for chroma\-key output, or `auto` to select the color furthest from visible glyph colors
 .TP
 \fB\-\-osd\-overlay\-video\-file\fR \fI<OSD_OVERLAY_VIDEO_FILE>\fR
 path of the video file to generate

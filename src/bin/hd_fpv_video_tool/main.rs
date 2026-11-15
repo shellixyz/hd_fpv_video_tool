@@ -156,7 +156,6 @@ async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()
 		video_file,
 		overwrite,
 		codec,
-		key_color,
 		ffmpeg_priority,
 	} = command
 	{
@@ -188,22 +187,9 @@ async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()
 			},
 		};
 		let mut overlay_generator = generate_overlay_prepare_generator(common_args)?;
-		let key_color = if codec.is_chroma_key() {
-			match *key_color {
-				ChromaKeyColorSelection::Automatic => {
-					let color = overlay_generator.automatic_chroma_key_color();
-					log::info!("automatically selected chroma key color: {color}");
-					color
-				},
-				ChromaKeyColorSelection::Explicit(color) => color,
-			}
-		} else {
-			ChromaKeyColor::default()
-		};
 		overlay_generator
 			.generate_overlay_video(
 				*codec,
-				key_color,
 				common_args.start_end().start(),
 				common_args.start_end().end(),
 				output_video_path,
@@ -247,7 +233,6 @@ fn transcode_overlay_video_command(
 			.osd_file(osd_file_path)
 			.build()?,
 		codec,
-		key_color: osd_args.osd_overlay_video_key_color(),
 		video_file: Some(osd_overlay_video_file_name),
 		overwrite: transcode_args.overwrite(),
 		ffmpeg_priority: *transcode_args.ffmpeg_priority(),
@@ -490,9 +475,7 @@ async fn main() {
 		Commands::PlayVideoWithOSD {
 			video_file,
 			osd_video_file,
-			allow_untagged_opaque_osd,
-		} => video::play_with_osd_with_options(video_file, osd_video_file, *allow_untagged_opaque_osd)
-			.map_err(anyhow::Error::new),
+		} => video::play_with_osd(video_file, osd_video_file).map_err(anyhow::Error::new),
 		Commands::SpliceVideos {
 			input_video_files,
 			output,
@@ -526,18 +509,14 @@ mod tests {
 			"hd_fpv_video_tool",
 			"generate-overlay-video",
 			"--codec",
-			"chroma-key",
-			"--key-color",
-			"00FF00",
+			"packed-alpha",
 			"--target-video-file",
 			"flight_transcoded.mp4",
 			"flight.osd",
 		])
 		.unwrap();
 		let Commands::GenerateOverlayVideo {
-			codec: direct_codec,
-			key_color: direct_key_color,
-			..
+			codec: direct_codec, ..
 		} = direct_cli.command
 		else {
 			panic!("expected generate-overlay-video command");
@@ -548,9 +527,7 @@ mod tests {
 			"transcode-video",
 			"--osd-overlay-video",
 			"--osd-overlay-video-codec",
-			"chroma-key",
-			"--osd-overlay-video-key-color",
-			"00FF00",
+			"packed-alpha",
 			"flight.mp4",
 		])
 		.unwrap();
@@ -571,7 +548,6 @@ mod tests {
 		.unwrap();
 		let Commands::GenerateOverlayVideo {
 			codec: transcode_codec,
-			key_color: transcode_key_color,
 			video_file: Some(transcode_video_file),
 			..
 		} = transcode_command
@@ -581,9 +557,8 @@ mod tests {
 
 		assert!(matches!(
 			(direct_codec, transcode_codec),
-			(OverlayVideoCodec::ChromaKey, OverlayVideoCodec::ChromaKey)
+			(OverlayVideoCodec::PackedAlpha, OverlayVideoCodec::PackedAlpha)
 		));
-		assert_eq!(transcode_key_color, direct_key_color);
 		assert_eq!(transcode_video_file, PathBuf::from("flight_transcoded_osd.mp4"));
 	}
 }

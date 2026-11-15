@@ -25,8 +25,8 @@ use crate::{
 	osd::{
 		file::{GenericReader, ReadError as OSDFileReadError, UnrecognizedOSDFile},
 		overlay::{
-			CHROMA_KEY_COLOR_METADATA, CHROMA_KEY_FILTER_METADATA, CHROMA_KEY_MODE_METADATA, ChromaKeyColor,
-			SendFramesToFFMpegError, chroma_key_filter, is_supported_chroma_key_filter, scaling::ScalingArgsError,
+			OVERLAY_ALPHA_X_METADATA, OVERLAY_MODE_METADATA, OVERLAY_SIZE_METADATA, PACKED_ALPHA_MODE,
+			PackedAlphaLayout, SendFramesToFFMpegError, scaling::ScalingArgsError,
 		},
 		tile_indices::UnknownOSDItem,
 	},
@@ -467,8 +467,6 @@ pub enum TranscodeVideoError {
 	#[error(transparent)]
 	UnknownOSDItem(UnknownOSDItem),
 	#[error(transparent)]
-	ChromaKeyCollision(crate::osd::overlay::ChromaKeyCollisionError),
-	#[error(transparent)]
 	WriteToFileError(TouchError),
 }
 
@@ -477,7 +475,6 @@ impl From<SendFramesToFFMpegError> for TranscodeVideoError {
 		match error {
 			SendFramesToFFMpegError::PipeError(error) => Self::FailedSendingOSDFramesToFFMpeg(error),
 			SendFramesToFFMpegError::UnknownOSDItem(error) => Self::UnknownOSDItem(error),
-			SendFramesToFFMpegError::ChromaKeyCollision(error) => Self::ChromaKeyCollision(error),
 			SendFramesToFFMpegError::FFMpegExitedWithError(error) => Self::FFMpegExitedWithError(error),
 		}
 	}
@@ -1204,12 +1201,10 @@ pub enum PlayWithOSDError {
 	OSDVideoFileNotFound(PathBuf),
 	#[error(transparent)]
 	VideoProbingError(#[from] VideoProbingError),
-	#[error("OSD video is neither a tagged chroma-key sidecar nor a legacy transparent VP8/VP9 WebM")]
+	#[error("OSD video is neither a packed-alpha MP4 sidecar nor a transparent VP8/VP9 WebM")]
 	UnsupportedOSDVideoFile,
-	#[error("tagged chroma-key sidecar has invalid metadata")]
-	InvalidChromaKeyMetadata,
-	#[error("untagged opaque OSD video files require --allow-untagged-opaque-osd")]
-	UntaggedOpaqueOSDVideoFile,
+	#[error("packed-alpha OSD video has invalid layout metadata")]
+	InvalidPackedAlphaMetadata,
 	#[error("failed to start MPV")]
 	FailedToStartMPV(IOError),
 	#[error("MPV exited with an error: {0}")]
@@ -1218,40 +1213,29 @@ pub enum PlayWithOSDError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OSDVideoMode {
-	ChromaKey(ChromaKeyColor),
+	PackedAlpha(PackedAlphaLayout),
 	Transparent,
 }
 
 fn osd_video_mode(
 	video_codec: Option<&str>,
 	video_metadata: &BTreeMap<String, String>,
-	allow_untagged_opaque_osd: bool,
 ) -> Result<OSDVideoMode, PlayWithOSDError> {
 	if video_metadata
-		.get(CHROMA_KEY_MODE_METADATA)
-		.is_some_and(|mode| mode == "chroma-key")
+		.get(OVERLAY_MODE_METADATA)
+		.is_some_and(|mode| mode == PACKED_ALPHA_MODE)
 	{
-		let key_color = video_metadata
-			.get(CHROMA_KEY_COLOR_METADATA)
-			.ok_or(PlayWithOSDError::InvalidChromaKeyMetadata)?
-			.parse()
-			.map_err(|_| PlayWithOSDError::InvalidChromaKeyMetadata)?;
-		if !is_supported_chroma_key_filter(
-			key_color,
-			video_metadata
-				.get(CHROMA_KEY_FILTER_METADATA)
-				.map_or("", String::as_str),
-		) {
-			return Err(PlayWithOSDError::InvalidChromaKeyMetadata);
-		}
-		return Ok(OSDVideoMode::ChromaKey(key_color));
+		let layout = video_metadata
+			.get(OVERLAY_SIZE_METADATA)
+			.zip(video_metadata.get(OVERLAY_ALPHA_X_METADATA))
+			.and_then(|(size, alpha_x)| PackedAlphaLayout::from_metadata(size, alpha_x))
+			.ok_or(PlayWithOSDError::InvalidPackedAlphaMetadata)?;
+		return Ok(OSDVideoMode::PackedAlpha(layout));
 	}
 
 	match video_codec {
 		Some("vp8" | "vp9") => Ok(OSDVideoMode::Transparent),
-		Some(_) if allow_untagged_opaque_osd => Ok(OSDVideoMode::ChromaKey(ChromaKeyColor::legacy_magenta())),
-		Some(_) => Err(PlayWithOSDError::UntaggedOpaqueOSDVideoFile),
-		None => Err(PlayWithOSDError::UnsupportedOSDVideoFile),
+		_ => Err(PlayWithOSDError::UnsupportedOSDVideoFile),
 	}
 }
 
@@ -1261,59 +1245,44 @@ fn default_osd_video_file(video_file: &Path) -> Result<PathBuf, PlayWithOSDError
 		.ok_or_else(|| PlayWithOSDError::InvalidVideoFilePath(video_file.to_path_buf()))?;
 	let mut osd_video_file_name = video_file_stem.to_os_string();
 	osd_video_file_name.push("_osd");
-	let chroma_key_file = video_file.with_file_name(&osd_video_file_name).with_extension("mp4");
-	if chroma_key_file.exists() {
-		return Ok(chroma_key_file);
+	let packed_alpha_file = video_file.with_file_name(&osd_video_file_name).with_extension("mp4");
+	if packed_alpha_file.exists() {
+		return Ok(packed_alpha_file);
 	}
 	let transparent_file = video_file.with_file_name(osd_video_file_name).with_extension("webm");
 	if transparent_file.exists() {
 		return Ok(transparent_file);
 	}
-	Err(PlayWithOSDError::OSDVideoFileNotFound(chroma_key_file))
+	Err(PlayWithOSDError::OSDVideoFileNotFound(packed_alpha_file))
 }
 
 fn mpv_overlay_filter(mode: OSDVideoMode) -> String {
 	let overlay = "overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2";
 	match mode {
-		OSDVideoMode::ChromaKey(key_color) => {
-			format!("[vid2]{}[osd];[vid1][osd]{overlay}[vo]", chroma_key_filter(key_color))
+		OSDVideoMode::PackedAlpha(layout) => {
+			format!("{};[vid1][osd]{overlay}[vo]", layout.unpack_filter("vid2", "osd"))
 		},
 		OSDVideoMode::Transparent => format!("[vid1][vid2]{overlay}[vo]"),
 	}
 }
 
-/// Play the given video file with a tagged chroma-key or legacy transparent OSD sidecar using MPV.
+/// Play the given video file with a packed-alpha or transparent VP8/VP9 OSD sidecar using MPV.
 ///
 /// # Errors
 /// - Returns `PlayWithOSDError::InvalidVideoFilePath` if the video file path is invalid.
 /// - Returns `PlayWithOSDError::OSDVideoFileNotFound` if the OSD video file is not found.
-/// - Returns `PlayWithOSDError::UnsupportedOSDVideoFile` if the OSD video file is neither a tagged
-///   chroma-key sidecar nor legacy VP8/VP9 transparent output.
-/// - Returns `PlayWithOSDError::UntaggedOpaqueOSDVideoFile` if an opaque untagged sidecar is used
-///   without the explicit override.
+/// - Returns `PlayWithOSDError::UnsupportedOSDVideoFile` if the OSD video file is neither a
+///   packed-alpha sidecar nor transparent VP8/VP9 output.
+/// - Returns `PlayWithOSDError::InvalidPackedAlphaMetadata` if a packed-alpha sidecar's layout
+///   metadata is missing or invalid.
 /// - Returns `PlayWithOSDError::FailedToStartMPV` if MPV fails to start.
 /// - Returns `PlayWithOSDError::MPVExitedWithAnError` if MPV exits with an error.
 ///
 /// # Panics
-/// Panics if failed to wait for the MPV process.
+/// Panics if waiting for MPV fails.
 pub fn play_with_osd<P: AsRef<Path>, Q: AsRef<Path>>(
 	video_file: P,
 	osd_video_file: &Option<Q>,
-) -> Result<(), PlayWithOSDError> {
-	play_with_osd_with_options(video_file, osd_video_file, false)
-}
-
-/// Play an OSD sidecar, optionally permitting an untagged opaque sidecar.
-///
-/// # Errors
-/// See [`play_with_osd`].
-///
-/// # Panics
-/// Panics if waiting for MPV fails.
-pub fn play_with_osd_with_options<P: AsRef<Path>, Q: AsRef<Path>>(
-	video_file: P,
-	osd_video_file: &Option<Q>,
-	allow_untagged_opaque_osd: bool,
 ) -> Result<(), PlayWithOSDError> {
 	let video_file = video_file.as_ref();
 
@@ -1324,11 +1293,7 @@ pub fn play_with_osd_with_options<P: AsRef<Path>, Q: AsRef<Path>>(
 	};
 
 	let probe_result = probe(&osd_video_file)?;
-	let osd_video_mode = osd_video_mode(
-		probe_result.video_codec().as_deref(),
-		probe_result.video_metadata(),
-		allow_untagged_opaque_osd,
-	)?;
+	let osd_video_mode = osd_video_mode(probe_result.video_codec().as_deref(), probe_result.video_metadata())?;
 
 	let decode_lib = match probe_result.video_codec().as_deref() {
 		Some("vp8") => Some("libvpx"),
@@ -1599,54 +1564,59 @@ mod tests {
 
 	use super::{OSDVideoMode, PlayWithOSDError, default_osd_video_file, mpv_overlay_filter, osd_video_mode};
 	use crate::osd::overlay::{
-		CHROMA_KEY_COLOR_METADATA, CHROMA_KEY_FILTER_METADATA, CHROMA_KEY_MODE_METADATA, ChromaKeyColor,
-		chroma_key_filter,
+		Dimensions, OVERLAY_ALPHA_X_METADATA, OVERLAY_MODE_METADATA, OVERLAY_SIZE_METADATA, PACKED_ALPHA_MODE,
+		PackedAlphaLayout,
 	};
 
-	#[test]
-	fn tagged_chroma_key_sidecar_should_use_its_configured_key_color() {
-		let key_color = "#00FF00".parse::<ChromaKeyColor>().unwrap();
-		let metadata = BTreeMap::from([
-			(CHROMA_KEY_MODE_METADATA.to_owned(), "chroma-key".to_owned()),
-			(CHROMA_KEY_COLOR_METADATA.to_owned(), key_color.to_string()),
-			(CHROMA_KEY_FILTER_METADATA.to_owned(), chroma_key_filter(key_color)),
-		]);
+	fn packed_alpha_metadata(size: &str, alpha_x: &str) -> BTreeMap<String, String> {
+		BTreeMap::from([
+			(OVERLAY_MODE_METADATA.to_owned(), PACKED_ALPHA_MODE.to_owned()),
+			(OVERLAY_SIZE_METADATA.to_owned(), size.to_owned()),
+			(OVERLAY_ALPHA_X_METADATA.to_owned(), alpha_x.to_owned()),
+		])
+	}
 
+	#[test]
+	fn tagged_packed_alpha_sidecar_should_use_its_recorded_layout() {
 		assert_eq!(
-			osd_video_mode(Some("hevc"), &metadata, false).unwrap(),
-			OSDVideoMode::ChromaKey(key_color)
+			osd_video_mode(Some("av1"), &packed_alpha_metadata("1200x648", "1216")).unwrap(),
+			OSDVideoMode::PackedAlpha(PackedAlphaLayout::new(Dimensions::new(1200, 648)))
 		);
+	}
+
+	#[test]
+	fn packed_alpha_sidecar_with_invalid_layout_should_be_rejected() {
+		assert!(matches!(
+			osd_video_mode(Some("av1"), &packed_alpha_metadata("1200x648", "100")),
+			Err(PlayWithOSDError::InvalidPackedAlphaMetadata)
+		));
 	}
 
 	#[test]
 	fn legacy_vp9_sidecar_should_remain_transparent() {
 		assert_eq!(
-			osd_video_mode(Some("vp9"), &BTreeMap::new(), false).unwrap(),
+			osd_video_mode(Some("vp9"), &BTreeMap::new()).unwrap(),
 			OSDVideoMode::Transparent
 		);
 	}
 
 	#[test]
-	fn untagged_opaque_sidecar_should_require_explicit_override() {
+	fn untagged_opaque_sidecar_should_be_rejected() {
 		assert!(matches!(
-			osd_video_mode(Some("hevc"), &BTreeMap::new(), false),
-			Err(PlayWithOSDError::UntaggedOpaqueOSDVideoFile)
+			osd_video_mode(Some("hevc"), &BTreeMap::new()),
+			Err(PlayWithOSDError::UnsupportedOSDVideoFile)
 		));
 	}
 
 	#[test]
-	fn chroma_key_playback_should_construct_keying_filter() {
+	fn packed_alpha_playback_should_unpack_before_overlaying() {
 		assert_eq!(
-			mpv_overlay_filter(OSDVideoMode::ChromaKey(ChromaKeyColor::default())),
-			"[vid2]chromakey=0x000040:0.05:0.0[osd];[vid1][osd]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2[vo]"
-		);
-	}
-
-	#[test]
-	fn untagged_opaque_sidecar_should_use_legacy_magenta() {
-		assert_eq!(
-			osd_video_mode(Some("hevc"), &BTreeMap::new(), true).unwrap(),
-			OSDVideoMode::ChromaKey(ChromaKeyColor::legacy_magenta())
+			mpv_overlay_filter(OSDVideoMode::PackedAlpha(PackedAlphaLayout::new(Dimensions::new(
+				1200, 648
+			)))),
+			"[vid2]split[osd_packed_color][osd_packed_alpha];[osd_packed_color]crop=1200:648:0:0[osd_color];\
+			 [osd_packed_alpha]crop=1200:648:1216:0,format=gray[osd_alpha];[osd_color][osd_alpha]alphamerge[osd];\
+			 [vid1][osd]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2[vo]"
 		);
 	}
 
@@ -1661,13 +1631,13 @@ mod tests {
 	}
 
 	#[test]
-	fn discovered_sidecar_should_prefer_chroma_key_mp4() {
+	fn discovered_sidecar_should_prefer_packed_alpha_mp4() {
 		let directory = tempfile::tempdir().unwrap();
 		let video_file = directory.path().join("flight.mp4");
-		let chroma_key_sidecar = directory.path().join("flight_osd.mp4");
+		let packed_alpha_sidecar = directory.path().join("flight_osd.mp4");
 		std::fs::File::create(directory.path().join("flight_osd.webm")).unwrap();
-		std::fs::File::create(&chroma_key_sidecar).unwrap();
+		std::fs::File::create(&packed_alpha_sidecar).unwrap();
 
-		assert_eq!(default_osd_video_file(&video_file).unwrap(), chroma_key_sidecar);
+		assert_eq!(default_osd_video_file(&video_file).unwrap(), packed_alpha_sidecar);
 	}
 }
