@@ -1,5 +1,5 @@
 use std::{
-	borrow::{Borrow, Cow},
+	borrow::Cow,
 	io::{Error as IOError, Read, Seek, SeekFrom},
 	path::{Path, PathBuf},
 	sync::LazyLock,
@@ -47,19 +47,10 @@ impl FileHeaderRaw {
 		String::from_utf8_lossy(&self.font_variant_id)
 	}
 
-	/// Walksnail records the MSP FC variant ID. `INAV` and `ARDU` are seen in recordings; the
-	/// other IDs are inferred from the MSP FC variants msp-osd recognises.
+	/// Walksnail records the MSP FC variant ID.
 	#[must_use]
 	pub fn font_variant(&self) -> FontVariant {
-		use FontVariant as FV;
-		match self.font_variant_id().borrow() {
-			"BTFL" => FV::Betaflight,
-			"INAV" => FV::INAV,
-			"ARDU" => FV::Ardupilot,
-			"ULTR" => FV::KISSUltra,
-			"QUIC" => FV::Quicksilver,
-			_ => FV::Unknown,
-		}
+		FontVariant::from_msp_fc_variant_id(&self.font_variant_id())
 	}
 }
 

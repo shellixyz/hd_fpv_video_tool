@@ -1,7 +1,6 @@
 use std::{
 	fmt::Display,
 	io::{Error as IOError, Read, Seek, SeekFrom},
-	ops::RangeInclusive,
 	path::{Path, PathBuf},
 	sync::LazyLock,
 };
@@ -26,7 +25,63 @@ use crate::{
 };
 
 const SIGNATURE: &str = "MSPOSD\x00";
-const SUPPORTED_FORMAT_VERSIONS: RangeInclusive<u16> = 1..=1;
+
+/// The font variant field that ends the file header, which depends on the format version.
+#[derive(Debug, Clone, Copy)]
+enum FontVariantField {
+	/// Format v1: a one-byte numeric ID.
+	NumericId,
+	/// Format v2 (msp-osd 0.12 and later): an MSP FC variant ID, NUL-terminated unless it fills
+	/// its 5 bytes. msp-osd records an empty ID for the generic font.
+	MspFcVariantId,
+}
+
+impl FontVariantField {
+	const fn of_format_version(format_version: u16) -> Option<Self> {
+		match format_version {
+			1 => Some(Self::NumericId),
+			2 => Some(Self::MspFcVariantId),
+			_ => None,
+		}
+	}
+
+	const fn len(self) -> usize {
+		match self {
+			Self::NumericId => 1,
+			Self::MspFcVariantId => 5,
+		}
+	}
+
+	/// Returns the recorded ID as text and the font variant it selects.
+	fn parse(self, bytes: &[u8]) -> (String, FontVariant) {
+		use FontVariant as FV;
+		match self {
+			Self::NumericId => {
+				let id = bytes[0];
+				let variant = match id {
+					0 => FV::Generic,
+					1 => FV::Betaflight,
+					2 => FV::INAV,
+					3 => FV::Ardupilot,
+					4 => FV::KISSUltra,
+					5 => FV::Quicksilver,
+					_ => FV::Unknown,
+				};
+				(id.to_string(), variant)
+			},
+			Self::MspFcVariantId => {
+				let id = bytes.split(|byte| *byte == 0).next().unwrap_or_default();
+				let id = String::from_utf8_lossy(id).into_owned();
+				let variant = if id.is_empty() {
+					FV::Generic
+				} else {
+					FV::from_msp_fc_variant_id(&id)
+				};
+				(id, variant)
+			},
+		}
+	}
+}
 
 #[derive(Debug, Error, From)]
 pub enum OpenError {
@@ -65,7 +120,6 @@ struct FileHeaderRaw {
 	tile_height: u8,
 	x_offset: u16,
 	y_offset: u16,
-	font_variant: u8,
 }
 
 #[derive(Debug, Getters)]
@@ -92,27 +146,20 @@ pub struct FileHeader {
 	osd_dimensions: Dimensions,
 	tile_dimensions: TileDimensions,
 	offset: Offset,
-	font_variant_id: u8,
+	/// The recorded font variant ID: a number in format v1, a string in format v2.
+	font_variant_id: String,
+	#[getset(skip)]
+	font_variant: FontVariant,
 }
 
 impl FileHeader {
 	#[must_use]
 	pub fn font_variant(&self) -> FontVariant {
-		use FontVariant as FV;
-		match self.font_variant_id {
-			0 => FV::Generic,
-			1 => FV::Betaflight,
-			2 => FV::INAV,
-			3 => FV::Ardupilot,
-			4 => FV::KISSUltra,
-			5 => FV::Quicksilver,
-			_ => FV::Unknown,
-		}
+		self.font_variant
 	}
-}
 
-impl From<FileHeaderRaw> for FileHeader {
-	fn from(fhr: FileHeaderRaw) -> Self {
+	fn new(fhr: &FileHeaderRaw, font_variant_field: FontVariantField, font_variant_bytes: &[u8]) -> Self {
+		let (font_variant_id, font_variant) = font_variant_field.parse(font_variant_bytes);
 		Self {
 			format_version: fhr.format_version,
 			osd_dimensions: Dimensions::new(u32::from(fhr.width_tiles), u32::from(fhr.height_tiles)),
@@ -124,7 +171,8 @@ impl From<FileHeaderRaw> for FileHeader {
 				x: fhr.x_offset,
 				y: fhr.y_offset,
 			},
-			font_variant_id: fhr.font_variant,
+			font_variant_id,
+			font_variant,
 		}
 	}
 }
@@ -137,8 +185,6 @@ pub struct FrameHeader {
 	data_len: u32,
 }
 
-const FIRST_FRAME_FILE_POS: u64 = (SIGNATURE.len() + FileHeaderRaw::BYTE_LEN) as u64;
-
 #[derive(Getters, CopyGetters)]
 pub struct Reader {
 	file: File,
@@ -146,6 +192,7 @@ pub struct Reader {
 	header: FileHeader,
 	#[getset(get_copy = "pub")]
 	osd_kind: Kind,
+	first_frame_file_pos: u64,
 }
 
 impl Reader {
@@ -158,32 +205,41 @@ impl Reader {
 		Ok(())
 	}
 
-	fn read_header(file: &mut File) -> Result<FileHeaderRaw, OpenError> {
+	fn read_header(file: &mut File) -> Result<FileHeader, OpenError> {
 		let mut header_bytes = [0; FileHeaderRaw::BYTE_LEN];
 		file.read_exact(&mut header_bytes)?;
 		let header = FileHeaderRaw::read_bytes(&header_bytes);
-		if !SUPPORTED_FORMAT_VERSIONS.contains(&header.format_version) {
+		let Some(font_variant_field) = FontVariantField::of_format_version(header.format_version) else {
 			return Err(OpenError::UnsupportedFileFormatVersion(header.format_version));
-		}
-		Ok(header)
+		};
+		let mut font_variant_bytes = vec![0; font_variant_field.len()];
+		file.read_exact(&mut font_variant_bytes)?;
+		Ok(FileHeader::new(&header, font_variant_field, &font_variant_bytes))
 	}
 
 	/// Opens a DJI OSD file for reading.
 	///
 	/// # Errors
 	/// - Returns `OpenError::FileError` if there is an error opening or reading the file.
-	/// - Returns `OpenError::InvalidHeader` if the file header is invalid.
+	/// - Returns `OpenError::InvalidSignature` if the file signature is invalid.
+	/// - Returns `OpenError::UnsupportedFileFormatVersion` if the format version is not 1 or 2.
 	/// - Returns `OpenError::InvalidOSDDimensions` if the OSD dimensions are invalid.
 	pub fn open<P: AsRef<Path>>(file_path: P) -> Result<Self, OpenError> {
 		let mut file = File::open(&file_path)?;
 		Self::check_signature(&file_path, &mut file)?;
-		let header: FileHeader = Self::read_header(&mut file)?.into();
+		let header = Self::read_header(&mut file)?;
+		let first_frame_file_pos = file.stream_position()?;
 		let osd_kind = Kind::try_from(header.osd_dimensions()).map_err(|error| {
 			let InvalidDimensionsError(dimensions) = error;
 			OpenError::invalid_osd_dimensions(&file_path, dimensions)
 		})?;
 		log::info!("detected OSD file with {osd_kind} tile layout");
-		Ok(Self { file, header, osd_kind })
+		Ok(Self {
+			file,
+			header,
+			osd_kind,
+			first_frame_file_pos,
+		})
 	}
 
 	fn read_frame_header(&mut self) -> Result<Option<FrameHeader>, ReadError> {
@@ -231,7 +287,7 @@ impl Reader {
 	/// # Errors
 	/// - Returns `IOError` if there is an error seeking in the file.
 	pub fn rewind(&mut self) -> Result<(), IOError> {
-		self.file.seek(SeekFrom::Start(FIRST_FRAME_FILE_POS))?;
+		self.file.seek(SeekFrom::Start(self.first_frame_file_pos))?;
 		Ok(())
 	}
 
@@ -412,24 +468,89 @@ pub fn find_associated_to_video_file<P: AsRef<Path>>(video_file_path: P) -> Opti
 
 #[cfg(test)]
 mod tests {
-	use super::{FileHeader, FileHeaderRaw};
-	use crate::osd::FontVariant;
+	use std::io::Write;
 
-	fn header_with_variant_id(font_variant: u8) -> FileHeader {
-		FileHeader::from(FileHeaderRaw {
-			format_version: 1,
-			width_tiles: 50,
-			height_tiles: 18,
-			tile_width: 36,
-			tile_height: 54,
-			x_offset: 0,
-			y_offset: 0,
-			font_variant,
-		})
+	use tempfile::NamedTempFile;
+
+	use super::{OpenError, Reader, SIGNATURE};
+	use crate::osd::{FontVariant, file::GenericReader};
+
+	const FRAME_INDEX: u32 = 7;
+	const TILES: [u16; 3] = [0x41, 0, 0x142];
+
+	/// Writes an OSD file with the msp-osd `rec.h` layout: signature, version, config with the
+	/// given font variant bytes, then one frame.
+	fn osd_file(version: u16, font_variant: &[u8]) -> NamedTempFile {
+		let mut bytes = SIGNATURE.as_bytes().to_vec();
+		bytes.extend(version.to_le_bytes());
+		bytes.extend([50, 18, 36, 54]);
+		bytes.extend(10_u16.to_le_bytes());
+		bytes.extend(20_u16.to_le_bytes());
+		bytes.extend(font_variant);
+		bytes.extend(FRAME_INDEX.to_le_bytes());
+		bytes.extend(u32::try_from(TILES.len()).unwrap().to_le_bytes());
+		for tile in TILES {
+			bytes.extend(tile.to_le_bytes());
+		}
+		let mut file = NamedTempFile::new().unwrap();
+		file.write_all(&bytes).unwrap();
+		file
+	}
+
+	fn open(version: u16, font_variant: &[u8]) -> Reader {
+		Reader::open(osd_file(version, font_variant).path()).unwrap()
+	}
+
+	fn assert_reads_the_frame(reader: &mut Reader) {
+		let frames = reader.frames().unwrap();
+		assert_eq!(frames.len(), 1);
+		assert_eq!(frames[0].index(), FRAME_INDEX);
+		assert_eq!(&frames[0].tile_indices().as_slice()[..TILES.len()], TILES);
 	}
 
 	#[test]
-	fn variant_id_5_is_quicksilver() {
-		assert_eq!(header_with_variant_id(5).font_variant(), FontVariant::Quicksilver);
+	fn v1_file_reads_its_variant_id_and_frames() {
+		let mut reader = open(1, &[4]);
+		assert_eq!(reader.header().font_variant(), FontVariant::KISSUltra);
+		assert_eq!(reader.header().font_variant_id(), "4");
+		assert_eq!(*reader.header().offset().x(), 10);
+		assert_eq!(*reader.header().offset().y(), 20);
+		assert_reads_the_frame(&mut reader);
+	}
+
+	#[test]
+	fn v1_variant_id_5_is_quicksilver() {
+		assert_eq!(open(1, &[5]).header().font_variant(), FontVariant::Quicksilver);
+	}
+
+	#[test]
+	fn v2_file_reads_its_variant_string_and_frames_after_the_longer_header() {
+		let mut reader = open(2, b"QUIC\0");
+		assert_eq!(reader.header().format_version(), &2);
+		assert_eq!(reader.header().font_variant(), FontVariant::Quicksilver);
+		assert_eq!(reader.header().font_variant_id(), "QUIC");
+		assert_reads_the_frame(&mut reader);
+	}
+
+	#[test]
+	fn v2_variant_string_may_fill_the_field_without_nul() {
+		let reader = open(2, b"ABCDE");
+		assert_eq!(reader.header().font_variant(), FontVariant::Unknown);
+		assert_eq!(reader.header().font_variant_id(), "ABCDE");
+	}
+
+	#[test]
+	fn v2_empty_variant_string_is_generic() {
+		// msp-osd's playback turns v1 ID 0 (generic) into an empty string.
+		assert_eq!(open(2, &[0; 5]).header().font_variant(), FontVariant::Generic);
+	}
+
+	#[test]
+	fn version_3_is_unsupported() {
+		let file = osd_file(3, &[0; 5]);
+		assert!(matches!(
+			Reader::open(file.path()),
+			Err(OpenError::UnsupportedFileFormatVersion(3))
+		));
 	}
 }
