@@ -1,3 +1,26 @@
+# v2.3.0
+
+## New Features
+
+- **msp-osd v0.12+ support**: `.osd` files in format v2, recorded by msp-osd v0.12.0 and later, are now read. They previously failed with `UnsupportedFileFormatVersion(2)` (#14).
+- **PNG OSD fonts**: the PNG fonts of msp-osd v0.12.0+ and Walksnail Avatar are supported, with 1 to 4 pages of 256 glyphs. They are looked up in the font directory by msp-osd's file names (`font_btfl_hd.png`, `font_inav.png`, ...), so fonts copied from the goggles' SD card work as they are. Bin fonts are still read: the lookup tries the firmware's PNG font, then its bin font, then the generic PNG and bin fonts. The loaded font file is logged, and the error lists every file looked up when none is found.
+- **Explicit font file**: `--font-file` / `--osd-font-file` load one PNG font directly and skip the font directory lookup. Glyphs are resized when their size differs from the one the overlay settings pick.
+- **More firmware detected for font lookup**: Quicksilver (`quic`) is supported, and Walksnail recordings naming Betaflight, KISS Ultra or Quicksilver now pick their font.
+- **Faster OSD overlay videos**: `generate-overlay-video` and `transcode-video --osd-overlay-video` now write a packed-alpha MP4 by default. Each frame stores the OSD colors and transparency side by side, so the overlay is encoded with the normal (including hardware) encoders, much faster than VP8/VP9, while keeping smooth OSD edges. `play-video-with-osd` reads these files, preferring `<name>_osd.mp4` and falling back to `<name>_osd.webm`.
+- **Software fallback for oversized frames**: when the output frame is larger than the hardware encoder supports, the default codec selection skips that encoder (AV1, then H.265, then software H.265). An explicitly chosen codec falls back to its software encoder with a warning, instead of FFmpeg failing.
+
+## Behavior Changes
+
+- The default overlay video format changed from transparent VP8 WebM to packed-alpha MP4. Other players can't overlay packed-alpha MP4s directly. Use `--codec vp8` / `--codec vp9` (or `--osd-overlay-video-codec` with `transcode-video`) to get a transparent WebM as before.
+
+## Bug Fixes
+
+- Fixed glyph 256 rendering blank with bin fonts.
+
+## Internal / Maintenance
+
+- Requires hd_fpv_osd_font_tool 1.2.
+
 # v2.2.1
 
 This release only changes how the AppImage is packaged, the application itself is unchanged.

@@ -1,7 +1,7 @@
 [package]
 name = "hd_fpv_video_tool"
 description = "A software tool to manipulate video files and OSD files recoded with the DJI and Walksnail Avatar FPV systems"
-version = "2.2.1"
+version = "2.3.0"
 edition = "2024"
 license = "GPL-2.0-only"
 authors = ["Michel Pastor <shellixyz@gmail.com>"]
@@ -24,7 +24,7 @@ log = "0.4.34"
 strum = { version = "0.28.0", features = ["derive"] }
 derive_more = { version = "2.1.1", features = ["display", "deref", "deref_mut", "from", "constructor", "error", "is_variant"] }
 byte_struct = "0.9.0"
-hd_fpv_osd_font_tool = { version = "~1", git = "https://github.com/shellixyz/hd_fpv_osd_font_tool" }
+hd_fpv_osd_font_tool = { version = "1.2", git = "https://github.com/shellixyz/hd_fpv_osd_font_tool" }
 getset = "0.1.7"
 rayon = "1.12.0"
 indicatif = { version = "0.18.6", features = ["rayon"] }
