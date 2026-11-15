@@ -694,18 +694,7 @@ impl TranscodeVideoArgs {
 				),
 				None => (video_codec, HwAcceleratedEncoding::No),
 			},
-			None => {
-				let hw_accel_codec = video::hw_accel::vaapi_cap_finder().and_then(|hw_accel_cap| {
-					[video::Codec::AV1, video::Codec::H265]
-						.iter()
-						.find(|&video_codec| hw_accel_cap.can_encode(video_codec))
-				});
-				if let Some(hw_accel_codec) = hw_accel_codec {
-					(*hw_accel_codec, HwAcceleratedEncoding::Yes)
-				} else {
-					FALLBACK
-				}
-			},
+			None => video::default_video_codec(false),
 		})
 	}
 }

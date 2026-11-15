@@ -1,4 +1,5 @@
 use std::{
+	collections::BTreeMap,
 	ffi::CStr,
 	path::{Path, PathBuf},
 };
@@ -40,6 +41,9 @@ pub struct Result {
 	#[getset(skip)]
 	#[getset(get = "pub")]
 	video_codec: Option<String>,
+	#[getset(skip)]
+	#[getset(get = "pub")]
+	video_metadata: BTreeMap<String, String>,
 }
 
 /// Probes the specified video file and retrieves its properties.
@@ -53,6 +57,11 @@ pub fn probe<P: AsRef<Path>>(video_file: P) -> std::result::Result<Result, Error
 	ffmpeg::log::set_level(ffmpeg::log::Level::Quiet);
 
 	let input = ffmpeg::format::input(&video_file).map_err(|error| Error::ffmpeg(&video_file, error))?;
+	let video_metadata = input
+		.metadata()
+		.iter()
+		.map(|(key, value)| (key.to_owned(), value.to_owned()))
+		.collect();
 
 	let has_audio = input.streams().best(ffmpeg::media::Type::Audio).is_some();
 
@@ -82,7 +91,6 @@ pub fn probe<P: AsRef<Path>>(video_file: P) -> std::result::Result<Result, Error
 			}
 		}
 	};
-
 	let frame_rate = video_stream.rate();
 
 	let Ok(frame_count) = u64::try_from(video_stream.frames()) else {
@@ -95,5 +103,6 @@ pub fn probe<P: AsRef<Path>>(video_file: P) -> std::result::Result<Result, Error
 		has_audio,
 		resolution,
 		video_codec,
+		video_metadata,
 	})
 }

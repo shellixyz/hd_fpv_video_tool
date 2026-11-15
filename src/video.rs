@@ -1,4 +1,5 @@
 use std::{
+	collections::BTreeMap,
 	ffi::OsString,
 	io::Error as IOError,
 	path::{Path, PathBuf},
@@ -23,7 +24,10 @@ use crate::{
 	file::TouchError,
 	osd::{
 		file::{GenericReader, ReadError as OSDFileReadError, UnrecognizedOSDFile},
-		overlay::{SendFramesToFFMpegError, scaling::ScalingArgsError},
+		overlay::{
+			CHROMA_KEY_COLOR_METADATA, CHROMA_KEY_FILTER_METADATA, CHROMA_KEY_MODE_METADATA, ChromaKeyColor,
+			SendFramesToFFMpegError, chroma_key_filter, scaling::ScalingArgsError,
+		},
 		tile_indices::UnknownOSDItem,
 	},
 	prelude::{Scaling, TranscodeVideoArgs, *},
@@ -52,6 +56,34 @@ pub type FrameIndex = u32;
 
 const DJI_AUDIO_FIX_ATEMPO: f64 = 1.001_480;
 const DJI_AUDIO_FIX_VOLUME: isize = 20;
+
+/// Selects the normal default video encoder, preferring VAAPI AV1 then H.265.
+#[must_use]
+pub fn default_video_codec(no_hwaccel: bool) -> (Codec, HwAcceleratedEncoding) {
+	#[cfg(feature = "hwaccel")]
+	{
+		const FALLBACK: (Codec, HwAcceleratedEncoding) = (Codec::H265, HwAcceleratedEncoding::No);
+		if no_hwaccel {
+			return FALLBACK;
+		}
+		let Some(hw_accel_cap) = hw_accel::vaapi_cap_finder() else {
+			return FALLBACK;
+		};
+		if let Some(codec) = [Codec::AV1, Codec::H265]
+			.iter()
+			.find(|&&codec| hw_accel_cap.can_encode(codec))
+		{
+			(*codec, HwAcceleratedEncoding::Yes)
+		} else {
+			FALLBACK
+		}
+	}
+	#[cfg(not(feature = "hwaccel"))]
+	{
+		let _ = no_hwaccel;
+		(Codec::H265, HwAcceleratedEncoding::No)
+	}
+}
 
 #[derive(Debug, Error, From)]
 pub enum CutVideoError {
@@ -435,6 +467,8 @@ pub enum TranscodeVideoError {
 	#[error(transparent)]
 	UnknownOSDItem(UnknownOSDItem),
 	#[error(transparent)]
+	ChromaKeyCollision(crate::osd::overlay::ChromaKeyCollisionError),
+	#[error(transparent)]
 	WriteToFileError(TouchError),
 }
 
@@ -443,6 +477,7 @@ impl From<SendFramesToFFMpegError> for TranscodeVideoError {
 		match error {
 			SendFramesToFFMpegError::PipeError(error) => Self::FailedSendingOSDFramesToFFMpeg(error),
 			SendFramesToFFMpegError::UnknownOSDItem(error) => Self::UnknownOSDItem(error),
+			SendFramesToFFMpegError::ChromaKeyCollision(error) => Self::ChromaKeyCollision(error),
 			SendFramesToFFMpegError::FFMpegExitedWithError(error) => Self::FFMpegExitedWithError(error),
 		}
 	}
@@ -1152,7 +1187,9 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 		.with_priority(*args.ffmpeg_priority());
 	let ffmpeg_process = ffmpeg_command.build().unwrap().spawn(&spawn_options)?;
 
-	osd_frames_iter.send_frames_to_ffmpeg_and_wait(ffmpeg_process).await?;
+	osd_frames_iter
+		.send_frames_to_ffmpeg_and_wait(ffmpeg_process, None)
+		.await?;
 
 	log::info!("{frame_count} frames transcoded successfully");
 	guard.defuse();
@@ -1167,21 +1204,88 @@ pub enum PlayWithOSDError {
 	OSDVideoFileNotFound(PathBuf),
 	#[error(transparent)]
 	VideoProbingError(#[from] VideoProbingError),
-	#[error("can only use OSD video files encoded with VP8 or VP9")]
-	CanOnlyUseVP8OrVP9OSDVideoFiles,
+	#[error("OSD video is neither a tagged chroma-key sidecar nor a legacy transparent VP8/VP9 WebM")]
+	UnsupportedOSDVideoFile,
+	#[error("tagged chroma-key sidecar has invalid metadata")]
+	InvalidChromaKeyMetadata,
+	#[error("untagged opaque OSD video files require --allow-untagged-opaque-osd")]
+	UntaggedOpaqueOSDVideoFile,
 	#[error("failed to start MPV")]
 	FailedToStartMPV(IOError),
 	#[error("MPV exited with an error: {0}")]
 	MPVExitedWithAnError(ExitStatus),
 }
 
-/// Play the given video file with an OSD overlay using MPV.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OSDVideoMode {
+	ChromaKey(ChromaKeyColor),
+	Transparent,
+}
+
+fn osd_video_mode(
+	video_codec: Option<&str>,
+	video_metadata: &BTreeMap<String, String>,
+	allow_untagged_opaque_osd: bool,
+) -> Result<OSDVideoMode, PlayWithOSDError> {
+	if video_metadata
+		.get(CHROMA_KEY_MODE_METADATA)
+		.is_some_and(|mode| mode == "chroma-key")
+	{
+		let key_color = video_metadata
+			.get(CHROMA_KEY_COLOR_METADATA)
+			.ok_or(PlayWithOSDError::InvalidChromaKeyMetadata)?
+			.parse()
+			.map_err(|_| PlayWithOSDError::InvalidChromaKeyMetadata)?;
+		if video_metadata.get(CHROMA_KEY_FILTER_METADATA) != Some(&chroma_key_filter(key_color)) {
+			return Err(PlayWithOSDError::InvalidChromaKeyMetadata);
+		}
+		return Ok(OSDVideoMode::ChromaKey(key_color));
+	}
+
+	match video_codec {
+		Some("vp8" | "vp9") => Ok(OSDVideoMode::Transparent),
+		Some(_) if allow_untagged_opaque_osd => Ok(OSDVideoMode::ChromaKey(ChromaKeyColor::default())),
+		Some(_) => Err(PlayWithOSDError::UntaggedOpaqueOSDVideoFile),
+		None => Err(PlayWithOSDError::UnsupportedOSDVideoFile),
+	}
+}
+
+fn default_osd_video_file(video_file: &Path) -> Result<PathBuf, PlayWithOSDError> {
+	let video_file_stem = video_file
+		.file_stem()
+		.ok_or_else(|| PlayWithOSDError::InvalidVideoFilePath(video_file.to_path_buf()))?;
+	let mut osd_video_file_name = video_file_stem.to_os_string();
+	osd_video_file_name.push("_osd");
+	let chroma_key_file = video_file.with_file_name(&osd_video_file_name).with_extension("mp4");
+	if chroma_key_file.exists() {
+		return Ok(chroma_key_file);
+	}
+	let transparent_file = video_file.with_file_name(osd_video_file_name).with_extension("webm");
+	if transparent_file.exists() {
+		return Ok(transparent_file);
+	}
+	Err(PlayWithOSDError::OSDVideoFileNotFound(chroma_key_file))
+}
+
+fn mpv_overlay_filter(mode: OSDVideoMode) -> String {
+	let overlay = "overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2";
+	match mode {
+		OSDVideoMode::ChromaKey(key_color) => {
+			format!("[vid2]{}[osd];[vid1][osd]{overlay}[vo]", chroma_key_filter(key_color))
+		},
+		OSDVideoMode::Transparent => format!("[vid1][vid2]{overlay}[vo]"),
+	}
+}
+
+/// Play the given video file with a tagged chroma-key or legacy transparent OSD sidecar using MPV.
 ///
 /// # Errors
 /// - Returns `PlayWithOSDError::InvalidVideoFilePath` if the video file path is invalid.
 /// - Returns `PlayWithOSDError::OSDVideoFileNotFound` if the OSD video file is not found.
-/// - Returns `PlayWithOSDError::CanOnlyUseVP8OrVP9OSDVideoFiles` if the OSD video file is not
-///   encoded with VP8 or VP9.
+/// - Returns `PlayWithOSDError::UnsupportedOSDVideoFile` if the OSD video file is neither a tagged
+///   chroma-key sidecar nor legacy VP8/VP9 transparent output.
+/// - Returns `PlayWithOSDError::UntaggedOpaqueOSDVideoFile` if an opaque untagged sidecar is used
+///   without the explicit override.
 /// - Returns `PlayWithOSDError::FailedToStartMPV` if MPV fails to start.
 /// - Returns `PlayWithOSDError::MPVExitedWithAnError` if MPV exits with an error.
 ///
@@ -1191,33 +1295,40 @@ pub fn play_with_osd<P: AsRef<Path>, Q: AsRef<Path>>(
 	video_file: P,
 	osd_video_file: &Option<Q>,
 ) -> Result<(), PlayWithOSDError> {
+	play_with_osd_with_options(video_file, osd_video_file, false)
+}
+
+/// Play an OSD sidecar, optionally permitting an untagged opaque sidecar.
+///
+/// # Errors
+/// See [`play_with_osd`].
+///
+/// # Panics
+/// Panics if waiting for MPV fails.
+pub fn play_with_osd_with_options<P: AsRef<Path>, Q: AsRef<Path>>(
+	video_file: P,
+	osd_video_file: &Option<Q>,
+	allow_untagged_opaque_osd: bool,
+) -> Result<(), PlayWithOSDError> {
 	let video_file = video_file.as_ref();
 
 	let osd_video_file = if let Some(osd_video_file) = osd_video_file {
 		osd_video_file.as_ref().to_path_buf()
 	} else {
-		let video_file_stem = video_file
-			.file_stem()
-			.ok_or_else(|| PlayWithOSDError::InvalidVideoFilePath(video_file.to_path_buf()))?;
-		let mut osd_video_file_name = video_file_stem.to_os_string();
-		osd_video_file_name.push("_osd");
-		let osd_video_file = video_file.with_file_name(osd_video_file_name).with_extension("webm");
-		if !osd_video_file.exists() {
-			return Err(PlayWithOSDError::OSDVideoFileNotFound(osd_video_file));
-		}
-		osd_video_file
+		default_osd_video_file(video_file)?
 	};
 
 	let probe_result = probe(&osd_video_file)?;
-	let osd_video_codec = probe_result
-		.video_codec()
-		.as_deref()
-		.ok_or(PlayWithOSDError::CanOnlyUseVP8OrVP9OSDVideoFiles)?;
+	let osd_video_mode = osd_video_mode(
+		probe_result.video_codec().as_deref(),
+		probe_result.video_metadata(),
+		allow_untagged_opaque_osd,
+	)?;
 
-	let decode_lib = match osd_video_codec {
-		"vp8" => "libvpx",
-		"vp9" => "libvpx-vp9",
-		_ => return Err(PlayWithOSDError::CanOnlyUseVP8OrVP9OSDVideoFiles),
+	let decode_lib = match probe_result.video_codec().as_deref() {
+		Some("vp8") => Some("libvpx"),
+		Some("vp9") => Some("libvpx-vp9"),
+		_ => None,
 	};
 
 	let mut external_file_arg = OsString::from("--external-file=");
@@ -1225,11 +1336,13 @@ pub fn play_with_osd<P: AsRef<Path>, Q: AsRef<Path>>(
 
 	let mut mpv_command = ProcessCommand::new("mpv");
 
+	if let Some(decode_lib) = decode_lib {
+		mpv_command.arg(format!("--vd={decode_lib}"));
+	}
 	mpv_command
-		.arg(format!("--vd={decode_lib}"))
 		.arg(external_file_arg)
 		.arg(video_file)
-		.arg("--lavfi-complex=[vid1][vid2]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2[vo]");
+		.arg(format!("--lavfi-complex={}", mpv_overlay_filter(osd_video_mode)));
 
 	let mut mpv_child_proc = mpv_command.spawn().map_err(PlayWithOSDError::FailedToStartMPV)?;
 
@@ -1473,4 +1586,75 @@ pub async fn remove_audio_stream(
 	log::info!("audio stream removed successfully");
 	guard.defuse();
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use std::collections::BTreeMap;
+
+	use super::{OSDVideoMode, PlayWithOSDError, default_osd_video_file, mpv_overlay_filter, osd_video_mode};
+	use crate::osd::overlay::{
+		CHROMA_KEY_COLOR_METADATA, CHROMA_KEY_FILTER_METADATA, CHROMA_KEY_MODE_METADATA, ChromaKeyColor,
+		chroma_key_filter,
+	};
+
+	#[test]
+	fn tagged_chroma_key_sidecar_should_use_its_configured_key_color() {
+		let key_color = "#00FF00".parse::<ChromaKeyColor>().unwrap();
+		let metadata = BTreeMap::from([
+			(CHROMA_KEY_MODE_METADATA.to_owned(), "chroma-key".to_owned()),
+			(CHROMA_KEY_COLOR_METADATA.to_owned(), key_color.to_string()),
+			(CHROMA_KEY_FILTER_METADATA.to_owned(), chroma_key_filter(key_color)),
+		]);
+
+		assert_eq!(
+			osd_video_mode(Some("hevc"), &metadata, false).unwrap(),
+			OSDVideoMode::ChromaKey(key_color)
+		);
+	}
+
+	#[test]
+	fn legacy_vp9_sidecar_should_remain_transparent() {
+		assert_eq!(
+			osd_video_mode(Some("vp9"), &BTreeMap::new(), false).unwrap(),
+			OSDVideoMode::Transparent
+		);
+	}
+
+	#[test]
+	fn untagged_opaque_sidecar_should_require_explicit_override() {
+		assert!(matches!(
+			osd_video_mode(Some("hevc"), &BTreeMap::new(), false),
+			Err(PlayWithOSDError::UntaggedOpaqueOSDVideoFile)
+		));
+	}
+
+	#[test]
+	fn chroma_key_playback_should_construct_keying_filter() {
+		assert_eq!(
+			mpv_overlay_filter(OSDVideoMode::ChromaKey(ChromaKeyColor::default())),
+			"[vid2]chromakey=0xFF00FF:0.01:0.0[osd];[vid1][osd]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2[vo]"
+		);
+	}
+
+	#[test]
+	fn discovered_sidecar_should_fall_back_to_legacy_webm() {
+		let directory = tempfile::tempdir().unwrap();
+		let video_file = directory.path().join("flight.mp4");
+		let legacy_sidecar = directory.path().join("flight_osd.webm");
+		std::fs::File::create(&legacy_sidecar).unwrap();
+
+		assert_eq!(default_osd_video_file(&video_file).unwrap(), legacy_sidecar);
+	}
+
+	#[test]
+	fn discovered_sidecar_should_prefer_chroma_key_mp4() {
+		let directory = tempfile::tempdir().unwrap();
+		let video_file = directory.path().join("flight.mp4");
+		let chroma_key_sidecar = directory.path().join("flight_osd.mp4");
+		std::fs::File::create(directory.path().join("flight_osd.webm")).unwrap();
+		std::fs::File::create(&chroma_key_sidecar).unwrap();
+
+		assert_eq!(default_osd_video_file(&video_file).unwrap(), chroma_key_sidecar);
+	}
 }

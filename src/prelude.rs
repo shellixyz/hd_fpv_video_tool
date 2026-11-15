@@ -17,7 +17,8 @@ pub use crate::{
 		},
 		dji::file::{OpenError as OSDFileOpenError, Reader as OSDFileReader},
 		overlay::{
-			DrawFrameOverlayError, Generator as OverlayGenerator, OverlayVideoCodec, SaveFramesToDirError,
+			ChromaKeyColor, DrawFrameOverlayError, Generator as OverlayGenerator, OverlayVideoCodec,
+			SaveFramesToDirError,
 			scaling::{Scaling, ScalingArgs},
 		},
 		region::Region as OSDRegion,

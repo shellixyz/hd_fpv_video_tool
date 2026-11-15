@@ -1,6 +1,8 @@
 use std::{
+	fmt::{Display, Formatter},
 	io::{self, Error as IOError, Write},
 	path::{Path, PathBuf},
+	str::FromStr,
 };
 
 use derive_more::{Deref, From};
@@ -44,6 +46,56 @@ use crate::{
 };
 
 pub type Dimensions = GenericDimensions<u32>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChromaKeyColor([u8; 3]);
+
+impl ChromaKeyColor {
+	#[must_use]
+	pub const fn rgb(self) -> [u8; 3] {
+		self.0
+	}
+
+	#[must_use]
+	pub fn ffmpeg_color(self) -> String {
+		format!("0x{:02X}{:02X}{:02X}", self.0[0], self.0[1], self.0[2])
+	}
+}
+
+impl Default for ChromaKeyColor {
+	fn default() -> Self {
+		Self([255, 0, 255])
+	}
+}
+
+impl Display for ChromaKeyColor {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(formatter, "#{:02X}{:02X}{:02X}", self.0[0], self.0[1], self.0[2])
+	}
+}
+
+impl FromStr for ChromaKeyColor {
+	type Err = String;
+
+	fn from_str(value: &str) -> Result<Self, Self::Err> {
+		let value = value.strip_prefix('#').unwrap_or(value);
+		if !value.is_ascii() || value.len() != 6 {
+			return Err("key color must be a six-digit RGB value such as #FF00FF".to_owned());
+		}
+		let red = u8::from_str_radix(&value[0..2], 16)
+			.map_err(|_| "key color must be a six-digit RGB value such as #FF00FF".to_owned())?;
+		let green = u8::from_str_radix(&value[2..4], 16)
+			.map_err(|_| "key color must be a six-digit RGB value such as #FF00FF".to_owned())?;
+		let blue = u8::from_str_radix(&value[4..6], 16)
+			.map_err(|_| "key color must be a six-digit RGB value such as #FF00FF".to_owned())?;
+		Ok(Self([red, green, blue]))
+	}
+}
+
+#[derive(Debug, Error)]
+#[error("rendered OSD pixels use the chroma key color {0}")]
+pub struct ChromaKeyCollisionError(ChromaKeyColor);
+
 #[derive(Deref, Clone, CopyGetters)]
 pub struct Frame {
 	#[getset(get_copy = "pub")]
@@ -75,6 +127,36 @@ impl Frame {
 	/// See `image::GenericImage::copy_from` for details
 	pub fn copy_from(&mut self, image: &ImageBuffer<Rgba<u8>, Vec<u8>>, x: u32, y: u32) -> ImageResult<()> {
 		self.image.copy_from(image, x, y)
+	}
+
+	/// Replaces transparent pixels with an opaque key color for chroma-key encoding.
+	///
+	/// # Errors
+	/// Returns [`ChromaKeyCollisionError`] when rendered OSD pixels use the selected key color.
+	pub fn apply_chroma_key(&mut self, key_color: ChromaKeyColor) -> Result<(), ChromaKeyCollisionError> {
+		let [key_red, key_green, key_blue] = key_color.rgb();
+		for pixel in self.image.pixels_mut() {
+			if pixel[3] == 0 {
+				*pixel = Rgba([key_red, key_green, key_blue, 255]);
+			} else if [pixel[0], pixel[1], pixel[2]] == [key_red, key_green, key_blue] {
+				return Err(ChromaKeyCollisionError(key_color));
+			} else {
+				pixel[0] = blend_chroma_component(pixel[0], key_red, pixel[3]);
+				pixel[1] = blend_chroma_component(pixel[1], key_green, pixel[3]);
+				pixel[2] = blend_chroma_component(pixel[2], key_blue, pixel[3]);
+				pixel[3] = 255;
+			}
+		}
+		Ok(())
+	}
+}
+
+fn blend_chroma_component(component: u8, key_component: u8, alpha: u8) -> u8 {
+	let alpha = u16::from(alpha);
+	let value = (u16::from(component) * alpha + u16::from(key_component) * (255 - alpha)) / 255;
+	match u8::try_from(value) {
+		Ok(value) => value,
+		Err(_) => unreachable!("blending two u8 values cannot produce a value greater than u8::MAX"),
 	}
 }
 
@@ -147,8 +229,10 @@ pub fn make_overlay_frame_file_path<P: AsRef<Path>>(dir_path: P, frame_index: Vi
 	.collect()
 }
 
-#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+#[derive(Debug, Default, Clone, Copy, clap::ValueEnum)]
 pub enum OverlayVideoCodec {
+	#[default]
+	ChromaKey,
 	Vp8,
 	Vp9,
 }
@@ -184,13 +268,82 @@ impl OverlayVideoCodecParams {
 
 impl OverlayVideoCodec {
 	#[must_use]
-	pub fn params(&self) -> OverlayVideoCodecParams {
+	pub fn file_extension(self) -> &'static str {
+		match self {
+			Self::ChromaKey => "mp4",
+			Self::Vp8 | Self::Vp9 => "webm",
+		}
+	}
+
+	#[must_use]
+	pub fn is_chroma_key(self) -> bool {
+		matches!(self, Self::ChromaKey)
+	}
+
+	#[must_use]
+	pub fn params(&self) -> Option<OverlayVideoCodecParams> {
 		use OverlayVideoCodec as OVC;
 		use OverlayVideoCodecParams as OVCP;
-		match self {
+		Some(match self {
+			OVC::ChromaKey => return None,
 			OVC::Vp8 => OVCP::new("libvpx", Some("1M"), Some(40), &["-auto-alt-ref", "0"]),
 			OVC::Vp9 => OVCP::new("libvpx-vp9", Some("0"), Some(40), &[]),
-		}
+		})
+	}
+}
+
+pub const CHROMA_KEY_MODE_METADATA: &str = "hd_fpv_overlay_mode";
+pub const CHROMA_KEY_COLOR_METADATA: &str = "hd_fpv_overlay_key_color";
+pub const CHROMA_KEY_FILTER_METADATA: &str = "hd_fpv_overlay_filter";
+const CHROMA_KEY_BITRATE_CAP: &str = "4M";
+const CHROMA_KEY_SIMILARITY: &str = "0.01";
+const CHROMA_KEY_BLEND: &str = "0.0";
+
+#[must_use]
+pub fn chroma_key_filter(key_color: ChromaKeyColor) -> String {
+	format!(
+		"chromakey={}:{}:{}",
+		key_color.ffmpeg_color(),
+		CHROMA_KEY_SIMILARITY,
+		CHROMA_KEY_BLEND
+	)
+}
+
+fn configure_overlay_video_output(
+	ffmpeg_command: &mut ffmpeg::CommandBuilder,
+	codec: OverlayVideoCodec,
+	key_color: ChromaKeyColor,
+) {
+	if codec.is_chroma_key() {
+		let (video_codec, hw_acceleration) = crate::video::default_video_codec(false);
+		let quality = match hw_acceleration {
+			crate::video::HwAcceleratedEncoding::Yes => VideoQuality::GlobalQuality(90),
+			crate::video::HwAcceleratedEncoding::No => VideoQuality::ConstantRateFactor(28),
+		};
+		let filter = chroma_key_filter(key_color);
+		ffmpeg_command
+			.set_output_video_settings(
+				Some(video_codec.ffmpeg_string(hw_acceleration.is_yes())),
+				Some(CHROMA_KEY_BITRATE_CAP),
+				Some(quality),
+			)
+			.add_arg("-an")
+			.add_arg("-movflags")
+			.add_arg("use_metadata_tags")
+			.add_arg("-metadata")
+			.add_arg(&format!("{CHROMA_KEY_MODE_METADATA}=chroma-key"))
+			.add_arg("-metadata")
+			.add_arg(&format!("{CHROMA_KEY_COLOR_METADATA}={key_color}"))
+			.add_arg("-metadata")
+			.add_arg(&format!("{CHROMA_KEY_FILTER_METADATA}={filter}"));
+	} else if let Some(params) = codec.params() {
+		ffmpeg_command
+			.set_output_video_settings(
+				Some(params.encoder()),
+				params.bitrate(),
+				params.crf().map(VideoQuality::ConstantRateFactor),
+			)
+			.add_args(params.additional_args());
 	}
 }
 
@@ -221,8 +374,8 @@ pub enum GenerateOverlayVideoError {
 	FrameReadError(ReadError),
 	#[error("target video file exists: {0}")]
 	TargetVideoFileExists(PathBuf),
-	#[error("output video file extension needs to be .webm")]
-	OutputFileExtensionNotWebm,
+	#[error("output video file extension needs to be .{expected_extension}")]
+	OutputVideoFileExtension { expected_extension: &'static str },
 	#[error(transparent)]
 	FailedSpawningFFMpegProcess(ffmpeg::SpawnError),
 	#[error("failed sending OSD frames to ffmpeg process: {0}")]
@@ -232,6 +385,8 @@ pub enum GenerateOverlayVideoError {
 	#[error(transparent)]
 	UnknownOSDItem(UnknownOSDItem),
 	#[error(transparent)]
+	ChromaKeyCollision(ChromaKeyCollisionError),
+	#[error(transparent)]
 	WriteToFileError(TouchError),
 }
 
@@ -240,6 +395,7 @@ impl From<SendFramesToFFMpegError> for GenerateOverlayVideoError {
 		match error {
 			SendFramesToFFMpegError::PipeError(error) => Self::FailedSendingOSDFramesToFFMpeg(error),
 			SendFramesToFFMpegError::UnknownOSDItem(error) => Self::UnknownOSDItem(error),
+			SendFramesToFFMpegError::ChromaKeyCollision(error) => Self::ChromaKeyCollision(error),
 			SendFramesToFFMpegError::FFMpegExitedWithError(error) => Self::FFMpegExitedWithError(error),
 		}
 	}
@@ -539,6 +695,7 @@ impl<'a> Generator<'a> {
 	pub async fn generate_overlay_video<P: AsRef<Path>>(
 		&mut self,
 		codec: OverlayVideoCodec,
+		key_color: ChromaKeyColor,
 		start: Option<Timestamp>,
 		end: Option<Timestamp>,
 		output_video_path: P,
@@ -548,8 +705,10 @@ impl<'a> Generator<'a> {
 	) -> Result<(), GenerateOverlayVideoError> {
 		let output_video_path = output_video_path.as_ref();
 
-		if !matches!(output_video_path.extension(), Some(extension) if extension == "webm") {
-			return Err(GenerateOverlayVideoError::OutputFileExtensionNotWebm);
+		if !matches!(output_video_path.extension(), Some(extension) if extension == codec.file_extension()) {
+			return Err(GenerateOverlayVideoError::OutputVideoFileExtension {
+				expected_extension: codec.file_extension(),
+			});
 		}
 
 		if !overwrite_output && output_video_path.exists() {
@@ -575,21 +734,18 @@ impl<'a> Generator<'a> {
 		ffmpeg_command
 			.add_stdin_input(self.frame_dimensions, 60)
 			.unwrap()
-			.set_output_video_settings(
-				Some(codec.params().encoder()),
-				codec.params().bitrate(),
-				codec.params().crf().map(VideoQuality::ConstantRateFactor),
-			)
-			.add_args(codec.params().additional_args())
 			.set_output_file(output_video_path)
 			.set_overwrite_output_file(true);
+		configure_overlay_video_output(&mut ffmpeg_command, codec, key_color);
 
 		let spawn_options = ffmpeg::SpawnOptions::default()
 			.with_progress(frame_count as u64)
 			.with_priority(ffmpeg_priority);
 		let ffmpeg_process = ffmpeg_command.build().unwrap().spawn(&spawn_options)?;
 
-		frames_iter.send_frames_to_ffmpeg_and_wait(ffmpeg_process).await?;
+		frames_iter
+			.send_frames_to_ffmpeg_and_wait(ffmpeg_process, codec.is_chroma_key().then_some(key_color))
+			.await?;
 
 		log::info!("overlay video generation completed: {frame_count} frames");
 		guard.defuse();
@@ -607,6 +763,7 @@ impl<'a> Generator<'a> {
 	pub async fn generate_overlay_video_with_progress<P, F>(
 		&mut self,
 		codec: OverlayVideoCodec,
+		key_color: ChromaKeyColor,
 		start: Option<Timestamp>,
 		end: Option<Timestamp>,
 		output_video_path: P,
@@ -621,8 +778,10 @@ impl<'a> Generator<'a> {
 	{
 		let output_video_path = output_video_path.as_ref();
 
-		if !matches!(output_video_path.extension(), Some(extension) if extension == "webm") {
-			return Err(GenerateOverlayVideoError::OutputFileExtensionNotWebm);
+		if !matches!(output_video_path.extension(), Some(extension) if extension == codec.file_extension()) {
+			return Err(GenerateOverlayVideoError::OutputVideoFileExtension {
+				expected_extension: codec.file_extension(),
+			});
 		}
 
 		if !overwrite_output && output_video_path.exists() {
@@ -648,14 +807,9 @@ impl<'a> Generator<'a> {
 		ffmpeg_command
 			.add_stdin_input(self.frame_dimensions, 60)
 			.unwrap()
-			.set_output_video_settings(
-				Some(codec.params().encoder()),
-				codec.params().bitrate(),
-				codec.params().crf().map(VideoQuality::ConstantRateFactor),
-			)
-			.add_args(codec.params().additional_args())
 			.set_output_file(output_video_path)
 			.set_overwrite_output_file(true);
+		configure_overlay_video_output(&mut ffmpeg_command, codec, key_color);
 
 		let spawn_options = ffmpeg::SpawnOptionsWithCallback::default()
 			.with_callback(frame_count as u64, Box::new(callback))
@@ -663,7 +817,7 @@ impl<'a> Generator<'a> {
 		let ffmpeg_process = ffmpeg_command.build().unwrap().spawn_with_callback(spawn_options)?;
 
 		frames_iter
-			.send_frames_to_ffmpeg_callback_and_wait(ffmpeg_process)
+			.send_frames_to_ffmpeg_callback_and_wait(ffmpeg_process, codec.is_chroma_key().then_some(key_color))
 			.await?;
 
 		log::info!("overlay video generation completed: {frame_count} frames");
@@ -708,6 +862,8 @@ pub enum SendFramesToFFMpegError {
 	#[error(transparent)]
 	UnknownOSDItem(UnknownOSDItem),
 	#[error(transparent)]
+	ChromaKeyCollision(ChromaKeyCollisionError),
+	#[error(transparent)]
 	FFMpegExitedWithError(ffmpeg::ProcessError),
 }
 
@@ -735,10 +891,15 @@ impl FramesIter<'_> {
 	pub fn send_frames_to_ffmpeg(
 		&mut self,
 		ffmpeg_process: &mut ffmpeg::Process,
+		key_color: Option<ChromaKeyColor>,
 	) -> Result<(), SendFramesToFFMpegError> {
 		let mut ffmpeg_stdin = ffmpeg_process.take_stdin().unwrap();
 		for osd_frame_image in self {
-			ffmpeg_stdin.write_all(osd_frame_image?.as_raw())?;
+			let mut osd_frame_image = osd_frame_image?;
+			if let Some(key_color) = key_color {
+				osd_frame_image.apply_chroma_key(key_color)?;
+			}
+			ffmpeg_stdin.write_all(osd_frame_image.as_raw())?;
 		}
 		drop(ffmpeg_stdin);
 		Ok(())
@@ -752,8 +913,9 @@ impl FramesIter<'_> {
 	pub async fn send_frames_to_ffmpeg_and_wait(
 		mut self,
 		mut ffmpeg_process: ffmpeg::Process,
+		key_color: Option<ChromaKeyColor>,
 	) -> Result<(), SendFramesToFFMpegError> {
-		let send_result = self.send_frames_to_ffmpeg(&mut ffmpeg_process);
+		let send_result = self.send_frames_to_ffmpeg(&mut ffmpeg_process, key_color);
 
 		ffmpeg_process.wait().await?;
 		send_result?;
@@ -774,12 +936,18 @@ impl FramesIter<'_> {
 	pub async fn send_frames_to_ffmpeg_callback_and_wait(
 		self,
 		mut ffmpeg_process: ffmpeg::ProcessWithCallback,
+		key_color: Option<ChromaKeyColor>,
 	) -> Result<(), SendFramesToFFMpegError> {
 		let mut ffmpeg_stdin = ffmpeg_process.take_stdin().unwrap();
 		let mut frame_error: Option<SendFramesToFFMpegError> = None;
 		for osd_frame_image in self {
 			match osd_frame_image {
-				Ok(frame) => {
+				Ok(mut frame) => {
+					let chroma_key_error = key_color.and_then(|key_color| frame.apply_chroma_key(key_color).err());
+					if let Some(error) = chroma_key_error {
+						frame_error = Some(SendFramesToFFMpegError::ChromaKeyCollision(error));
+						break;
+					}
 					if let Err(e) = ffmpeg_stdin.write_all(frame.as_raw()).await {
 						frame_error = Some(SendFramesToFFMpegError::PipeError(e));
 						break;
@@ -827,5 +995,77 @@ impl Iterator for FramesIter<'_> {
 impl ExactSizeIterator for FramesIter<'_> {
 	fn len(&self) -> usize {
 		self.vframes_iter.len()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use image::Rgba;
+
+	use super::{
+		CHROMA_KEY_COLOR_METADATA, CHROMA_KEY_FILTER_METADATA, CHROMA_KEY_MODE_METADATA, ChromaKeyColor, Dimensions,
+		Frame, OverlayVideoCodec, chroma_key_filter, configure_overlay_video_output,
+	};
+
+	#[test]
+	fn chroma_key_should_replace_transparent_pixels_and_preserve_rendered_pixels() {
+		let mut frame = Frame::new(Dimensions::new(2, 1));
+		frame.image.put_pixel(1, 0, Rgba([10, 20, 30, 255]));
+
+		frame.apply_chroma_key(ChromaKeyColor::default()).unwrap();
+
+		assert_eq!(frame.image.into_raw(), vec![255, 0, 255, 255, 10, 20, 30, 255],);
+	}
+
+	#[test]
+	fn chroma_key_should_reject_rendered_key_color_pixels() {
+		let mut frame = Frame::new(Dimensions::new(1, 1));
+		frame.image.put_pixel(0, 0, Rgba([255, 0, 255, 255]));
+
+		assert!(frame.apply_chroma_key(ChromaKeyColor::default()).is_err());
+	}
+
+	#[test]
+	fn chroma_key_color_should_reject_non_ascii_input() {
+		assert!("€abc".parse::<ChromaKeyColor>().is_err());
+	}
+
+	#[test]
+	fn chroma_key_should_blend_translucent_pixels_against_the_key_color() {
+		let mut frame = Frame::new(Dimensions::new(1, 1));
+		frame.image.put_pixel(0, 0, Rgba([255, 255, 255, 128]));
+
+		frame.apply_chroma_key(ChromaKeyColor::default()).unwrap();
+
+		assert_eq!(frame.image.into_raw(), vec![255, 128, 255, 255]);
+	}
+
+	#[test]
+	fn chroma_key_codec_should_use_mp4_sidecars() {
+		assert_eq!(OverlayVideoCodec::ChromaKey.file_extension(), "mp4");
+	}
+
+	#[test]
+	fn chroma_key_command_should_include_mode_key_and_filter_metadata() {
+		let mut command = crate::ffmpeg::CommandBuilder::default();
+		configure_overlay_video_output(&mut command, OverlayVideoCodec::ChromaKey, ChromaKeyColor::default());
+
+		assert_eq!(
+			command.args(),
+			&vec![
+				"-an".to_owned(),
+				"-movflags".to_owned(),
+				"use_metadata_tags".to_owned(),
+				"-metadata".to_owned(),
+				format!("{CHROMA_KEY_MODE_METADATA}=chroma-key"),
+				"-metadata".to_owned(),
+				format!("{CHROMA_KEY_COLOR_METADATA}=#FF00FF"),
+				"-metadata".to_owned(),
+				format!(
+					"{CHROMA_KEY_FILTER_METADATA}={}",
+					chroma_key_filter(ChromaKeyColor::default())
+				),
+			]
+		);
 	}
 }

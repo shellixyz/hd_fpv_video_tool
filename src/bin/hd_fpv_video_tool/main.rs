@@ -137,14 +137,17 @@ fn generate_overlay_frames_command(command: &Commands) -> anyhow::Result<()> {
 	Ok(())
 }
 
-fn overlay_video_file_name_from_target_video_file_name(target_video_file: impl AsRef<Path>) -> anyhow::Result<PathBuf> {
+fn overlay_video_file_name_from_target_video_file_name(
+	target_video_file: impl AsRef<Path>,
+	codec: OverlayVideoCodec,
+) -> anyhow::Result<PathBuf> {
 	let target_video_file_stem = target_video_file
 		.as_ref()
 		.file_stem()
 		.ok_or_else(|| anyhow!("target video file has no file name"))?;
 	let mut output_file_stem = target_video_file_stem.to_os_string();
 	output_file_stem.push("_osd");
-	Ok(Path::new(&output_file_stem).with_extension("webm"))
+	Ok(Path::new(&output_file_stem).with_extension(codec.file_extension()))
 }
 
 async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()> {
@@ -153,6 +156,7 @@ async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()
 		video_file,
 		overwrite,
 		codec,
+		key_color,
 		ffmpeg_priority,
 	} = command
 	{
@@ -166,7 +170,7 @@ async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()
 				// let mut output_file_stem = target_video_file_stem.to_os_string();
 				// output_file_stem.push("_osd");
 				// Path::new(&output_file_stem).with_extension("webm")
-				overlay_video_file_name_from_target_video_file_name(target_video_file)?
+				overlay_video_file_name_from_target_video_file_name(target_video_file, *codec)?
 			},
 			(None, None) => {
 				let osd_file = common_args.osd_file();
@@ -178,13 +182,16 @@ async fn generate_overlay_video_command(command: &Commands) -> anyhow::Result<()
 				.as_os_str()
 				.to_os_string();
 				output_file_stem.push("_osd");
-				osd_file.with_file_name(output_file_stem).with_extension("webm")
+				osd_file
+					.with_file_name(output_file_stem)
+					.with_extension(codec.file_extension())
 			},
 		};
 		let mut overlay_generator = generate_overlay_prepare_generator(common_args)?;
 		overlay_generator
 			.generate_overlay_video(
 				*codec,
+				*key_color,
 				common_args.start_end().start(),
 				common_args.start_end().end(),
 				output_video_path,
@@ -218,15 +225,20 @@ async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
 		match osd_file_path {
 			Some(osd_file_path) if osd_args.osd_overlay_video() => {
 				let transcode_output_video_file = video::transcode(transcode_args).await?;
-				let osd_overlay_video_file_name = match osd_args.osd_overlay_video_file() {
-					Some(osd_overlay_video_file_name) => {
+				let osd_overlay_video_file_name =
+					if let Some(osd_overlay_video_file_name) = osd_args.osd_overlay_video_file() {
 						if !matches!(osd_overlay_video_file_name.extension(), Some(extension) if extension == "webm") {
 							return Err(anyhow!("OSD overlay video file name should have the .webm extension"));
 						}
 						osd_overlay_video_file_name.clone()
-					},
-					None => overlay_video_file_name_from_target_video_file_name(transcode_output_video_file.clone())?,
-				};
+					} else {
+						let target_video_file_stem = transcode_output_video_file
+							.file_stem()
+							.ok_or_else(|| anyhow!("target video file has no file name"))?;
+						let mut output_file_stem = target_video_file_stem.to_os_string();
+						output_file_stem.push("_osd");
+						Path::new(&output_file_stem).with_extension("webm")
+					};
 				let gov_command = Commands::GenerateOverlayVideo {
 					common_args: GenerateOverlayArgsBuilder::default()
 						.target_video_file(Some(transcode_output_video_file))
@@ -240,6 +252,7 @@ async fn transcode_video_command(command: &Commands) -> anyhow::Result<()> {
 						.build()
 						.unwrap(),
 					codec: osd_args.osd_overlay_video_codec(),
+					key_color: ChromaKeyColor::default(),
 					video_file: Some(osd_overlay_video_file_name),
 					overwrite: transcode_args.overwrite(),
 					ffmpeg_priority: *transcode_args.ffmpeg_priority(),
@@ -453,7 +466,9 @@ async fn main() {
 		Commands::PlayVideoWithOSD {
 			video_file,
 			osd_video_file,
-		} => video::play_with_osd(video_file, osd_video_file).map_err(anyhow::Error::new),
+			allow_untagged_opaque_osd,
+		} => video::play_with_osd_with_options(video_file, osd_video_file, *allow_untagged_opaque_osd)
+			.map_err(anyhow::Error::new),
 		Commands::SpliceVideos {
 			input_video_files,
 			output,

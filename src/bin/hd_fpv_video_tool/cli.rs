@@ -67,9 +67,10 @@ pub enum Commands {
 
 	/// Generate an OSD overlay video to be displayed over another video
 	///
-	/// This command generates a transparent video with the OSD frames rendered from the specified
+	/// This command generates a chroma-key MP4 with the OSD frames rendered from the specified
 	/// WTF.FPV OSD file. The generated video can then be used to play an FPV video with OSD
-	/// without having to burn the OSD into the video.
+	/// without having to burn the OSD into the video. Use `--codec vp8` or `--codec vp9` for
+	/// transparent `WebM` compatibility output.
 	///
 	/// If you specify a target resolution with --target-resolution or a video file to read the
 	/// resolution from with --target-video-file then the kind of tiles (HD/SD) to use and whether
@@ -78,9 +79,9 @@ pub enum Commands {
 	/// and the kind of tiles used will be the native kind of tiles corresponding to the kind of
 	/// OSD layout read from the FPV.WTF .osd file.
 	///
-	/// VP8 or VP9 codecs can be selected with the --codec option. Files generated with the VP9
-	/// codec are smaller but also it is roughly twice as slow as encoding with the VP8 codec which
-	/// is already unfortunately pretty slow.
+	/// Chroma-key output uses the standard video encoder selection and records the keying metadata
+	/// needed for playback. VP8 or VP9 codecs can be selected with the --codec option when a
+	/// transparent `WebM` sidecar is required.
 	///
 	/// Fonts are loaded either from the directory specified with the --font-dir option or
 	/// from the directory found in the environment variable `FONTS_DIR` or
@@ -97,8 +98,13 @@ pub enum Commands {
 		#[clap(short = 'P', long)]
 		ffmpeg_priority: Option<i32>,
 
-		#[clap(short, long, default_value = "vp8")]
+		/// output mode: chroma-key MP4 (default), or transparent VP8/VP9 `WebM`
+		#[clap(short, long, default_value = "chroma-key")]
 		codec: OverlayVideoCodec,
+
+		/// RGB chroma key color for chroma-key output
+		#[clap(long, default_value_t)]
+		key_color: ChromaKeyColor,
 
 		/// path of the video file to generate
 		video_file: Option<PathBuf>,
@@ -180,18 +186,23 @@ pub enum Commands {
 		transcode_args: TranscodeVideoArgs,
 	},
 
-	/// Play a video with OSD by overlaying a transparent OSD video in real time
+	/// Play a video with OSD by overlaying an OSD sidecar in real time
 	///
 	/// You can generate a compatible OSD overlay video file with the `generate-overlay-video`
 	/// command.
 	///
-	/// If the <`OSD_VIDEO_FILE`> argument is not provided it will try to use the file with the same
-	/// base name as the <`VIDEO_FILE`> argument with suffix `_osd` and with `webm` extension.
+	/// If the <`OSD_VIDEO_FILE`> argument is not provided it prefers the file with the same base
+	/// name as the <`VIDEO_FILE`> argument with suffix `_osd` and the `mp4` extension, then falls
+	/// back to the legacy `webm` extension.
 	#[clap(alias = "pvwo")]
 	PlayVideoWithOSD {
 		video_file: PathBuf,
 
 		osd_video_file: Option<PathBuf>,
+
+		/// permit opaque sidecars without `hd_fpv` overlay metadata
+		#[clap(long)]
+		allow_untagged_opaque_osd: bool,
 	},
 
 	/// Splice videos files together
