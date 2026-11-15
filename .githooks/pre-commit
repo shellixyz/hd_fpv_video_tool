@@ -46,10 +46,11 @@ restore_unstaged() {
 
 if ! git diff --quiet --ignore-submodules=all; then
 	unstaged_patch=$(mktemp "${TMPDIR:-/tmp}/hd-fpv-video-tool-pre-commit.XXXXXX.patch")
-	if git diff --binary --no-color --no-ext-diff --no-textconv \
+	if ! git diff --binary --no-color --no-ext-diff --no-textconv \
 		--ignore-submodules=all > "$unstaged_patch"; then
+		echo "Error: unstaged changes could not be saved; nothing was changed." >&2
 		rm -f "$unstaged_patch"
-		unstaged_patch=""
+		exit 1
 	fi
 
 	mapfile -d '' -t dirty_paths < <(
