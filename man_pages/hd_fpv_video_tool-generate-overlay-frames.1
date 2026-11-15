@@ -4,7 +4,7 @@
 .SH NAME
 generate\-overlay\-frames \- Generate a transparent overlay frame sequence as PNG files from a .osd file
 .SH SYNOPSIS
-\fBgenerate\-overlay\-frames\fR [\fB\-v\fR|\fB\-\-target\-video\-file\fR] [\fB\-\-hide\-regions\fR] [\fB\-\-hide\-items\fR] [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-r\fR|\fB\-\-target\-resolution\fR] [\fB\-s\fR|\fB\-\-scaling\fR] [\fB\-n\fR|\fB\-\-no\-scaling\fR] [\fB\-\-min\-margins\fR] [\fB\-\-min\-coverage\fR] [\fB\-f\fR|\fB\-\-font\-dir\fR] [\fB\-i\fR|\fB\-\-font\-ident\fR] [\fB\-o\fR|\fB\-\-frame\-shift\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIOSD_FILE\fR> [\fIOUTPUT_DIR\fR] 
+\fBgenerate\-overlay\-frames\fR [\fB\-v\fR|\fB\-\-target\-video\-file\fR] [\fB\-\-hide\-regions\fR] [\fB\-\-hide\-items\fR] [\fB\-\-start\fR] [\fB\-\-end\fR] [\fB\-r\fR|\fB\-\-target\-resolution\fR] [\fB\-s\fR|\fB\-\-scaling\fR] [\fB\-n\fR|\fB\-\-no\-scaling\fR] [\fB\-\-min\-margins\fR] [\fB\-\-min\-coverage\fR] [\fB\-f\fR|\fB\-\-font\-dir\fR] [\fB\-i\fR|\fB\-\-font\-ident\fR] [\fB\-\-font\-file\fR] [\fB\-o\fR|\fB\-\-frame\-shift\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIOSD_FILE\fR> [\fIOUTPUT_DIR\fR] 
 .SH DESCRIPTION
 Generate a transparent overlay frame sequence as PNG files from a .osd file
 .PP
@@ -60,6 +60,9 @@ path to the directory containing font sets
 .TP
 \fB\-i\fR, \fB\-\-font\-ident\fR \fI<ident>\fR
 force using this font identifier when loading fonts, default is automatic
+.TP
+\fB\-\-font\-file\fR \fI<filepath>\fR
+load this PNG font file instead of looking up fonts in the font directory
 .TP
 \fB\-o\fR, \fB\-\-frame\-shift\fR \fI<frames>\fR
 Shift the output by that number of frames. Use this option to sync the OSD to a particular video

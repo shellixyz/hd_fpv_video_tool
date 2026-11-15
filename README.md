@@ -69,7 +69,11 @@ The font is picked from the flight controller firmware the recording names. For 
 
 The other firmware names are `inav` (INAV), `ardu` (ArduPilot) and `ultr` with the legacy alias `ultra` (KISS Ultra); their bin fonts use `inav`, `ardu` and `ultra`. Walksnail recordings name INAV and ArduPilot only; other recordings use the generic font. `--font-ident` or `--osd-font-ident` forces an ident, which is used as given (for example `quic` for Quicksilver): `font_<ident>[_hd].png`, then `font_<ident>[_hd].bin`, then the generic fonts; an empty ident loads the generic fonts only. The font file loaded is logged.
 
-Walksnail font files are not looked up by their own names: rename `<name>_36.png` to `font_<ident>.png` and `<name>_24.png` to `font_<ident>_hd.png`. [hd_fpv_osd_font_tool](https://github.com/shellixyz/hd_fpv_osd_font_tool) converts fonts between formats.
+Walksnail font files are not looked up by their own names. Either load one directly with `--font-file` or `--osd-font-file`, depending on the command, or rename `<name>_36.png` to `font_<ident>.png` and `<name>_24.png` to `font_<ident>_hd.png`.
+
+`--font-file <png>` and `--osd-font-file <png>` load one PNG font and skip the lookup, so they cannot be combined with the font directory or ident options. The glyph size comes from the image. When it differs from the size the overlay settings pick, the glyphs are resized and an info message says so. Bin fonts cannot be loaded this way.
+
+[hd_fpv_osd_font_tool](https://github.com/shellixyz/hd_fpv_osd_font_tool) converts fonts between formats.
 
 * [Fonts from the WTF.FPV project](https://github.com/fpv-wtf/msp-osd/tree/main/fonts)
 * [Latest ArduPilot fonts](https://github.com/ArduPilot/ardupilot/tree/master/libraries/AP_OSD/fonts/HDFonts)

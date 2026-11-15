@@ -21,12 +21,12 @@ use hd_fpv_osd_font_tool::{dimensions::Dimensions as GenericDimensions, prelude:
 
 use self::scaling::Scaling;
 use super::{
-	FontDir, Region,
+	Region,
 	file::{
 		Frame as OSDFileFrame, ReadError, SortedUniqFrames as OSDFileSortedFrames,
 		sorted_frames::{GetFrames, GetFramesExt, VideoFramesIter},
 	},
-	font_dir::FontLoadError,
+	font_dir::{FontLoadError, FontSource},
 	font_variant::FontVariant,
 	tile_indices::UnknownOSDItem,
 	tile_resize::ResizeTiles,
@@ -507,6 +507,24 @@ fn best_settings_for_requested_scaling(
 	})
 }
 
+/// The tile images to draw: `tile_scaling` when the settings scale tiles, otherwise the settings'
+/// tile kind. Tiles of another kind, from an explicit font file, are resized to it.
+fn tile_images(tiles: Vec<Tile>, tile_kind: tile::Kind, tile_scaling: Option<TileDimensions>) -> Vec<tile::Image> {
+	let loaded_kind = tiles.first().map_or(tile_kind, Tile::kind);
+	let kind_differs = loaded_kind != tile_kind;
+	if kind_differs {
+		log::info!(
+			"the font has the {loaded_kind} tile kind but the overlay settings use the {tile_kind} tile kind, \
+			 resizing its tiles"
+		);
+	}
+	let resize_dimensions = tile_scaling.or_else(|| kind_differs.then(|| tile_kind.dimensions()));
+	match resize_dimensions {
+		Some(tile_dimensions) => tiles.as_slice().resized_tiles_par_with_progress(tile_dimensions),
+		None => tiles.into_iter().map(|tile| tile.image().clone()).collect(),
+	}
+}
+
 #[derive(CopyGetters)]
 pub struct Generator<'a> {
 	osd_file_frames: OSDFileSortedFrames,
@@ -528,8 +546,7 @@ impl<'a> Generator<'a> {
 	pub fn new(
 		osd_file_frames: OSDFileSortedFrames,
 		font_variant: FontVariant,
-		font_dir: &FontDir,
-		font_ident: Option<Option<&str>>,
+		font_source: &FontSource,
 		scaling: Scaling,
 		hide_regions: &'a [Region],
 		hide_items: &'a [String],
@@ -544,19 +561,8 @@ impl<'a> Generator<'a> {
 		let Some(highest_used_tile_index) = osd_file_frames.highest_used_tile_index() else {
 			unreachable!();
 		};
-		let tiles = match font_ident {
-			Some(font_ident) => font_dir.load_with_fallback(tile_kind, font_ident, highest_used_tile_index)?,
-			None => font_dir.load_variant_with_fallback(
-				tile_kind,
-				&osd_file_frames.font_variant(),
-				highest_used_tile_index,
-			)?,
-		};
-
-		let tile_images = match tile_scaling {
-			Some(tile_dimensions) => tiles.as_slice().resized_tiles_par_with_progress(tile_dimensions),
-			None => tiles.into_iter().map(|tile| tile.image().clone()).collect(),
-		};
+		let tiles = font_source.load(tile_kind, &osd_file_frames.font_variant(), highest_used_tile_index)?;
+		let tile_images = tile_images(tiles, tile_kind, tile_scaling);
 
 		if let Scaling::No {
 			target_resolution: Some(target_resolution),
@@ -1015,16 +1021,46 @@ impl ExactSizeIterator for FramesIter<'_> {
 
 #[cfg(test)]
 mod tests {
+	use hd_fpv_osd_font_tool::prelude::*;
 	use image::Rgba;
 
 	use super::{
 		Dimensions, Frame, OVERLAY_ALPHA_X_METADATA, OVERLAY_MODE_METADATA, OVERLAY_SIZE_METADATA, OverlayVideoCodec,
-		PackedAlphaLayout, configure_overlay_video_output, packed_alpha_quality,
+		PackedAlphaLayout, configure_overlay_video_output, packed_alpha_quality, tile_images,
 	};
 	use crate::{
 		ffmpeg::VideoQuality,
 		video::{Codec, HwAcceleratedEncoding},
 	};
+
+	fn first_image_dimensions(images: &[tile::Image]) -> (u32, u32) {
+		images[0].dimensions()
+	}
+
+	#[test]
+	fn tiles_of_the_settings_tile_kind_are_used_as_they_are() {
+		let images = tile_images(vec![Tile::new(tile::Kind::HD); 2], tile::Kind::HD, None);
+
+		assert_eq!(images.len(), 2);
+		assert_eq!(first_image_dimensions(&images), (24, 36));
+	}
+
+	#[test]
+	fn tiles_of_another_tile_kind_are_resized_to_the_settings_tile_kind() {
+		let images = tile_images(vec![Tile::new(tile::Kind::HD); 2], tile::Kind::SD, None);
+
+		assert_eq!(images.len(), 2);
+		assert_eq!(first_image_dimensions(&images), (36, 54));
+	}
+
+	#[test]
+	fn tile_scaling_sets_the_size_whatever_the_loaded_tile_kind() {
+		let scaled = TileDimensions { width: 30, height: 45 };
+
+		let images = tile_images(vec![Tile::new(tile::Kind::HD); 2], tile::Kind::SD, Some(scaled));
+
+		assert_eq!(first_image_dimensions(&images), (30, 45));
+	}
 
 	#[test]
 	fn packed_alpha_quality_should_use_each_vaapi_codec_scale() {

@@ -17,7 +17,7 @@ use hd_fpv_osd_font_tool::dimensions::Dimensions as GenericDimensions;
 pub type Dimensions = GenericDimensions<u32>;
 
 pub use coordinates::{Coordinate, Coordinates, SignedCoordinate, SignedCoordinates, SignedRange as CoordinatesRange};
-pub use font_dir::FontDir;
+pub use font_dir::{FontDir, FontIdent, FontSource};
 pub use font_variant::FontVariant;
 pub use kind::Kind;
 pub use region::Region;

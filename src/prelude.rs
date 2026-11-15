@@ -11,7 +11,7 @@ pub use crate::{
 	file,
 	log_level::LogLevel,
 	osd::{
-		self, Dimensions as OSDDimensions, FontDir,
+		self, Dimensions as OSDDimensions, FontDir, FontIdent, FontSource,
 		coordinates::{
 			Coordinate as OSDCoordinate, Coordinates as OSDCoordinates, FormatError as OSDCoordinatesFormatError,
 		},

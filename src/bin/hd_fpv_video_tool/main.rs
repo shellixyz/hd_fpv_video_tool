@@ -83,12 +83,11 @@ fn display_profiles_command() -> anyhow::Result<()> {
 fn generate_overlay_prepare_generator(common_args: &GenerateOverlayArgs) -> anyhow::Result<OverlayGenerator<'_>> {
 	let scaling = Scaling::try_from_scaling_args(common_args.scaling_args(), common_args.target_video_file())?;
 	let mut osd_file_reader = osd::file::open(common_args.osd_file())?;
-	let font_dir = FontDir::new(common_args.font_options().font_dir()?);
+	let font_source = common_args.font_options().font_source()?;
 	let overlay_generator = OverlayGenerator::new(
 		osd_file_reader.frames()?,
 		osd_file_reader.font_variant(),
-		&font_dir,
-		common_args.font_options().font_ident(),
+		&font_source,
 		scaling,
 		common_args.hide_regions(),
 		common_args.hide_items(),

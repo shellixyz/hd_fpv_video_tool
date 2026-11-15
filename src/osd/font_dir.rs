@@ -18,6 +18,8 @@ pub enum FontLoadError {
 		loaded: tile::Kind,
 		requested: tile::Kind,
 	},
+	#[error("font file {} is not a PNG font", .0.display())]
+	NotPng(PathBuf),
 	#[error("no font found in {}, looked up: {}", dir.display(), looked_up.join(", "))]
 	NotFound { dir: PathBuf, looked_up: Vec<String> },
 }
@@ -34,6 +36,56 @@ impl LookupStep<'_> {
 		LookupStep {
 			png_idents: vec![None],
 			bin_ident: None,
+		}
+	}
+}
+
+/// The font ident a font dir lookup uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FontIdent<'a> {
+	/// The ident of the recording's font variant, with msp-osd's aliases.
+	FromVariant,
+	/// No ident: the generic font only.
+	Generic,
+	/// This ident, used as given.
+	Forced(&'a str),
+}
+
+/// Where the OSD font comes from.
+pub enum FontSource<'a> {
+	/// Discover the font in the font dir, falling back to the generic font.
+	Dir { dir: FontDir, ident: FontIdent<'a> },
+	/// Load this PNG font, whatever its tile kind.
+	File(&'a Path),
+}
+
+impl FontSource<'_> {
+	/// Loads the font. A font dir is looked up for the given tile kind; an explicit file keeps its
+	/// own tile kind, which the caller checks with `Tile::kind`.
+	///
+	/// # Errors
+	/// Returns `FontLoadError` if no font is found or the font fails to load.
+	pub fn load(
+		&self,
+		tile_kind: tile::Kind,
+		variant: &FontVariant,
+		highest_used_tile_index: TileIndex,
+	) -> Result<Vec<Tile>, FontLoadError> {
+		match self {
+			Self::Dir { dir, ident } => match *ident {
+				FontIdent::FromVariant => dir.load_variant_with_fallback(tile_kind, variant, highest_used_tile_index),
+				FontIdent::Generic => dir.load_with_fallback(tile_kind, None, highest_used_tile_index),
+				FontIdent::Forced(ident) => dir.load_with_fallback(tile_kind, Some(ident), highest_used_tile_index),
+			},
+			Self::File(file_path) => {
+				let is_png = file_path
+					.extension()
+					.is_some_and(|extension| extension.eq_ignore_ascii_case("png"));
+				if !is_png {
+					return Err(FontLoadError::NotPng(file_path.to_path_buf()));
+				}
+				load_png(None, file_path)
+			},
 		}
 	}
 }
@@ -137,7 +189,7 @@ impl FontDir {
 			let file_path = self.0.join(&file_name);
 			looked_up.push(file_name);
 			if file_path.exists() {
-				return load_png(tile_kind, &file_path).map(Some);
+				return load_png(Some(tile_kind), &file_path).map(Some);
 			}
 		}
 		self.load_bin(tile_kind, step.bin_ident, highest_used_tile_index, looked_up)
@@ -178,10 +230,13 @@ impl FontDir {
 	}
 }
 
-fn load_png(tile_kind: tile::Kind, file_path: &Path) -> Result<Vec<Tile>, FontLoadError> {
+/// Loads a PNG font. With a tile kind, a font of another tile kind is an error.
+fn load_png(tile_kind: Option<tile::Kind>, file_path: &Path) -> Result<Vec<Tile>, FontLoadError> {
 	let tiles = avatar_file::load(file_path)?;
 	let loaded_kind = tiles[0].kind();
-	if loaded_kind != tile_kind {
+	if let Some(tile_kind) = tile_kind
+		&& loaded_kind != tile_kind
+	{
 		return Err(FontLoadError::PngTileKindMismatch {
 			file_path: file_path.to_path_buf(),
 			loaded: loaded_kind,
@@ -209,7 +264,7 @@ mod tests {
 	use image::Rgba;
 	use tempfile::TempDir;
 
-	use super::{FontDir, FontLoadError};
+	use super::{FontDir, FontIdent, FontLoadError, FontSource};
 	use crate::osd::font_variant::FontVariant;
 
 	/// Tiles whose top left pixel records the file they come from (red) and their page (green)
@@ -397,5 +452,59 @@ mod tests {
 				dir.path().display()
 			)
 		);
+	}
+
+	#[test]
+	fn explicit_font_file_is_loaded_with_its_own_tile_kind() {
+		let dir = TempDir::new().unwrap();
+		write_png(dir.path(), "font_btfl.png", tile::Kind::SD, 256, 1);
+		write_png(dir.path(), "user_bf_24.png", tile::Kind::HD, 512, 2);
+		let font_file = dir.path().join("user_bf_24.png");
+
+		let tiles = FontSource::File(&font_file)
+			.load(tile::Kind::SD, &FontVariant::Betaflight, 10)
+			.unwrap();
+
+		assert_eq!(marker(&tiles), 2);
+		assert_eq!(tiles.len(), 512);
+		assert_eq!(tiles[0].kind(), tile::Kind::HD);
+	}
+
+	#[test]
+	fn font_dir_source_loads_the_font_its_ident_picks() {
+		let dir = TempDir::new().unwrap();
+		write_png(dir.path(), "font_btfl.png", tile::Kind::SD, 256, 1);
+		write_png(dir.path(), "font_quic.png", tile::Kind::SD, 256, 2);
+		write_png(dir.path(), "font.png", tile::Kind::SD, 256, 3);
+		let load = |ident| {
+			FontSource::Dir {
+				dir: FontDir::new(dir.path()),
+				ident,
+			}
+			.load(tile::Kind::SD, &FontVariant::Betaflight, 10)
+			.unwrap()
+		};
+
+		assert_eq!(marker(&load(FontIdent::FromVariant)), 1);
+		assert_eq!(marker(&load(FontIdent::Forced("quic"))), 2);
+		assert_eq!(marker(&load(FontIdent::Generic)), 3);
+	}
+
+	#[test]
+	fn explicit_font_file_must_be_a_png() {
+		let dir = TempDir::new().unwrap();
+		write_png(dir.path(), "user_bf_24.png", tile::Kind::HD, 256, 1);
+		let jpg_path = dir.path().join("user_bf_24.jpg");
+		image::open(dir.path().join("user_bf_24.png"))
+			.unwrap()
+			.to_rgb8()
+			.save(&jpg_path)
+			.unwrap();
+
+		let error = FontSource::File(&jpg_path)
+			.load(tile::Kind::HD, &FontVariant::Generic, 10)
+			.unwrap_err();
+
+		assert!(matches!(error, FontLoadError::NotPng(_)), "unexpected error: {error}");
 	}
 }

@@ -1064,12 +1064,11 @@ pub async fn transcode_burn_osd<P: AsRef<Path>>(
 
 	let osd_scaling = Scaling::try_from_osd_args(osd_args.osd_scaling_args(), video_info.resolution())?;
 	let mut osd_file = osd::file::open(osd_file_path)?;
-	let osd_font_dir = FontDir::new(osd_args.osd_font_options().osd_font_dir()?);
+	let osd_font_source = osd_args.osd_font_options().osd_font_source()?;
 	let osd_frames_generator = OverlayGenerator::new(
 		osd_file.frames()?,
 		osd_file.font_variant(),
-		&osd_font_dir,
-		osd_args.osd_font_options().osd_font_ident(),
+		&osd_font_source,
 		osd_scaling,
 		osd_args.osd_hide_regions(),
 		osd_args.osd_hide_items(),
