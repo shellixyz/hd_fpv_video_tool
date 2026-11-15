@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+# Turn the pre-commit marker into a trailer that vouches for exactly the index
+# it checked. The marker is intentionally absent when the checks fail or are
+# bypassed.
+set -euo pipefail
+
+msg_file=$1
+marker="$(git rev-parse --git-dir)/CHECKS_PASSED"
+
+[ -f "$marker" ] || exit 0
+
+checked_tree=$(cat "$marker")
+rm -f "$marker"
+
+current_tree=$(git write-tree 2>/dev/null || true)
+[ -n "$current_tree" ] || exit 0
+[ "$current_tree" = "$checked_tree" ] || exit 0
+
+git interpret-trailers --in-place --if-exists replace \
+	--trailer "Checked-Tree: $checked_tree" "$msg_file"

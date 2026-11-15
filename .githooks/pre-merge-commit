@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+# Git invokes this hook, rather than pre-commit, for an automatic merge commit.
+set -euo pipefail
+
+hook="$(dirname "$0")/pre-commit"
+if [ ! -e "$hook" ]; then
+	echo "Error: pre-merge-commit requires .githooks/pre-commit." >&2
+	echo "       Install the hook suite with: just install-hooks" >&2
+	exit 1
+fi
+
+if [ -x "$hook" ]; then
+	exec "$hook"
+fi
+exec bash "$hook"

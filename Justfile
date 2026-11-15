@@ -2,6 +2,10 @@
 install:
 	cargo install --path . --locked --force
 
+install-hooks:
+	git config core.hooksPath .githooks
+	@echo "Installed hd_fpv_video_tool Git hooks."
+
 test:
     cargo nextest run
 

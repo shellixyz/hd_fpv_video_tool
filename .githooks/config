@@ -1,0 +1,4 @@
+# shellcheck shell=bash disable=SC2034
+# Keep the formatter aligned with the repository's existing hook and Rust
+# formatting baseline.
+FMT_TOOLCHAIN=nightly

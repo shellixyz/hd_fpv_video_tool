@@ -1,48 +1,106 @@
 #!/usr/bin/env bash
 
-# Exit immediately if a command exits with a non-zero status.
-set -e
+# Check the exact staged Rust tree. Unstaged changes are temporarily removed
+# while Cargo runs, then restored from a binary patch before the hook exits.
+set -euo pipefail
 
-MAN_PAGES_DIR="man_pages"
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
 
-if git rev-parse --verify HEAD >/dev/null 2>&1; then
-    STASH_OUT=$(git stash push --keep-index --include-untracked -m "pre-commit-stash")
-    if [ "$STASH_OUT" != "No local changes to save" ]; then
-        trap "echo 'Restoring stashed changes...'; git stash pop --quiet" EXIT
-    fi
+FMT_TOOLCHAIN=nightly-2026-02-12
+MAN_PAGES_DIR=man_pages
+SKIP_TESTS=${SKIP_TESTS:-0}
+# shellcheck source=/dev/null
+if [ -f .githooks/config ]; then . .githooks/config; fi
+
+marker="$(git rev-parse --git-dir)/CHECKS_PASSED"
+rm -f "$marker"
+
+if ! command -v shellcheck >/dev/null 2>&1; then
+	echo "Error: ShellCheck is required for the Git hooks." >&2
+	exit 1
+fi
+
+if ! cargo "+$FMT_TOOLCHAIN" fmt --version >/dev/null 2>&1; then
+	echo "Error: the $FMT_TOOLCHAIN toolchain with rustfmt is required." >&2
+	echo "       Install it with: rustup toolchain install $FMT_TOOLCHAIN --component rustfmt" >&2
+	exit 1
+fi
+
+unstaged_patch=""
+restore_unstaged() {
+	[ -n "$unstaged_patch" ] || return 0
+	[ -s "$unstaged_patch" ] || {
+		rm -f "$unstaged_patch"
+		return 0
+	}
+
+	echo "Restoring unstaged changes..."
+	if git apply --whitespace=nowarn "$unstaged_patch"; then
+		rm -f "$unstaged_patch"
+	else
+		echo "Error: unstaged changes could not be restored automatically." >&2
+		echo "       Recover them with: git apply $unstaged_patch" >&2
+	fi
+}
+
+if ! git diff --quiet --ignore-submodules=all; then
+	unstaged_patch=$(mktemp "${TMPDIR:-/tmp}/hd-fpv-video-tool-pre-commit.XXXXXX.patch")
+	if git diff --binary --no-color --no-ext-diff --no-textconv \
+		--ignore-submodules=all > "$unstaged_patch"; then
+		rm -f "$unstaged_patch"
+		unstaged_patch=""
+	fi
+
+	mapfile -d '' -t dirty_paths < <(
+		git diff --name-only -z --no-ext-diff --ignore-submodules=all
+	)
+	trap restore_unstaged EXIT INT TERM
+	if [ ${#dirty_paths[@]} -gt 0 ]; then
+		git checkout -- "${dirty_paths[@]}"
+	fi
+fi
+
+run_step() {
+	local label=$1
+	shift
+
+	echo "Running: $*"
+	if ! "$@"; then
+		echo "Error: $label failed." >&2
+		exit 1
+	fi
+}
+
+validate_lock() {
+	cargo metadata --locked --format-version 1 >/dev/null
+}
+
+update_man_pages() {
+	mkdir -p "$MAN_PAGES_DIR"
+	while IFS= read -r -d '' man_page; do
+		rm -f -- "$man_page"
+	done < <(git ls-files -z -- "$MAN_PAGES_DIR")
+	cargo run --locked -- generate-man-pages
+	git add -- "$MAN_PAGES_DIR"
+}
+
+for script in .githooks/pre-commit .githooks/commit-msg .githooks/pre-merge-commit; do
+	[ -f "$script" ] || continue
+	run_step "ShellCheck" shellcheck "$script"
+done
+
+run_step "Cargo.lock validation" validate_lock
+run_step "man page generation" update_man_pages
+run_step "cargo fmt" cargo "+$FMT_TOOLCHAIN" fmt --all -- --check
+run_step "cargo check" cargo check --locked --workspace --all-targets --all-features
+run_step "cargo clippy" cargo clippy --locked --workspace --no-deps --all-targets --all-features -- -D warnings
+run_step "cargo doc" cargo doc --locked --workspace --no-deps --all-features
+if [ "$SKIP_TESTS" = "1" ]; then
+	echo "Tests skipped (SKIP_TESTS=1)."
 else
-    echo "Initial commit, skipping stash."
+	run_step "cargo test" cargo test --locked --workspace --all-features
 fi
 
-echo "Running: cargo +nightly fmt --all -- --check"
-if ! cargo +nightly fmt --all -- --check; then
-    echo "Error: cargo fmt found formatting issues. Run 'cargo +nightly fmt --all' to fix them."
-    exit 1
-fi
-
-echo "Running: cargo check --all-targets --all-features"
-if ! cargo check --all-targets --all-features; then
-    echo "Error: cargo check found issues. Please fix them before committing."
-    exit 1
-fi
-
-echo "Running: cargo clippy --all-targets --all-features -- -D warnings"
-if ! cargo clippy --all-targets --all-features -- -D warnings; then
-    echo "Error: cargo clippy found issues. Please fix them before committing."
-    exit 1
-fi
-
-echo "Running: cargo test --all-features"
-if ! cargo test --all-features; then
-    echo "Error: cargo test failed. Please fix failing tests before committing."
-    exit 1
-fi
-
-echo "Updating man pages"
-mkdir -p "$MAN_PAGES_DIR"
-rm -f "$MAN_PAGES_DIR"/*
-cargo run -- generate-man-pages
-git add "$MAN_PAGES_DIR"
-
-echo "All checks passed!"
-exit 0
+git write-tree > "$marker"
+echo "All checks passed."
